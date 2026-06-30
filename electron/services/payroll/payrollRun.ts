@@ -52,13 +52,27 @@ function monthEndDate(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 }
 
-/** Count working days in a month (Mon–Fri, excluding Saturdays & Sundays). Simple approximation. */
-function workingDaysInMonth(year: number, month: number): number {
+/**
+ * Reads public holidays for the given month from the public_holidays table.
+ * Returns a Set of YYYY-MM-DD strings so workingDaysInMonth can exclude them.
+ */
+function getPublicHolidayDates(db: Database.Database, year: number, month: number): Set<string> {
+  const monthPrefix = `${year}-${String(month).padStart(2, '0')}`
+  const rows = db.prepare(
+    `SELECT date FROM public_holidays WHERE date LIKE ?`,
+  ).all(`${monthPrefix}%`) as Array<{ date: string }>
+  return new Set(rows.map((r) => r.date))
+}
+
+/** Count working days in a month (Mon–Fri), excluding weekends and public holidays. */
+function workingDaysInMonth(year: number, month: number, publicHolidays: Set<string>): number {
+  const pad = (n: number) => String(n).padStart(2, '0')
   const lastDay = new Date(year, month, 0).getDate()
   let count = 0
   for (let d = 1; d <= lastDay; d++) {
+    const dateStr = `${year}-${pad(month)}-${pad(d)}`
     const dow = new Date(year, month - 1, d).getDay()
-    if (dow !== 0 && dow !== 6) count++ // 0=Sunday, 6=Saturday
+    if (dow !== 0 && dow !== 6 && !publicHolidays.has(dateStr)) count++
   }
   return count
 }
@@ -132,7 +146,8 @@ export function calculatePayrollRun(
 
   const { year, month } = run
   const asOfDate = monthEndDate(year, month)
-  const workingDays = workingDaysInMonth(year, month)
+  const publicHolidays = getPublicHolidayDates(db, year, month)
+  const workingDays = workingDaysInMonth(year, month, publicHolidays)
 
   // Get payroll settings (OT rule)
   const settings = getPayrollSettings(db)
