@@ -9,6 +9,18 @@ import type { CreateAttendanceLogInput, UpdateAttendanceLogInput } from '../../s
 
 // ── Shared helpers ───────────────────────────────────────
 
+/**
+ * Returns the current local time as a naive ISO 8601 string (no timezone suffix).
+ * SQLite's date() interprets these as-is, matching how datetime-local form inputs
+ * produce timestamps. Using new Date().toISOString() would produce a UTC "Z" string,
+ * which causes date-bucket errors for users in non-UTC timezones (e.g. MYT = UTC+8).
+ */
+function nowLocalISO(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 /** Queries a single AttendanceLog, joining employees for the employee_name. */
 function queryById(db: Database.Database, id: number): AttendanceLog | null {
   const row = db.prepare(`
@@ -126,7 +138,7 @@ export function clockIn(
 ): AttendanceLog {
   assertAlternation(db, employeeId, 'in')
 
-  const ts = timestamp ?? new Date().toISOString()
+  const ts = timestamp ?? nowLocalISO()
   const now = new Date().toISOString()
 
   const result = db.prepare(`
@@ -150,7 +162,7 @@ export function clockOut(
 ): AttendanceLog {
   assertAlternation(db, employeeId, 'out')
 
-  const ts = timestamp ?? new Date().toISOString()
+  const ts = timestamp ?? nowLocalISO()
   const now = new Date().toISOString()
 
   const result = db.prepare(`
