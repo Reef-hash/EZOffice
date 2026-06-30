@@ -164,6 +164,7 @@ export interface PayrollRunApi {
   create: (data: CreatePayrollRunInput) => Promise<PayrollRun>
   calculate: (id: number) => Promise<PayrollRun>
   getItems: (runId: number) => Promise<PayrollRunItem[]>
+  checkRateTables: () => Promise<{ missing: string[] }>
   finalize: (id: number) => Promise<PayrollRun>
   printPayslip: (runId: number, employeeId: number) => Promise<{ filePath: string; filename: string }>
 }

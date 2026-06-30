@@ -15,7 +15,7 @@ import type { CreatePayrollRunInput } from '../../../src/shared/types/inputs'
 import { getMonthlyAttendanceSummary } from '../attendanceSummary'
 import { getCurrentSalaryStructure } from './salaryStructure'
 import { getPayrollSettings } from './settings'
-import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket } from './statutoryRates'
+import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
 import { getActiveAdvancesForEmployee, applyAdvanceDeduction } from './salaryAdvances'
 import { calculatePay, type OtRule } from './calculationEngine'
 
@@ -197,9 +197,8 @@ export function calculatePayrollRun(
       const socsoRate = structure.subject_to_socso ? lookupSocsoRate(db, monthlyWage, asOfDate) : null
       const eisRate = structure.subject_to_eis ? lookupEisRate(db, monthlyWage, asOfDate) : null
 
-      // PCB: for now, use 'single' + 0 children as default
-      // Future enhancement: add employee PCB profile fields
-      const pcbBracket = lookupPcbBracket(db, monthlyWage, 'single', 0, asOfDate)
+      // PCB: use per-employee category and children count from salary_structures (migration 0005)
+      const pcbBracket = lookupPcbBracket(db, monthlyWage, structure.pcb_category, structure.pcb_children_count, asOfDate)
 
       // Preview the advance deduction for this employee — NOT applied yet.
       // Balances are only mutated when the run is finalized (see finalizePayrollRun).
@@ -300,6 +299,16 @@ export function finalizePayrollRun(db: Database.Database, runId: number): Payrol
   const run = queryRunById(db, runId)
   if (!run) throw new Error(`Payroll run ${runId} not found`)
   if (run.status === 'finalized') throw new Error('Payroll run is already finalized')
+
+  // Guard: refuse to finalize if any statutory rate table is empty — deductions would silently
+  // compute as RM 0.00 for every employee, causing incorrect net pay in the final payslips.
+  const { missing } = checkRateTablesForRun(db)
+  if (missing.length > 0) {
+    throw new Error(
+      `Cannot finalize: statutory rate tables are empty for ${missing.join(', ')}. ` +
+      'Populate the rate tables under Statutory Rate Tables before finalizing.',
+    )
+  }
 
   const items = getPayrollRunItems(db, runId)
   const now = new Date().toISOString()

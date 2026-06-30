@@ -100,6 +100,7 @@ const api: EzOfficeApi = {
       create: (data) => ipcRenderer.invoke('payroll:runs:create', data),
       calculate: (id) => ipcRenderer.invoke('payroll:runs:calculate', id),
       getItems: (runId) => ipcRenderer.invoke('payroll:runs:items', runId),
+      checkRateTables: () => ipcRenderer.invoke('payroll:runs:checkRateTables'),
       finalize: (id) => ipcRenderer.invoke('payroll:runs:finalize', id),
       printPayslip: (runId, employeeId) => ipcRenderer.invoke('payroll:runs:printPayslip', runId, employeeId),
     },

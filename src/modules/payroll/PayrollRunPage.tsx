@@ -39,6 +39,11 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
     () => window.api.payroll.runs.getById(runId),
   )
 
+  const { data: rateTableCheck } = useIpcQuery<{ missing: string[] }>(
+    ['payroll', 'runs', 'checkRateTables'],
+    () => window.api.payroll.runs.checkRateTables(),
+  )
+
   const { data: items = [], isLoading: itemsLoading } = useIpcQuery<PayrollRunItem[]>(
     ['payroll', 'runs', String(runId), 'items'],
     () => window.api.payroll.runs.getItems(runId),
@@ -117,6 +122,16 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
           <Button variant="ghost" onClick={onBack}>← Back to Runs</Button>
         }
       />
+
+      {/* Empty rate table warning — shown for draft runs only; finalization will be blocked anyway */}
+      {isDraft && rateTableCheck && rateTableCheck.missing.length > 0 && (
+        <div className="rounded-md border border-warning-600 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+          <strong>Warning:</strong> The following statutory rate tables are empty:{' '}
+          <strong>{rateTableCheck.missing.join(', ')}</strong>. All deductions will compute as RM 0.00
+          until you populate the rate tables under{' '}
+          <span className="font-medium">Statutory Rate Tables</span>. Finalizing is blocked until this is resolved.
+        </div>
+      )}
 
       {/* Actions bar */}
       <div className="flex items-center gap-3">

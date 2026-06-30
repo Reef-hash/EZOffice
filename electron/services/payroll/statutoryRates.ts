@@ -252,3 +252,19 @@ export function lookupPcbBracket(
   `).get(asOfDate, category, childrenCount, chargeableIncome, chargeableIncome) as PcbBracket | undefined
   return row ?? null
 }
+
+/**
+ * Returns the names of any statutory rate tables that are completely empty.
+ * A payroll run must not be finalized when tables are empty — the lookups would
+ * silently return null and every deduction would come out RM 0.00.
+ */
+export function checkRateTablesForRun(db: Database.Database): { missing: string[] } {
+  const missing: string[] = []
+  const count = (table: string) =>
+    (db.prepare(`SELECT COUNT(*) as cnt FROM ${table}`).get() as { cnt: number }).cnt
+  if (count('epf_rates') === 0) missing.push('EPF')
+  if (count('socso_rates') === 0) missing.push('SOCSO')
+  if (count('eis_rates') === 0) missing.push('EIS')
+  if (count('pcb_brackets') === 0) missing.push('PCB')
+  return { missing }
+}

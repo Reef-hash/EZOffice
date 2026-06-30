@@ -28,10 +28,7 @@ This file is the living maintenance record for EZOffice. It is the single place 
 
 ### Critical
 
-| # | Found | Title | Detail | Affected Files |
-|---|-------|-------|--------|----------------|
-| C1 | 2026-06-30 | EPF/SOCSO/EIS/PCB rate tables are empty — no warning before finalization | On a fresh install all statutory rate tables are empty (the seed SQL in 0003_payroll.sql is commented out). A payroll run will finalize with RM 0.00 for all statutory deductions and net pay = gross pay, silently. There is no guard that checks for empty rate tables before allowing finalization. | `electron/db/migrations/0003_payroll.sql`, `electron/services/payroll/payrollRun.ts`, `src/modules/payroll/PayrollRunPage.tsx` |
-| C2 | 2026-06-30 | PCB hardcoded to 'single' / 0 children for every employee | `payrollRun.ts:202` calls `lookupPcbBracket(db, monthlyWage, 'single', 0, asOfDate)` for all employees unconditionally. Married employees and those with children will have incorrect (over-deducted) PCB. No per-employee PCB profile exists in the schema. | `electron/services/payroll/payrollRun.ts:202`, `electron/db/migrations/` (new migration needed), `src/modules/payroll/salaryStructures/` |
+*(none — all Critical issues resolved)*
 
 ---
 
@@ -39,10 +36,7 @@ This file is the living maintenance record for EZOffice. It is the single place 
 
 | # | Found | Title | Detail | Affected Files |
 |---|-------|-------|--------|----------------|
-| H1 | 2026-06-30 | `attendance:getMonthlySummary` IPC handler is not registered | `preload.ts:45` exposes `window.api.attendance.getMonthlySummary()` but `electron/ipc/attendance.ts` never calls `ipcMain.handle('attendance:getMonthlySummary', ...)`. Calling this from the renderer returns `undefined` silently. The payroll calculation works today only because it calls `getMonthlyAttendanceSummary` internally (service-to-service), but the exposed API surface is broken. | `electron/ipc/attendance.ts` (add handler), `electron/services/attendanceSummary.ts` |
-| H2 | 2026-06-30 | `PayrollSettings` TypeScript type missing `device_ip` and `device_port` | Migration `0004_device_settings.sql` added two columns to `payroll_settings`. The entity type `PayrollSettings` in `entities.ts:156` was never updated. Any code that uses the typed `getPayrollSettings()` return value does not know these fields exist. | `src/shared/types/entities.ts:156` |
-| H3 | 2026-06-30 | No UNIQUE constraint on `attendance_logs(employee_id, timestamp, type)` | Device sync deduplication uses a `SELECT COUNT(*)` check before every insert. Without a DB-level constraint, a race or repeated sync could create duplicate rows. A `CREATE UNIQUE INDEX` on this triple would enforce deduplication atomically. | `electron/db/migrations/` (new migration) |
-| H4 | 2026-06-30 | ZKTeco `user_id` mapped to `employee_id` without validation | `syncFromDeviceEthernet` maps `log.user_id` directly to `employee_id` and inserts without checking if that employee exists in EZOffice. Attendance records could be silently inserted under wrong or nonexistent employees if the device's user numbering does not match EZOffice IDs. | `electron/services/attendance.ts` (`syncFromDeviceEthernet` function) |
+| — | — | *(none — all High issues resolved)* | — | — |
 
 ---
 
@@ -79,7 +73,7 @@ This file is the living maintenance record for EZOffice. It is the single place 
 
 | # | Started | Title | Who / Notes |
 |---|---------|-------|-------------|
-| — | — | *(nothing in progress yet)* | — |
+| — | — | *(nothing in progress)* | — |
 
 ---
 
@@ -87,7 +81,12 @@ This file is the living maintenance record for EZOffice. It is the single place 
 
 | # | Resolved | Title | Fix Summary |
 |---|----------|-------|-------------|
-| — | — | *(none yet — this file was created after the Phase 6 review)* | — |
+| C1 | 2026-06-30 | Empty rate table finalization guard | Added `checkRateTablesForRun()` in `statutoryRates.ts`; `finalizePayrollRun` calls it and throws if any table is empty; `payroll:runs:checkRateTables` IPC channel exposed; `PayrollRunPage.tsx` shows warning banner for draft runs with empty tables. |
+| C2 | 2026-06-30 | PCB hardcoded to 'single'/0 children | Migration `0005_pcb_profile.sql` adds `pcb_category` + `pcb_children_count` to `salary_structures`; `SalaryStructure` type and Zod schemas updated; `salaryStructure.ts` INSERT/UPDATE includes new columns; `payrollRun.ts:202` now uses `structure.pcb_category`/`structure.pcb_children_count`; `SalaryStructureForm.tsx` has PCB Category select + Dependants input. |
+| H1 | 2026-06-30 | `attendance:getMonthlySummary` handler not registered | Not a bug — handler is registered in `electron/ipc/payroll.ts:34` (payroll is the consumer, correct placement). |
+| H2 | 2026-06-30 | `PayrollSettings` type missing `device_ip`/`device_port` | Added `device_ip: string \| null` and `device_port: number` to `PayrollSettings` in `entities.ts`. |
+| H3 | 2026-06-30 | No UNIQUE constraint on `attendance_logs` | Migration `0006_attendance_unique.sql` adds `CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_logs_unique ON attendance_logs(employee_id, timestamp, type)`. |
+| H4 | 2026-06-30 | ZKTeco `user_id` not validated against employees | `syncFromDeviceEthernet` now checks each `log.employeeId` against the employees table before inserting; unknown IDs are counted as skipped with an error message. |
 
 ---
 

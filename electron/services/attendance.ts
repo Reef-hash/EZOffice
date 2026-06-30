@@ -321,8 +321,20 @@ export async function syncFromDeviceEthernet(
       WHERE employee_id = @employee_id AND timestamp = @timestamp AND type = @type
     `)
 
+    // Validate that the device user_id maps to a known employee — device numbering may not
+    // match EZOffice IDs. Logs for unknown employee IDs are skipped rather than inserted
+    // under a nonexistent or wrong employee.
+    const employeeExistsStmt = db.prepare('SELECT COUNT(*) as cnt FROM employees WHERE id = ?')
+
     db.transaction(() => {
       for (const log of mappedLogs) {
+        const empExists = employeeExistsStmt.get(log.employeeId) as { cnt: number }
+        if (empExists.cnt === 0) {
+          errors.push(`Skipped: Device user_id ${log.employeeId} does not match any employee in EZOffice`)
+          skipped++
+          continue
+        }
+
         const exists = existsStmt.get({
           employee_id: log.employeeId,
           timestamp: log.timestamp,
