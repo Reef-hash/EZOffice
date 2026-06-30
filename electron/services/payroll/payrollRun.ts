@@ -15,7 +15,7 @@ import type { CreatePayrollRunInput } from '../../../src/shared/types/inputs'
 import { getMonthlyAttendanceSummary } from '../attendanceSummary'
 import { getCurrentSalaryStructure } from './salaryStructure'
 import { getPayrollSettings } from './settings'
-import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket } from './statutoryRates'
+import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
 import { getActiveAdvancesForEmployee, applyAdvanceDeduction } from './salaryAdvances'
 import { calculatePay, type OtRule } from './calculationEngine'
 
@@ -52,13 +52,27 @@ function monthEndDate(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
 }
 
-/** Count working days in a month (Mon–Fri, excluding Saturdays & Sundays). Simple approximation. */
-function workingDaysInMonth(year: number, month: number): number {
+/**
+ * Reads public holidays for the given month from the public_holidays table.
+ * Returns a Set of YYYY-MM-DD strings so workingDaysInMonth can exclude them.
+ */
+function getPublicHolidayDates(db: Database.Database, year: number, month: number): Set<string> {
+  const monthPrefix = `${year}-${String(month).padStart(2, '0')}`
+  const rows = db.prepare(
+    `SELECT date FROM public_holidays WHERE date LIKE ?`,
+  ).all(`${monthPrefix}%`) as Array<{ date: string }>
+  return new Set(rows.map((r) => r.date))
+}
+
+/** Count working days in a month (Mon–Fri), excluding weekends and public holidays. */
+function workingDaysInMonth(year: number, month: number, publicHolidays: Set<string>): number {
+  const pad = (n: number) => String(n).padStart(2, '0')
   const lastDay = new Date(year, month, 0).getDate()
   let count = 0
   for (let d = 1; d <= lastDay; d++) {
+    const dateStr = `${year}-${pad(month)}-${pad(d)}`
     const dow = new Date(year, month - 1, d).getDay()
-    if (dow !== 0 && dow !== 6) count++ // 0=Sunday, 6=Saturday
+    if (dow !== 0 && dow !== 6 && !publicHolidays.has(dateStr)) count++
   }
   return count
 }
@@ -132,7 +146,8 @@ export function calculatePayrollRun(
 
   const { year, month } = run
   const asOfDate = monthEndDate(year, month)
-  const workingDays = workingDaysInMonth(year, month)
+  const publicHolidays = getPublicHolidayDates(db, year, month)
+  const workingDays = workingDaysInMonth(year, month, publicHolidays)
 
   // Get payroll settings (OT rule)
   const settings = getPayrollSettings(db)
@@ -197,9 +212,8 @@ export function calculatePayrollRun(
       const socsoRate = structure.subject_to_socso ? lookupSocsoRate(db, monthlyWage, asOfDate) : null
       const eisRate = structure.subject_to_eis ? lookupEisRate(db, monthlyWage, asOfDate) : null
 
-      // PCB: for now, use 'single' + 0 children as default
-      // Future enhancement: add employee PCB profile fields
-      const pcbBracket = lookupPcbBracket(db, monthlyWage, 'single', 0, asOfDate)
+      // PCB: use per-employee category and children count from salary_structures (migration 0005)
+      const pcbBracket = lookupPcbBracket(db, monthlyWage, structure.pcb_category, structure.pcb_children_count, asOfDate)
 
       // Preview the advance deduction for this employee — NOT applied yet.
       // Balances are only mutated when the run is finalized (see finalizePayrollRun).
@@ -300,6 +314,16 @@ export function finalizePayrollRun(db: Database.Database, runId: number): Payrol
   const run = queryRunById(db, runId)
   if (!run) throw new Error(`Payroll run ${runId} not found`)
   if (run.status === 'finalized') throw new Error('Payroll run is already finalized')
+
+  // Guard: refuse to finalize if any statutory rate table is empty — deductions would silently
+  // compute as RM 0.00 for every employee, causing incorrect net pay in the final payslips.
+  const { missing } = checkRateTablesForRun(db)
+  if (missing.length > 0) {
+    throw new Error(
+      `Cannot finalize: statutory rate tables are empty for ${missing.join(', ')}. ` +
+      'Populate the rate tables under Statutory Rate Tables before finalizing.',
+    )
+  }
 
   const items = getPayrollRunItems(db, runId)
   const now = new Date().toISOString()

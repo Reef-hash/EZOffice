@@ -8,7 +8,7 @@ import { Modal } from '@/shared/components/Modal'
 import type { SelectOption } from '@/shared/components/Input'
 import type { SalaryStructure } from '@/shared/types/entities'
 import type { CreateSalaryStructureInput, UpdateSalaryStructureInput } from '@/shared/types/inputs'
-import { RATE_TYPE_OPTIONS } from '../constants'
+import { RATE_TYPE_OPTIONS, PCB_CATEGORY_OPTIONS } from '../constants'
 
 interface SalaryStructureFormProps {
   isOpen: boolean
@@ -34,6 +34,8 @@ export function SalaryStructureForm({
   const [subjectToEpf, setSubjectToEpf] = useState(true)
   const [subjectToSocso, setSubjectToSocso] = useState(true)
   const [subjectToEis, setSubjectToEis] = useState(true)
+  const [pcbCategory, setPcbCategory] = useState<'single' | 'married_no_spouse_income' | 'married_with_spouse_income'>('single')
+  const [pcbChildrenCount, setPcbChildrenCount] = useState('0')
   const [validationError, setValidationError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -47,6 +49,8 @@ export function SalaryStructureForm({
       setSubjectToEpf(!!structure.subject_to_epf)
       setSubjectToSocso(!!structure.subject_to_socso)
       setSubjectToEis(!!structure.subject_to_eis)
+      setPcbCategory(structure.pcb_category)
+      setPcbChildrenCount(String(structure.pcb_children_count))
     } else {
       setEmployeeId('')
       setEffectiveFrom(new Date().toISOString().slice(0, 10))
@@ -56,6 +60,8 @@ export function SalaryStructureForm({
       setSubjectToEpf(true)
       setSubjectToSocso(true)
       setSubjectToEis(true)
+      setPcbCategory('single')
+      setPcbChildrenCount('0')
     }
     setValidationError(null)
   }, [isOpen, structure])
@@ -82,6 +88,8 @@ export function SalaryStructureForm({
       subject_to_epf: subjectToEpf ? 1 : 0,
       subject_to_socso: subjectToSocso ? 1 : 0,
       subject_to_eis: subjectToEis ? 1 : 0,
+      pcb_category: pcbCategory,
+      pcb_children_count: Number(pcbChildrenCount),
     }
 
     await onSubmit(data)
@@ -177,6 +185,25 @@ export function SalaryStructureForm({
               Subject to EIS
             </label>
           </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Select
+            label="PCB Category"
+            value={pcbCategory}
+            onChange={(e) => setPcbCategory(e.target.value as typeof pcbCategory)}
+            options={PCB_CATEGORY_OPTIONS}
+            helperText="Employee's marital status for income tax (PCB) computation."
+          />
+          <Input
+            label="PCB Dependants"
+            type="number"
+            min="0"
+            step="1"
+            value={pcbChildrenCount}
+            onChange={(e) => setPcbChildrenCount(e.target.value)}
+            helperText="Number of qualifying children."
+          />
         </div>
       </form>
     </Modal>

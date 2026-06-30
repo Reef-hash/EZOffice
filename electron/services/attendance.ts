@@ -9,6 +9,18 @@ import type { CreateAttendanceLogInput, UpdateAttendanceLogInput } from '../../s
 
 // ── Shared helpers ───────────────────────────────────────
 
+/**
+ * Returns the current local time as a naive ISO 8601 string (no timezone suffix).
+ * SQLite's date() interprets these as-is, matching how datetime-local form inputs
+ * produce timestamps. Using new Date().toISOString() would produce a UTC "Z" string,
+ * which causes date-bucket errors for users in non-UTC timezones (e.g. MYT = UTC+8).
+ */
+function nowLocalISO(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
 /** Queries a single AttendanceLog, joining employees for the employee_name. */
 function queryById(db: Database.Database, id: number): AttendanceLog | null {
   const row = db.prepare(`
@@ -126,7 +138,7 @@ export function clockIn(
 ): AttendanceLog {
   assertAlternation(db, employeeId, 'in')
 
-  const ts = timestamp ?? new Date().toISOString()
+  const ts = timestamp ?? nowLocalISO()
   const now = new Date().toISOString()
 
   const result = db.prepare(`
@@ -150,7 +162,7 @@ export function clockOut(
 ): AttendanceLog {
   assertAlternation(db, employeeId, 'out')
 
-  const ts = timestamp ?? new Date().toISOString()
+  const ts = timestamp ?? nowLocalISO()
   const now = new Date().toISOString()
 
   const result = db.prepare(`
@@ -321,8 +333,20 @@ export async function syncFromDeviceEthernet(
       WHERE employee_id = @employee_id AND timestamp = @timestamp AND type = @type
     `)
 
+    // Validate that the device user_id maps to a known employee — device numbering may not
+    // match EZOffice IDs. Logs for unknown employee IDs are skipped rather than inserted
+    // under a nonexistent or wrong employee.
+    const employeeExistsStmt = db.prepare('SELECT COUNT(*) as cnt FROM employees WHERE id = ?')
+
     db.transaction(() => {
       for (const log of mappedLogs) {
+        const empExists = employeeExistsStmt.get(log.employeeId) as { cnt: number }
+        if (empExists.cnt === 0) {
+          errors.push(`Skipped: Device user_id ${log.employeeId} does not match any employee in EZOffice`)
+          skipped++
+          continue
+        }
+
         const exists = existsStmt.get({
           employee_id: log.employeeId,
           timestamp: log.timestamp,

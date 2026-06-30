@@ -89,7 +89,11 @@ export function AttendanceLogForm({
     const data: CreateAttendanceLogInput = {
       employee_id: Number(employeeId),
       type,
-      timestamp: new Date(timestamp).toISOString(),
+      // Keep as naive local string — datetime-local gives "YYYY-MM-DDTHH:mm" (16 chars);
+      // pad to include seconds so SQLite's date() functions parse it consistently.
+      // Do NOT convert to UTC here — SQLite date() treats naive strings as local, and
+      // mixing UTC-Z strings with naive strings causes wrong date-bucket results for MYT.
+      timestamp: timestamp.length === 16 ? timestamp + ':00' : timestamp,
       note: note.trim() || null,
     }
 

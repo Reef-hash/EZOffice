@@ -9,6 +9,7 @@ import { StatusBadge } from '@/shared/components/StatusBadge'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { Card } from '@/shared/components/Card'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
+import { useToast } from '@/shared/components/Toast'
 import type { Column } from '@/shared/components/Table'
 import type { PayrollRun, PayrollRunItem } from '@/shared/types/entities'
 import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE } from './constants'
@@ -32,11 +33,17 @@ const itemColumns: Column<PayrollRunItem>[] = [
 ]
 
 export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
+  const { addToast } = useToast()
   const [calculating, setCalculating] = useState(false)
 
   const { data: run, isLoading: runLoading } = useIpcQuery<PayrollRun | null>(
     ['payroll', 'runs', String(runId)],
     () => window.api.payroll.runs.getById(runId),
+  )
+
+  const { data: rateTableCheck } = useIpcQuery<{ missing: string[] }>(
+    ['payroll', 'runs', 'checkRateTables'],
+    () => window.api.payroll.runs.checkRateTables(),
   )
 
   const { data: items = [], isLoading: itemsLoading } = useIpcQuery<PayrollRunItem[]>(
@@ -64,17 +71,22 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
   }, [calculateMutation, runId])
 
   const handleFinalize = useCallback(async () => {
-    await finalizeMutation.mutateAsync(runId)
-  }, [finalizeMutation, runId])
+    try {
+      await finalizeMutation.mutateAsync(runId)
+      addToast('Payroll run finalized successfully.', 'success')
+    } catch {
+      // finalizeMutation.error is rendered inline below — no duplicate toast needed
+    }
+  }, [finalizeMutation, runId, addToast])
 
   const handlePrintPayslip = useCallback(async (employeeId: number) => {
     try {
       await window.api.payroll.runs.printPayslip(runId, employeeId)
+      addToast('Payslip generated and opened.', 'success')
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to print payslip:', err)
+      addToast(`Failed to generate payslip: ${String(err)}`, 'error')
     }
-  }, [runId])
+  }, [runId, addToast])
 
   const isDraft = run?.status === 'draft'
   const periodLabel = run
@@ -117,6 +129,16 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
           <Button variant="ghost" onClick={onBack}>← Back to Runs</Button>
         }
       />
+
+      {/* Empty rate table warning — shown for draft runs only; finalization will be blocked anyway */}
+      {isDraft && rateTableCheck && rateTableCheck.missing.length > 0 && (
+        <div className="rounded-md border border-warning-600 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+          <strong>Warning:</strong> The following statutory rate tables are empty:{' '}
+          <strong>{rateTableCheck.missing.join(', ')}</strong>. All deductions will compute as RM 0.00
+          until you populate the rate tables under{' '}
+          <span className="font-medium">Statutory Rate Tables</span>. Finalizing is blocked until this is resolved.
+        </div>
+      )}
 
       {/* Actions bar */}
       <div className="flex items-center gap-3">

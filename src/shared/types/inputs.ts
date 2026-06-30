@@ -130,6 +130,8 @@ export const createSalaryStructureSchema = z.object({
   subject_to_epf: z.number().int().min(0).max(1).default(1),
   subject_to_socso: z.number().int().min(0).max(1).default(1),
   subject_to_eis: z.number().int().min(0).max(1).default(1),
+  pcb_category: z.enum(['single', 'married_no_spouse_income', 'married_with_spouse_income']).default('single'),
+  pcb_children_count: z.number().int().min(0).default(0),
 })
 
 export const updateSalaryStructureSchema = createSalaryStructureSchema.partial()

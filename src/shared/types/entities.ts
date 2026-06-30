@@ -149,6 +149,8 @@ export interface SalaryStructure {
   subject_to_epf: number // 0 or 1 (SQLite)
   subject_to_socso: number
   subject_to_eis: number
+  pcb_category: 'single' | 'married_no_spouse_income' | 'married_with_spouse_income'
+  pcb_children_count: number
   created_at: string
   updated_at: string
 }
@@ -157,6 +159,8 @@ export interface PayrollSettings {
   id: number
   ot_rule_type: OtRuleType
   ot_rule_value: number
+  device_ip: string | null
+  device_port: number
   created_at: string
   updated_at: string
 }

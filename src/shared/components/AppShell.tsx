@@ -4,6 +4,7 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { cn } from '../lib/cn'
+import { ToastProvider } from './Toast'
 
 interface NavItemProps {
   to: string
@@ -31,6 +32,7 @@ function SidebarNavItem({ to, children }: NavItemProps) {
 
 export function AppShell() {
   return (
+    <ToastProvider>
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Fixed sidebar */}
       <aside className="flex w-[240px] shrink-0 flex-col bg-ink-900">
@@ -68,5 +70,6 @@ export function AppShell() {
         <Outlet />
       </main>
     </div>
+    </ToastProvider>
   )
 }

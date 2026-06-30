@@ -24,6 +24,7 @@ import { getMonthlyAttendanceSummary } from '../services/attendanceSummary'
 import * as salaryStructureService from '../services/payroll/salaryStructure'
 import * as payrollSettingsService from '../services/payroll/settings'
 import * as statutoryRatesService from '../services/payroll/statutoryRates'
+import { checkRateTablesForRun } from '../services/payroll/statutoryRates'
 import * as salaryAdvancesService from '../services/payroll/salaryAdvances'
 import * as payrollRunService from '../services/payroll/payrollRun'
 import { generatePayslipPdf } from '../services/payroll/payslipPdf'
@@ -311,6 +312,12 @@ export function registerPayrollHandlers(db: Database.Database): void {
   ipcMain.handle('payroll:runs:items', async (_event, runId: number) => {
     try { return payrollRunService.getPayrollRunItems(db, runId) } catch (err) {
       throw new Error(`Failed to get payroll run items for run ${runId}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:runs:checkRateTables', async () => {
+    try { return checkRateTablesForRun(db) } catch (err) {
+      throw new Error(`Failed to check rate tables: ${String(err)}`)
     }
   })
 
