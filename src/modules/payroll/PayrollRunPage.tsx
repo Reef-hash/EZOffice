@@ -9,6 +9,7 @@ import { StatusBadge } from '@/shared/components/StatusBadge'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { Card } from '@/shared/components/Card'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
+import { useToast } from '@/shared/components/Toast'
 import type { Column } from '@/shared/components/Table'
 import type { PayrollRun, PayrollRunItem } from '@/shared/types/entities'
 import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE } from './constants'
@@ -32,6 +33,7 @@ const itemColumns: Column<PayrollRunItem>[] = [
 ]
 
 export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
+  const { addToast } = useToast()
   const [calculating, setCalculating] = useState(false)
 
   const { data: run, isLoading: runLoading } = useIpcQuery<PayrollRun | null>(
@@ -69,17 +71,22 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
   }, [calculateMutation, runId])
 
   const handleFinalize = useCallback(async () => {
-    await finalizeMutation.mutateAsync(runId)
-  }, [finalizeMutation, runId])
+    try {
+      await finalizeMutation.mutateAsync(runId)
+      addToast('Payroll run finalized successfully.', 'success')
+    } catch {
+      // finalizeMutation.error is rendered inline below — no duplicate toast needed
+    }
+  }, [finalizeMutation, runId, addToast])
 
   const handlePrintPayslip = useCallback(async (employeeId: number) => {
     try {
       await window.api.payroll.runs.printPayslip(runId, employeeId)
+      addToast('Payslip generated and opened.', 'success')
     } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('Failed to print payslip:', err)
+      addToast(`Failed to generate payslip: ${String(err)}`, 'error')
     }
-  }, [runId])
+  }, [runId, addToast])
 
   const isDraft = run?.status === 'draft'
   const periodLabel = run
