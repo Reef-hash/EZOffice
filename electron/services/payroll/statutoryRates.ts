@@ -254,17 +254,26 @@ export function lookupPcbBracket(
 }
 
 /**
- * Returns the names of any statutory rate tables that are completely empty.
- * A payroll run must not be finalized when tables are empty — the lookups would
- * silently return null and every deduction would come out RM 0.00.
+ * Returns the names of statutory rate tables that are empty AND actually needed.
+ * "Needed" means at least one salary structure has the corresponding opt-in flag set.
+ * Companies that have turned off EPF/SOCSO/EIS for all employees (e.g. new companies
+ * not yet registered with KWSP/PERKESO) can finalize without those tables populated.
+ * PCB has no opt-out flag — it is flagged only if salary structures exist (i.e. there
+ * are employees set up) but the pcb_brackets table is empty.
  */
 export function checkRateTablesForRun(db: Database.Database): { missing: string[] } {
   const missing: string[] = []
-  const count = (table: string) =>
+
+  const tableCount = (table: string) =>
     (db.prepare(`SELECT COUNT(*) as cnt FROM ${table}`).get() as { cnt: number }).cnt
-  if (count('epf_rates') === 0) missing.push('EPF')
-  if (count('socso_rates') === 0) missing.push('SOCSO')
-  if (count('eis_rates') === 0) missing.push('EIS')
-  if (count('pcb_brackets') === 0) missing.push('PCB')
+
+  const structuresNeedingFlag = (flag: string) =>
+    (db.prepare(`SELECT COUNT(*) as cnt FROM salary_structures WHERE ${flag} = 1`).get() as { cnt: number }).cnt
+
+  if (structuresNeedingFlag('subject_to_epf') > 0 && tableCount('epf_rates') === 0) missing.push('EPF')
+  if (structuresNeedingFlag('subject_to_socso') > 0 && tableCount('socso_rates') === 0) missing.push('SOCSO')
+  if (structuresNeedingFlag('subject_to_eis') > 0 && tableCount('eis_rates') === 0) missing.push('EIS')
+  if (tableCount('salary_structures') > 0 && tableCount('pcb_brackets') === 0) missing.push('PCB')
+
   return { missing }
 }
