@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx --yes playwright install chromium)",
+      "Bash(node verify.mjs)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(xargs -I{} sh -c 'echo ==={}===; head -5 \"{}\"')",
+      "Bash(command -v chromium-cli)",
+      "Bash(npx --no-install playwright --version)",
+      "Bash(npx --no-install -p playwright echo found)",
+      "Bash(command -v magick)",
+      "Bash(command -v convert)"
+    ]
+  }
+}

@@ -1,0 +1,190 @@
+// IPC API interface — the contract between preload (Main process) and renderer.
+// The preload implements this via contextBridge; the renderer consumes it via window.api.
+
+import type {
+  Employee,
+  Customer,
+  Supplier,
+  Product,
+  Department,
+  AttendanceLog,
+  SalaryStructure,
+  PayrollSettings,
+  EpfRate,
+  SocsoRate,
+  EisRate,
+  PcbBracket,
+  SalaryAdvance,
+  PayrollRun,
+  PayrollRunItem,
+  EmployeeMonthlySummary,
+} from './entities'
+import type {
+  CreateEmployeeInput,
+  UpdateEmployeeInput,
+  CsvEmployeeRow,
+  CsvImportResult,
+  CreateCustomerInput,
+  UpdateCustomerInput,
+  CreateSupplierInput,
+  UpdateSupplierInput,
+  CreateProductInput,
+  UpdateProductInput,
+  CreateDepartmentInput,
+  CreateAttendanceLogInput,
+  UpdateAttendanceLogInput,
+  CreateSalaryStructureInput,
+  UpdateSalaryStructureInput,
+  UpdatePayrollSettingsInput,
+  CreateEpfRateInput,
+  UpdateEpfRateInput,
+  CreateSocsoRateInput,
+  UpdateSocsoRateInput,
+  CreateEisRateInput,
+  UpdateEisRateInput,
+  CreatePcbBracketInput,
+  UpdatePcbBracketInput,
+  CreateSalaryAdvanceInput,
+  UpdateSalaryAdvanceInput,
+  CreatePayrollRunInput,
+} from './inputs'
+
+export interface EmployeeApi {
+  list: () => Promise<Employee[]>
+  getById: (id: number) => Promise<Employee | null>
+  create: (data: CreateEmployeeInput) => Promise<Employee>
+  update: (id: number, data: UpdateEmployeeInput) => Promise<Employee>
+  delete: (id: number) => Promise<void>
+  importCsv: (rows: CsvEmployeeRow[]) => Promise<CsvImportResult>
+}
+
+export interface CustomerApi {
+  list: () => Promise<Customer[]>
+  getById: (id: number) => Promise<Customer | null>
+  create: (data: CreateCustomerInput) => Promise<Customer>
+  update: (id: number, data: UpdateCustomerInput) => Promise<Customer>
+  delete: (id: number) => Promise<void>
+}
+
+export interface SupplierApi {
+  list: () => Promise<Supplier[]>
+  getById: (id: number) => Promise<Supplier | null>
+  create: (data: CreateSupplierInput) => Promise<Supplier>
+  update: (id: number, data: UpdateSupplierInput) => Promise<Supplier>
+  delete: (id: number) => Promise<void>
+}
+
+export interface ProductApi {
+  list: () => Promise<Product[]>
+  getById: (id: number) => Promise<Product | null>
+  create: (data: CreateProductInput) => Promise<Product>
+  update: (id: number, data: UpdateProductInput) => Promise<Product>
+  delete: (id: number) => Promise<void>
+}
+
+export interface DepartmentApi {
+  list: () => Promise<Department[]>
+  create: (data: CreateDepartmentInput) => Promise<Department>
+}
+
+export interface DeviceSyncResult {
+  inserted: number
+  skipped: number
+  errors: string[]
+}
+
+export interface AttendanceApi {
+  list: (filters?: { employeeId?: number; dateFrom?: string; dateTo?: string }) => Promise<AttendanceLog[]>
+  getById: (id: number) => Promise<AttendanceLog | null>
+  getLastForEmployee: (employeeId: number) => Promise<AttendanceLog | null>
+  getMonthlySummary: (filters: { employeeIds?: number[]; year: number; month: number }) => Promise<EmployeeMonthlySummary[]>
+  clockIn: (employeeId: number, timestamp?: string) => Promise<AttendanceLog>
+  clockOut: (employeeId: number, timestamp?: string) => Promise<AttendanceLog>
+  create: (data: CreateAttendanceLogInput) => Promise<AttendanceLog>
+  update: (id: number, data: UpdateAttendanceLogInput) => Promise<AttendanceLog>
+  delete: (id: number) => Promise<void>
+  syncFromDevice: () => Promise<DeviceSyncResult>
+}
+
+// --- Payroll ---
+
+export interface SalaryStructureApi {
+  list: (employeeId?: number) => Promise<SalaryStructure[]>
+  getById: (id: number) => Promise<SalaryStructure | null>
+  getCurrent: (employeeId: number, asOfDate?: string) => Promise<SalaryStructure | null>
+  create: (data: CreateSalaryStructureInput) => Promise<SalaryStructure>
+  update: (id: number, data: UpdateSalaryStructureInput) => Promise<SalaryStructure>
+  delete: (id: number) => Promise<void>
+}
+
+export interface PayrollSettingsApi {
+  get: () => Promise<PayrollSettings>
+  update: (data: UpdatePayrollSettingsInput) => Promise<PayrollSettings>
+}
+
+export interface EpfRateApi {
+  list: () => Promise<EpfRate[]>
+  create: (data: CreateEpfRateInput) => Promise<EpfRate>
+  update: (id: number, data: UpdateEpfRateInput) => Promise<EpfRate>
+  delete: (id: number) => Promise<void>
+}
+
+export interface SocsoRateApi {
+  list: () => Promise<SocsoRate[]>
+  create: (data: CreateSocsoRateInput) => Promise<SocsoRate>
+  update: (id: number, data: UpdateSocsoRateInput) => Promise<SocsoRate>
+  delete: (id: number) => Promise<void>
+}
+
+export interface EisRateApi {
+  list: () => Promise<EisRate[]>
+  create: (data: CreateEisRateInput) => Promise<EisRate>
+  update: (id: number, data: UpdateEisRateInput) => Promise<EisRate>
+  delete: (id: number) => Promise<void>
+}
+
+export interface PcbBracketApi {
+  list: () => Promise<PcbBracket[]>
+  create: (data: CreatePcbBracketInput) => Promise<PcbBracket>
+  update: (id: number, data: UpdatePcbBracketInput) => Promise<PcbBracket>
+  delete: (id: number) => Promise<void>
+}
+
+export interface SalaryAdvanceApi {
+  list: (employeeId?: number) => Promise<SalaryAdvance[]>
+  getById: (id: number) => Promise<SalaryAdvance | null>
+  create: (data: CreateSalaryAdvanceInput) => Promise<SalaryAdvance>
+  update: (id: number, data: UpdateSalaryAdvanceInput) => Promise<SalaryAdvance>
+  delete: (id: number) => Promise<void>
+}
+
+export interface PayrollRunApi {
+  list: () => Promise<PayrollRun[]>
+  getById: (id: number) => Promise<PayrollRun | null>
+  create: (data: CreatePayrollRunInput) => Promise<PayrollRun>
+  calculate: (id: number) => Promise<PayrollRun>
+  getItems: (runId: number) => Promise<PayrollRunItem[]>
+  finalize: (id: number) => Promise<PayrollRun>
+  printPayslip: (runId: number, employeeId: number) => Promise<{ filePath: string; filename: string }>
+}
+
+export interface PayrollApi {
+  salaryStructures: SalaryStructureApi
+  settings: PayrollSettingsApi
+  epfRates: EpfRateApi
+  socsoRates: SocsoRateApi
+  eisRates: EisRateApi
+  pcbBrackets: PcbBracketApi
+  salaryAdvances: SalaryAdvanceApi
+  runs: PayrollRunApi
+}
+
+export interface EzOfficeApi {
+  employees: EmployeeApi
+  customers: CustomerApi
+  suppliers: SupplierApi
+  products: ProductApi
+  departments: DepartmentApi
+  attendance: AttendanceApi
+  payroll: PayrollApi
+}

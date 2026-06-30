@@ -1,0 +1,17 @@
+node_modules
+dist
+dist-electron
+release
+*.local
+data
+
+.env
+.env.*
+
+*.log
+npm-debug.log*
+
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
