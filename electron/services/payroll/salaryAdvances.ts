@@ -118,7 +118,10 @@ export function updateSalaryAdvance(
     amount: input.amount ?? existing.amount,
     date_issued: input.date_issued ?? existing.date_issued,
     limit_max: input.limit_max ?? existing.limit_max,
-    balance_outstanding: input.amount !== undefined ? input.amount : existing.balance_outstanding,
+    // balance_outstanding is never reset by edits — it tracks repayments made through
+    // payroll runs and is only mutated by applyAdvanceDeduction / status transitions.
+    // Resetting it here would silently erase partial repayments already applied.
+    balance_outstanding: existing.balance_outstanding,
     deduction_mode: input.deduction_mode ?? existing.deduction_mode,
     installment_amount: input.installment_amount !== undefined ? input.installment_amount : existing.installment_amount,
   }
