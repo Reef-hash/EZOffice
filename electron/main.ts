@@ -25,6 +25,8 @@ import { runMigrations } from './db/migrate'
 import { registerMasterDataHandlers } from './ipc/masterData'
 import { registerAttendanceHandlers } from './ipc/attendance'
 import { registerPayrollHandlers } from './ipc/payroll'
+import { registerAdminHandlers } from './ipc/admin'
+import * as adminService from './services/admin'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -78,9 +80,17 @@ function initDatabase(): void {
   }
 
   // Register all IPC handlers — must happen before the renderer loads
+  registerAdminHandlers(db)
   registerMasterDataHandlers(db)
   registerAttendanceHandlers(db)
   registerPayrollHandlers(db)
+
+  // Check if this is first-time setup (no admin users yet)
+  const adminCount = adminService.getAdminUserCount(db)
+  if (adminCount === 0) {
+    // eslint-disable-next-line no-console
+    console.log('[DB] No admin users found. App will show signup screen on first launch.')
+  }
 }
 
 app.whenReady().then(() => {

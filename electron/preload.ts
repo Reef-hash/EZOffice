@@ -5,6 +5,15 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { EzOfficeApi } from '../src/shared/types/api'
 
 const api: EzOfficeApi = {
+  admin: {
+    init: (username, password) => ipcRenderer.invoke('admin:init', { username, password }),
+    login: (username, password) => ipcRenderer.invoke('admin:login', { username, password }),
+    logout: (adminId) => ipcRenderer.invoke('admin:logout', adminId),
+    validatePassword: (password) => ipcRenderer.invoke('admin:validatePassword', password),
+  },
+  audit: {
+    list: (filters) => ipcRenderer.invoke('audit:list', filters),
+  },
   employees: {
     list: () => ipcRenderer.invoke('employees:list'),
     getById: (id) => ipcRenderer.invoke('employees:get', id),

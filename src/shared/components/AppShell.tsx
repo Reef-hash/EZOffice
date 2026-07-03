@@ -1,14 +1,20 @@
 // App shell component — fixed left sidebar (240px) + main content area.
 // Per design system layout spec: sidebar holds module navigation, main area scrolls.
+// Phase A: Includes logout button and audit log access.
 
 import { NavLink, Outlet } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { cn } from '../lib/cn'
 import { ToastProvider } from './Toast'
+import { Button } from './Button'
 
 interface NavItemProps {
   to: string
   children: ReactNode
+}
+
+interface AppShellProps {
+  onLogout: () => void
 }
 
 function SidebarNavItem({ to, children }: NavItemProps) {
@@ -30,7 +36,7 @@ function SidebarNavItem({ to, children }: NavItemProps) {
   )
 }
 
-export function AppShell() {
+export function AppShell({ onLogout }: AppShellProps) {
   return (
     <ToastProvider>
     <div className="flex h-screen overflow-hidden bg-background">
@@ -62,7 +68,24 @@ export function AppShell() {
           <span className="block rounded-full px-4 py-2 text-sm font-medium text-neutral-500 cursor-not-allowed select-none">
             ERP
           </span>
+
+          <p className="mb-1 mt-4 px-4 text-xs font-medium uppercase tracking-wide text-neutral-500">
+            Admin
+          </p>
+          <SidebarNavItem to="/audit">Audit Log</SidebarNavItem>
         </nav>
+
+        {/* Logout Button */}
+        <div className="border-t border-white/10 p-3">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onLogout}
+            className="w-full text-xs"
+          >
+            Logout
+          </Button>
+        </div>
       </aside>
 
       {/* Main content area */}

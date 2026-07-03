@@ -225,6 +225,65 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Distribution guide:** `docs/DISTRIBUTION.md` contains end-user install flow, IT deployment scripts, troubleshooting, version management.
 
+- **2026-06-29 — Phase A: Admin Authentication & Audit Logging — implementation complete.**
+
+  - **Scope (locked):** Admin-only login (single user per installation), password strength validation (8+ chars, 1 uppercase, 1 number, 1 special), audit trail visible in UI for troubleshooting.
+
+  - **Database (0005_admin_auth.sql):**
+    - `admin_users`: username, password_hash (scrypt), active flag, last_login timestamp
+    - `audit_log`: admin_id, action ('create'/'update'/'delete'/'login'/'logout'), table_name, record_id, details (JSON), timestamp
+    - Indexes on audit_log for fast querying
+
+  - **Service layer (`electron/services/admin.ts`):**
+    - `validatePasswordStrength()` — enforces 8+, uppercase, number, special char
+    - `hashPassword()` / `verifyPassword()` — scrypt hashing (Node.js built-in)
+    - `authenticateAdmin()` — login validation, last_login update, login audit log
+    - `logAuditEntry()` — called from IPC mutation handlers to track changes
+    - `getAuditLog()` — fetch audit entries with optional filters (adminId, tableName, action, limitDays)
+
+  - **IPC layer (`electron/ipc/admin.ts`):**
+    - `admin:init` — create initial admin user (first-time setup only)
+    - `admin:login` — authenticate and return adminId
+    - `admin:logout` — log logout action
+    - `admin:validatePassword` — real-time password strength check (used by signup form)
+    - `audit:list` — fetch audit log entries (admin-only, no authorization check yet — Phase B)
+
+  - **Preload API (`electron/preload.ts`):**
+    - `window.api.admin.init(username, password)`
+    - `window.api.admin.login(username, password)`
+    - `window.api.admin.logout(adminId)`
+    - `window.api.admin.validatePassword(password)`
+    - `window.api.audit.list(filters)`
+
+  - **Renderer components:**
+    - `src/modules/auth/LoginPage.tsx` — login/signup form with real-time password validation, show/hide password toggle
+    - `src/modules/audit/AuditLogPage.tsx` — audit trail viewer (action badges, table, filters by action/timeframe)
+    - `src/shared/components/Toast/` — simple toast notification system (success/error/info/warning)
+
+  - **App shell changes (`src/App.tsx`):**
+    - Authentication state management (isAuthenticated, adminId)
+    - Conditional rendering: LoginPage if not authenticated, AppShell if authenticated
+    - localStorage storage of adminId for session persistence
+    - First-launch detection (no admin users = signup form)
+
+  - **Sidebar enhancements (`src/shared/components/AppShell.tsx`):**
+    - New "Admin" section with "Audit Log" link
+    - Logout button at bottom of sidebar (calls onLogout prop)
+
+  - **Verified:**
+    - TypeScript strict mode: 0 errors
+    - Build succeeds: dist/ + dist-electron/ generated
+    - All components integrated (login → app shell → logout)
+    - Password strength validation working (real-time on signup)
+    - Audit logging schema in place (not yet wired to mutations)
+
+  - **Not yet in scope (Phase B+):**
+    - Audit logging on mutations (service layer is ready, IPC handlers not yet instrumented)
+    - Role-based permissions (Phase B: HR, Finance, Employee roles)
+    - Multi-user support (Phase B: multiple admins per installation)
+    - Audit log filtering by admin (Phase B: view only own changes)
+    - Password reset flow (Phase B)
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

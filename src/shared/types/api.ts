@@ -87,6 +87,27 @@ export interface DepartmentApi {
   create: (data: CreateDepartmentInput) => Promise<Department>
 }
 
+export interface AdminApi {
+  init: (username: string, password: string) => Promise<{ success: boolean; admin?: { id: number; username: string } }>
+  login: (username: string, password: string) => Promise<{ success: boolean; adminId?: number }>
+  logout: (adminId: number) => Promise<{ success: boolean }>
+  validatePassword: (password: string) => Promise<{ valid: boolean; errors: string[] }>
+}
+
+export interface AuditEntry {
+  id: number
+  admin_id: number
+  action: 'create' | 'update' | 'delete' | 'login' | 'logout'
+  table_name: string | null
+  record_id: number | null
+  timestamp: string
+  details: string | null
+}
+
+export interface AuditApi {
+  list: (filters?: { adminId?: number; tableName?: string; action?: string; limitDays?: number }) => Promise<AuditEntry[]>
+}
+
 export interface DeviceSyncResult {
   inserted: number
   skipped: number
@@ -181,6 +202,8 @@ export interface PayrollApi {
 }
 
 export interface EzOfficeApi {
+  admin: AdminApi
+  audit: AuditApi
   employees: EmployeeApi
   customers: CustomerApi
   suppliers: SupplierApi
