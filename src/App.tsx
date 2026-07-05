@@ -94,12 +94,17 @@ export function App() {
     )
   }
 
+  // QueryClientProvider wraps the WHOLE tree (including the login screen) because
+  // LoginPage uses useIpcMutation, which calls useQueryClient — rendering it outside
+  // the provider crashes on first launch with "No QueryClient set".
   if (!auth.isAuthenticated) {
     return (
-      <LoginPage
-        onLoginSuccess={handleLoginSuccess}
-        isFirstLaunch={auth.isFirstLaunch}
-      />
+      <QueryClientProvider client={queryClient}>
+        <LoginPage
+          onLoginSuccess={handleLoginSuccess}
+          isFirstLaunch={auth.isFirstLaunch}
+        />
+      </QueryClientProvider>
     )
   }
 
