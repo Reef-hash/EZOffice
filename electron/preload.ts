@@ -58,6 +58,26 @@ const api: EzOfficeApi = {
     update: (id, data) => ipcRenderer.invoke('attendance:update', id, data),
     delete: (id) => ipcRenderer.invoke('attendance:delete', id),
     syncFromDevice: () => ipcRenderer.invoke('attendance:syncFromDevice'),
+    // Phase C — shifts
+    listShifts: () => ipcRenderer.invoke('attendance:listShifts'),
+    getShiftById: (id) => ipcRenderer.invoke('attendance:getShiftById', id),
+    createShift: (data) => ipcRenderer.invoke('attendance:createShift', data),
+    updateShift: (id, data) => ipcRenderer.invoke('attendance:updateShift', id, data),
+    deleteShift: (id) => ipcRenderer.invoke('attendance:deleteShift', id),
+    assignShift: (employeeId, shiftId) => ipcRenderer.invoke('attendance:assignShift', { employee_id: employeeId, shift_id: shiftId }),
+    validateClock: (employeeId, timestamp) => ipcRenderer.invoke('attendance:validateClock', { employee_id: employeeId, timestamp }),
+    // Phase C — leave
+    getLeaveBalance: (employeeId, year) => ipcRenderer.invoke('attendance:getLeaveBalance', { employee_id: employeeId, year }),
+    createLeaveRequest: (data) => ipcRenderer.invoke('attendance:createLeaveRequest', data),
+    approveLeave: (id) => ipcRenderer.invoke('attendance:approveLeave', id),
+    rejectLeave: (id) => ipcRenderer.invoke('attendance:rejectLeave', id),
+    listLeave: (filters) => ipcRenderer.invoke('attendance:listLeave', filters),
+    // Phase C — late detection
+    excuseLate: (logId) => ipcRenderer.invoke('attendance:excuseLate', { log_id: logId }),
+    getLateReport: (year, month) => ipcRenderer.invoke('attendance:getLateReport', { year, month }),
+    // Phase C — monthly calendar / export
+    getMonthlyCalendar: (employeeId, year, month) => ipcRenderer.invoke('attendance:getMonthlyCalendar', { employee_id: employeeId, year, month }),
+    exportMonthly: (year, month) => ipcRenderer.invoke('attendance:exportMonthly', { year, month }),
   },
   payroll: {
     salaryStructures: {

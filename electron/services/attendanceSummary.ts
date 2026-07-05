@@ -33,6 +33,74 @@ function getEffectiveSalaryStructure(
 }
 
 /**
+ * Get the standard daily hours that govern OT classification for an employee.
+ * Phase C rule: if the employee has an assigned shift, use shift.standard_hours
+ * (shifts are the authoritative source of expected work hours post-Phase C).
+ * Fall back to salary_structures.standard_hours_per_day for employees with no
+ * shift (e.g. salaried staff not on a fixed shift). Returns null if neither
+ * exists — caller skips that employee (can't classify OT without a baseline).
+ */
+function getStandardHoursForEmployee(
+  db: Database.Database,
+  employeeId: number,
+  asOfDate: string,
+): number | null {
+  // 1. Assigned shift (Phase C) — authoritative when present
+  const shiftRow = db.prepare(`
+    SELECT s.standard_hours
+    FROM employees e
+    LEFT JOIN shifts s ON s.id = e.shift_id
+    WHERE e.id = ?
+  `).get(employeeId) as { standard_hours: number | null } | undefined
+
+  if (shiftRow && shiftRow.standard_hours != null && shiftRow.standard_hours > 0) {
+    return shiftRow.standard_hours
+  }
+
+  // 2. Fall back to salary structure
+  const structure = getEffectiveSalaryStructure(db, employeeId, asOfDate)
+  if (structure && structure.standard_hours_per_day > 0) {
+    return structure.standard_hours_per_day
+  }
+
+  return null
+}
+
+/**
+ * Returns the set of dates (YYYY-MM-DD) on which an employee has APPROVED leave
+ * that overlaps the given month range. Approved leave days are excluded from
+ * days_worked and hours aggregation — the employee was not expected to work,
+ * so their punches on those days (if any) are not counted as regular work.
+ */
+function getApprovedLeaveDates(
+  db: Database.Database,
+  employeeId: number,
+  monthStart: string,
+  monthEnd: string,
+): Set<string> {
+  const rows = db.prepare(`
+    SELECT date_from, date_to
+    FROM leave_records
+    WHERE employee_id = ? AND status = 'approved'
+      AND date_from <= ? AND date_to >= ?
+  `).all(employeeId, monthEnd, monthStart) as Array<{ date_from: string; date_to: string }>
+
+  const dates = new Set<string>()
+  for (const row of rows) {
+    // Walk date_from → date_to inclusive, adding each date that falls in the month
+    const from = new Date(row.date_from + 'T00:00:00')
+    const to = new Date(row.date_to + 'T00:00:00')
+    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+      const iso = d.toISOString().slice(0, 10)
+      if (iso >= monthStart && iso <= monthEnd) {
+        dates.add(iso)
+      }
+    }
+  }
+  return dates
+}
+
+/**
  * Aggregates monthly attendance for one or more employees.
  *
  * @param employeeIds — if omitted, aggregates ALL employees who have attendance logs in the month
@@ -65,13 +133,14 @@ export function getMonthlyAttendanceSummary(
   const summaries: EmployeeMonthlySummary[] = []
 
   for (const employeeId of employeeIds) {
-    // Get the employee's salary structure active at the END of the month
-    // (the one that governs pay for this period)
-    const structure = getEffectiveSalaryStructure(db, employeeId, monthEnd)
-    // If no salary structure exists, skip this employee — no way to classify OT
-    if (!structure) continue
+    // Standard daily hours for OT classification: prefer assigned shift (Phase C),
+    // fall back to salary structure. Skip if neither exists — can't classify OT.
+    const standardHoursPerDay = getStandardHoursForEmployee(db, employeeId, monthEnd)
+    if (standardHoursPerDay == null) continue
 
-    const standardHoursPerDay = structure.standard_hours_per_day
+    // Approved leave days in this month — punches on these days are not counted
+    // as worked days/hours (employee was on approved leave, not expected to work).
+    const leaveDates = getApprovedLeaveDates(db, employeeId, monthStart, monthEnd)
 
     // Fetch ALL attendance logs for this employee in the month, ordered chronologically
     const logs = db.prepare(`
@@ -85,6 +154,7 @@ export function getMonthlyAttendanceSummary(
 
     // Pair consecutive IN→OUT punches.
     // Isolated INs (missing OUT) or isolated OUTs (missing IN) are ignored.
+    // Punches on approved-leave days are skipped entirely.
     let totalRegularHours = 0
     let totalOtHours = 0
     let daysWorked = 0
@@ -92,6 +162,13 @@ export function getMonthlyAttendanceSummary(
     let currentIn: Date | null = null
 
     for (const log of logs) {
+      const logDate = log.timestamp.slice(0, 10) // YYYY-MM-DD
+      if (leaveDates.has(logDate)) {
+        // On an approved leave day — don't pair these punches
+        currentIn = null
+        continue
+      }
+
       if (log.type === 'in') {
         // If there's already a pending IN without a matching OUT, discard it (orphan IN)
         currentIn = new Date(log.timestamp)

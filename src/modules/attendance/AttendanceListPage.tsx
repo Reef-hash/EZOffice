@@ -1,6 +1,6 @@
-// AttendanceListPage — hub for attendance management (logs + device settings).
-// Tabs: Logs (quick clock + table) and Device Settings (fingerprint reader sync).
-// Uses the shared Table/Modal/Button/Select components, and useIpcQuery/useIpcMutation hooks.
+// AttendanceListPage — hub for attendance management.
+// Tabs: Logs (quick clock + table), Shifts, Leave, Late Report, Monthly Summary,
+// and Device Settings (fingerprint reader sync). Phase C adds shifts/leave/late/summary.
 
 import { useState, useCallback, useMemo } from 'react'
 import type { ChangeEvent } from 'react'
@@ -13,6 +13,11 @@ import { PageHeader } from '@/shared/components/PageHeader'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { AttendanceLogForm } from './AttendanceLogForm'
 import { DeviceSettingsPage } from './DeviceSettingsPage'
+import { ShiftManagementPanel } from './ShiftManagementPanel'
+import { LeaveRequestForm } from './LeaveRequestForm'
+import { LeaveApprovalPanel } from './LeaveApprovalPanel'
+import { LateReportPage } from './LateReportPage'
+import { AttendanceSummaryPage } from './AttendanceSummaryPage'
 import type { Column } from '@/shared/components/Table'
 import type { Employee, AttendanceLog } from '@/shared/types/entities'
 import type { CreateAttendanceLogInput, UpdateAttendanceLogInput } from '@/shared/types/inputs'
@@ -22,12 +27,19 @@ import {
   ATTENDANCE_TYPE_LABEL,
   ATTENDANCE_SOURCE_TONE,
   ATTENDANCE_SOURCE_LABEL,
+  ATTENDANCE_STATUS,
+  ATTENDANCE_STATUS_TONE,
+  ATTENDANCE_STATUS_LABEL,
 } from './constants'
 
-type AttendanceTab = 'logs' | 'deviceSettings'
+type AttendanceTab = 'logs' | 'deviceSettings' | 'shifts' | 'leave' | 'lateReport' | 'summary'
 
 const TABS: Array<{ key: AttendanceTab; label: string }> = [
   { key: 'logs', label: 'Logs' },
+  { key: 'shifts', label: 'Shifts' },
+  { key: 'leave', label: 'Leave' },
+  { key: 'lateReport', label: 'Late Report' },
+  { key: 'summary', label: 'Monthly Summary' },
   { key: 'deviceSettings', label: 'Device Settings' },
 ]
 
@@ -35,6 +47,28 @@ const columns: Column<AttendanceLog>[] = [
   { key: 'employee_name', header: 'Employee', accessor: (r) => r.employee_name || `ID ${r.employee_id}`, sortable: true, sortValue: (r) => r.employee_name || '' },
   { key: 'type', header: 'Type', accessor: (r) => <StatusBadge tone={ATTENDANCE_TYPE_TONE[r.type]}>{ATTENDANCE_TYPE_LABEL[r.type]}</StatusBadge>, sortable: true, sortValue: (r) => r.type, align: 'center', width: '80px' },
   { key: 'timestamp', header: 'Timestamp', accessor: (r) => formatTimestamp(r.timestamp), sortable: true, sortValue: (r) => r.timestamp },
+  {
+    key: 'shift_name',
+    header: 'Shift',
+    accessor: (r) => r.shift_name || '—',
+    sortable: true,
+    sortValue: (r) => r.shift_name || '',
+    align: 'center',
+    width: '110px',
+  },
+  {
+    key: 'status',
+    header: 'Status',
+    accessor: (r) => (
+      <StatusBadge tone={ATTENDANCE_STATUS_TONE[r.status]}>
+        {ATTENDANCE_STATUS_LABEL[r.status]}
+      </StatusBadge>
+    ),
+    sortable: true,
+    sortValue: (r) => r.status,
+    align: 'center',
+    width: '100px',
+  },
   { key: 'source', header: 'Source', accessor: (r) => <StatusBadge tone={ATTENDANCE_SOURCE_TONE[r.source]}>{ATTENDANCE_SOURCE_LABEL[r.source]}</StatusBadge>, sortable: true, sortValue: (r) => r.source, align: 'center', width: '80px' },
   { key: 'note', header: 'Note', accessor: (r) => r.note || '—', sortable: true, sortValue: (r) => r.note || '' },
 ]
@@ -108,10 +142,56 @@ export function AttendanceListPage() {
     [['attendance', 'list']],
   )
 
+  // Phase C3 — mark a late clock-in as excused (admin override).
+  const excuseMutation = useIpcMutation<AttendanceLog, number>(
+    (logId) => window.api.attendance.excuseLate(logId),
+    [['attendance', 'list']],
+  )
+
+  // Phase C2 — create a leave request on behalf of an employee.
+  const createLeaveMutation = useIpcMutation<
+    import('@/shared/types/entities').LeaveRecord,
+    import('@/shared/types/inputs').CreateLeaveRequestInput
+  >(
+    (data) => window.api.attendance.createLeaveRequest(data),
+    [['attendance', 'leave']],
+  )
+
+  // Actions column for the logs table: show an "Excuse" button on late clock-in rows.
+  // Defined inside the component so it can call the excuse mutation.
+  const logColumns: Column<AttendanceLog>[] = useMemo(() => [
+    ...columns,
+    {
+      key: 'actions',
+      header: 'Actions',
+      align: 'right',
+      width: '120px',
+      accessor: (r) =>
+        r.type === ATTENDANCE_TYPE.IN && r.status === ATTENDANCE_STATUS.LATE ? (
+          <Button
+            size="sm"
+            variant="secondary"
+            isLoading={excuseMutation.isPending}
+            onClick={(e) => {
+              e.stopPropagation()
+              excuseMutation.mutate(r.id)
+            }}
+          >
+            Excuse
+          </Button>
+        ) : (
+          '—'
+        ),
+    },
+  ], [excuseMutation])
+
   // ── Form state ─────────────────────────────────────────
 
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingLog, setEditingLog] = useState<AttendanceLog | null>(null)
+
+  // Phase C2 — leave request form
+  const [isLeaveFormOpen, setIsLeaveFormOpen] = useState(false)
 
   const handleCreate = useCallback(() => {
     setEditingLog(null)
@@ -176,8 +256,8 @@ export function AttendanceListPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Attendance"
-        subtitle={activeTab === 'logs' ? `${logs.length} log${logs.length !== 1 ? 's' : ''}` : 'Configure fingerprint reader'}
-        actions={activeTab === 'logs' ? <Button onClick={handleCreate}>Add Log</Button> : undefined}
+        subtitle={subtitleForTab(activeTab, logs.length)}
+        actions={actionsForTab(activeTab, handleCreate, () => setIsLeaveFormOpen(true))}
       />
 
       {/* Tabs */}
@@ -201,6 +281,22 @@ export function AttendanceListPage() {
 
       {activeTab === 'deviceSettings' && (
         <DeviceSettingsPage />
+      )}
+
+      {activeTab === 'shifts' && (
+        <ShiftManagementPanel />
+      )}
+
+      {activeTab === 'leave' && (
+        <LeaveApprovalPanel />
+      )}
+
+      {activeTab === 'lateReport' && (
+        <LateReportPage />
+      )}
+
+      {activeTab === 'summary' && (
+        <AttendanceSummaryPage />
       )}
 
       {activeTab === 'logs' && (
@@ -287,7 +383,7 @@ export function AttendanceListPage() {
 
       {/* Log table */}
       <Table
-        columns={columns}
+        columns={logColumns}
         data={logs}
         rowKey={(r) => String(r.id)}
         isLoading={isLoading}
@@ -314,6 +410,17 @@ export function AttendanceListPage() {
       />
       </div>
       )}
+
+      {/* Phase C2 — leave request form (available from the Leave tab header) */}
+      <LeaveRequestForm
+        isOpen={isLeaveFormOpen}
+        onClose={() => setIsLeaveFormOpen(false)}
+        onSubmit={async (data) => {
+          await createLeaveMutation.mutateAsync(data)
+          setIsLeaveFormOpen(false)
+        }}
+        isSubmitting={createLeaveMutation.isPending}
+      />
     </div>
   )
 }
@@ -322,4 +429,38 @@ function formatTimestamp(iso: string): string {
   const date = new Date(iso)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
+}
+
+// --- Tab header helpers -------------------------------------------------------
+
+function subtitleForTab(tab: AttendanceTab, logCount: number): React.ReactNode {
+  switch (tab) {
+    case 'logs':
+      return `${logCount} log${logCount !== 1 ? 's' : ''}`
+    case 'deviceSettings':
+      return 'Configure fingerprint reader'
+    case 'shifts':
+      return 'Define work shifts and standard hours'
+    case 'leave':
+      return 'Review and approve leave requests'
+    case 'lateReport':
+      return 'Lateness summary by employee'
+    case 'summary':
+      return 'Per-employee monthly attendance calendar'
+  }
+}
+
+function actionsForTab(
+  tab: AttendanceTab,
+  onAddLog: () => void,
+  onAddLeave: () => void,
+): React.ReactNode {
+  switch (tab) {
+    case 'logs':
+      return <Button onClick={onAddLog}>Add Log</Button>
+    case 'leave':
+      return <Button onClick={onAddLeave}>New Leave Request</Button>
+    default:
+      return undefined
+  }
 }

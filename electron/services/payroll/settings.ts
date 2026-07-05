@@ -24,11 +24,13 @@ export function updatePayrollSettings(
     UPDATE payroll_settings
     SET ot_rule_type = @ot_rule_type,
         ot_rule_value = @ot_rule_value,
+        grace_period_minutes = @grace_period_minutes,
         updated_at = @updated_at
     WHERE id = 1
   `).run({
     ot_rule_type: input.ot_rule_type ?? existing.ot_rule_type,
     ot_rule_value: input.ot_rule_value ?? existing.ot_rule_value,
+    grace_period_minutes: input.grace_period_minutes ?? existing.grace_period_minutes,
     updated_at: now,
   })
 

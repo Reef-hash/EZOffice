@@ -27,6 +27,8 @@ export interface Employee {
   position: string | null
   status: EmployeeStatus
   date_joined: string
+  shift_id: number | null // Phase C: assigned default shift
+  shift_name: string | null // populated via JOIN in list queries
   created_at: string
   updated_at: string
 }
@@ -88,8 +90,122 @@ export interface AttendanceLog {
   source: AttendanceSource
   device_id: string | null
   note: string | null
+  shift_id: number | null // snapshot of assigned shift at punch time (Phase C)
+  shift_name: string | null // populated via JOIN in list queries
+  status: AttendanceStatus // on-time / late / absent / excused-late (Phase C)
   created_at: string
   updated_at: string
+}
+
+// --- Phase C: Shifts ---
+
+export interface Shift {
+  id: number
+  name: string
+  start_time: string // "HH:MM" 24h, naive local time
+  end_time: string // "HH:MM" 24h, naive local time
+  standard_hours: number
+  created_at: string
+  updated_at: string
+}
+
+// --- Phase C: Leave ---
+
+export const LEAVE_TYPE = {
+  ANNUAL: 'annual',
+  SICK: 'sick',
+  UNPAID: 'unpaid',
+} as const
+
+export type LeaveType = (typeof LEAVE_TYPE)[keyof typeof LEAVE_TYPE]
+
+export const LEAVE_STATUS = {
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+} as const
+
+export type LeaveStatus = (typeof LEAVE_STATUS)[keyof typeof LEAVE_STATUS]
+
+export interface LeaveEntitlement {
+  id: number
+  employee_id: number
+  leave_type: LeaveType
+  balance: number
+  year: number
+  created_at: string
+  updated_at: string
+}
+
+/** Balance summary per leave type for a single employee × year. */
+export interface LeaveBalance {
+  annual: number
+  sick: number
+  unpaid: number // informational — unpaid leave has no cap
+}
+
+export interface LeaveRecord {
+  id: number
+  employee_id: number
+  employee_name: string | null // populated via JOIN in list queries
+  leave_type: LeaveType
+  date_from: string // YYYY-MM-DD inclusive
+  date_to: string // YYYY-MM-DD inclusive
+  reason: string | null
+  status: LeaveStatus
+  created_at: string
+  updated_at: string
+}
+
+// --- Phase C: Late detection ---
+
+export const ATTENDANCE_STATUS = {
+  ON_TIME: 'on-time',
+  LATE: 'late',
+  ABSENT: 'absent',
+  EXCUSED_LATE: 'excused-late',
+} as const
+
+export type AttendanceStatus = (typeof ATTENDANCE_STATUS)[keyof typeof ATTENDANCE_STATUS]
+
+/** Result of validating a clock-in against the employee's assigned shift. */
+export interface ClockValidationResult {
+  onTime: boolean
+  minutesLate: number // 0 when on-time
+  alertMessage: string | null
+}
+
+/** One row of the late report. */
+export interface LateReportRow {
+  employee_id: number
+  employee_name: string
+  count_late: number
+  count_excused: number
+  total_minutes_late: number
+  avg_minutes_late: number
+}
+
+/** One day's entry in the monthly attendance summary calendar. */
+export interface AttendanceSummaryDay {
+  date: string // YYYY-MM-DD
+  first_in: string | null // ISO timestamp of first IN punch
+  last_out: string | null // ISO timestamp of last OUT punch
+  hours_worked: number
+  status: AttendanceStatus | 'leave'
+  leave_type: LeaveType | null
+}
+
+/** Aggregated monthly attendance for a single employee. */
+export interface AttendanceMonthlyCalendar {
+  employee_id: number
+  employee_name: string | null
+  year: number
+  month: number
+  days: AttendanceSummaryDay[]
+  total_hours: number
+  days_worked: number
+  days_late: number
+  days_leave: number
 }
 
 // --- Payroll ---
@@ -161,6 +277,7 @@ export interface PayrollSettings {
   ot_rule_value: number
   device_ip: string | null
   device_port: number
+  grace_period_minutes: number // Phase C: late tolerance in minutes
   created_at: string
   updated_at: string
 }

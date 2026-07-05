@@ -4,8 +4,8 @@
 import { ipcMain } from 'electron'
 import type Database from 'better-sqlite3'
 import {
-  createEmployeeSchema,
-  updateEmployeeSchema,
+  createEmployeeWithShiftSchema,
+  updateEmployeeWithShiftSchema,
   csvEmployeeRowSchema,
   createCustomerSchema,
   updateCustomerSchema,
@@ -42,7 +42,7 @@ export function registerMasterDataHandlers(db: Database.Database): void {
 
   ipcMain.handle('employees:create', async (_event, data: unknown) => {
     try {
-      const input = createEmployeeSchema.parse(data)
+      const input = createEmployeeWithShiftSchema.parse(data)
       return employeeService.createEmployee(db, input)
     } catch (err) {
       throw new Error(`Failed to create employee: ${String(err)}`)
@@ -51,7 +51,7 @@ export function registerMasterDataHandlers(db: Database.Database): void {
 
   ipcMain.handle('employees:update', async (_event, id: number, data: unknown) => {
     try {
-      const input = updateEmployeeSchema.parse(data)
+      const input = updateEmployeeWithShiftSchema.parse(data)
       return employeeService.updateEmployee(db, id, input)
     } catch (err) {
       throw new Error(`Failed to update employee ${id}: ${String(err)}`)

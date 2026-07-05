@@ -24,7 +24,7 @@ export default defineConfig({
             // Rollup's `external` only matches that exact specifier, not subpaths, so this
             // needs the function form to also catch `pdfmake/fonts/Roboto.js`.
             external: (id) =>
-              id === 'electron' || id === 'better-sqlite3' || id === 'zkteco-js' || id === 'pdfmake' || id.startsWith('pdfmake/'),
+              id === 'electron' || id === 'better-sqlite3' || id === 'zkteco-js' || id === 'pdfmake' || id.startsWith('pdfmake/') || id === 'exceljs',
           },
         },
       },

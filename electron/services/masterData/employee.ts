@@ -4,8 +4,8 @@
 import type Database from 'better-sqlite3'
 import type { Employee } from '../../../src/shared/types/entities'
 import type {
-  CreateEmployeeInput,
-  UpdateEmployeeInput,
+  CreateEmployeeWithShiftInput,
+  UpdateEmployeeWithShiftInput,
   CsvEmployeeRow,
   CsvImportResult,
 } from '../../../src/shared/types/inputs'
@@ -14,9 +14,10 @@ import { EMPLOYEE_STATUS } from '../../../src/shared/types/entities'
 export function listEmployees(db: Database.Database): Employee[] {
   return db
     .prepare(
-      `SELECT e.*, d.name AS department_name
+      `SELECT e.*, d.name AS department_name, s.name AS shift_name
        FROM employees e
        LEFT JOIN departments d ON e.department_id = d.id
+       LEFT JOIN shifts s ON s.id = e.shift_id
        ORDER BY e.name ASC`,
     )
     .all() as Employee[]
@@ -25,20 +26,21 @@ export function listEmployees(db: Database.Database): Employee[] {
 export function getEmployeeById(db: Database.Database, id: number): Employee | null {
   const row = db
     .prepare(
-      `SELECT e.*, d.name AS department_name
+      `SELECT e.*, d.name AS department_name, s.name AS shift_name
        FROM employees e
        LEFT JOIN departments d ON e.department_id = d.id
+       LEFT JOIN shifts s ON s.id = e.shift_id
        WHERE e.id = ?`,
     )
     .get(id) as Employee | undefined
   return row ?? null
 }
 
-export function createEmployee(db: Database.Database, input: CreateEmployeeInput): Employee {
+export function createEmployee(db: Database.Database, input: CreateEmployeeWithShiftInput): Employee {
   const now = new Date().toISOString()
   const stmt = db.prepare(
-    `INSERT INTO employees (employee_code, name, ic_number, phone, email, department_id, position, status, date_joined, created_at, updated_at)
-     VALUES (@employee_code, @name, @ic_number, @phone, @email, @department_id, @position, @status, @date_joined, @created_at, @updated_at)`,
+    `INSERT INTO employees (employee_code, name, ic_number, phone, email, department_id, position, status, date_joined, shift_id, created_at, updated_at)
+     VALUES (@employee_code, @name, @ic_number, @phone, @email, @department_id, @position, @status, @date_joined, @shift_id, @created_at, @updated_at)`,
   )
 
   const result = stmt.run({
@@ -51,6 +53,9 @@ export function createEmployee(db: Database.Database, input: CreateEmployeeInput
     position: input.position ?? null,
     status: input.status ?? EMPLOYEE_STATUS.ACTIVE,
     date_joined: input.date_joined,
+    // shift_id is optional — null means "no fixed shift" (falls back to salary
+    // structure's standard_hours_per_day for OT classification).
+    shift_id: input.shift_id ?? null,
     created_at: now,
     updated_at: now,
   })
@@ -62,7 +67,7 @@ export function createEmployee(db: Database.Database, input: CreateEmployeeInput
 export function updateEmployee(
   db: Database.Database,
   id: number,
-  input: UpdateEmployeeInput,
+  input: UpdateEmployeeWithShiftInput,
 ): Employee {
   const existing = getEmployeeById(db, id)
   if (!existing) {
@@ -80,6 +85,8 @@ export function updateEmployee(
     position: input.position !== undefined ? input.position : existing.position,
     status: input.status ?? existing.status,
     date_joined: input.date_joined ?? existing.date_joined,
+    // shift_id: undefined = leave unchanged; null = explicitly unassign; number = assign
+    shift_id: input.shift_id !== undefined ? input.shift_id : existing.shift_id,
   }
 
   db.prepare(
@@ -93,6 +100,7 @@ export function updateEmployee(
          position = @position,
          status = @status,
          date_joined = @date_joined,
+         shift_id = @shift_id,
          updated_at = @updated_at
      WHERE id = @id`,
   ).run({ ...merged, updated_at: now, id })

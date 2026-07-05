@@ -2,7 +2,7 @@
 // Every IPC handler that accepts data must validate through these before calling a service.
 
 import { z } from 'zod'
-import { EMPLOYEE_STATUS, ATTENDANCE_TYPE } from './entities'
+import { EMPLOYEE_STATUS, ATTENDANCE_TYPE, LEAVE_TYPE, LEAVE_STATUS } from './entities'
 
 // --- Employees ---
 
@@ -22,6 +22,14 @@ export const updateEmployeeSchema = createEmployeeSchema.partial()
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>
+
+// Phase C: optional shift assignment on employee create/update
+export const createEmployeeWithShiftSchema = createEmployeeSchema.extend({
+  shift_id: z.number().int().positive().nullable().optional(),
+})
+export const updateEmployeeWithShiftSchema = createEmployeeWithShiftSchema.partial()
+export type CreateEmployeeWithShiftInput = z.infer<typeof createEmployeeWithShiftSchema>
+export type UpdateEmployeeWithShiftInput = z.infer<typeof updateEmployeeWithShiftSchema>
 
 // --- CSV import row for Employee ---
 
@@ -144,6 +152,7 @@ export type UpdateSalaryStructureInput = z.infer<typeof updateSalaryStructureSch
 export const updatePayrollSettingsSchema = z.object({
   ot_rule_type: z.enum(['flat_addition', 'multiplier']).optional(),
   ot_rule_value: z.number().min(0, 'OT value must be non-negative').optional(),
+  grace_period_minutes: z.number().int().min(0, 'Grace period must be non-negative').optional(),
 })
 
 export type UpdatePayrollSettingsInput = z.infer<typeof updatePayrollSettingsSchema>
@@ -232,3 +241,84 @@ export const createPayrollRunSchema = z.object({
 })
 
 export type CreatePayrollRunInput = z.infer<typeof createPayrollRunSchema>
+
+// --- Phase C: Shifts ---
+
+export const createShiftSchema = z.object({
+  name: z.string().min(1, 'Shift name is required'),
+  start_time: z.string().regex(/^\d{2}:\d{2}$/, 'Start time must be HH:MM'),
+  end_time: z.string().regex(/^\d{2}:\d{2}$/, 'End time must be HH:MM'),
+  standard_hours: z.number().positive('Standard hours must be positive'),
+})
+
+export const updateShiftSchema = createShiftSchema.partial()
+
+export type CreateShiftInput = z.infer<typeof createShiftSchema>
+export type UpdateShiftInput = z.infer<typeof updateShiftSchema>
+
+export const assignShiftSchema = z.object({
+  employee_id: z.number().int().positive('Employee is required'),
+  shift_id: z.number().int().positive().nullable(),
+})
+
+export type AssignShiftInput = z.infer<typeof assignShiftSchema>
+
+export const validateClockSchema = z.object({
+  employee_id: z.number().int().positive('Employee is required'),
+  timestamp: z.string().min(1, 'Timestamp is required'),
+})
+
+export type ValidateClockInput = z.infer<typeof validateClockSchema>
+
+// --- Phase C: Leave ---
+
+export const createLeaveRequestSchema = z.object({
+  employee_id: z.number().int().positive('Employee is required'),
+  leave_type: z.enum([LEAVE_TYPE.ANNUAL, LEAVE_TYPE.SICK, LEAVE_TYPE.UNPAID]),
+  date_from: z.string().min(1, 'Date from is required'), // YYYY-MM-DD
+  date_to: z.string().min(1, 'Date to is required'), // YYYY-MM-DD
+  reason: z.string().nullable().optional(),
+})
+
+export type CreateLeaveRequestInput = z.infer<typeof createLeaveRequestSchema>
+
+export const leaveBalanceSchema = z.object({
+  employee_id: z.number().int().positive('Employee is required'),
+  year: z.number().int().min(2000).max(2100),
+})
+
+export type LeaveBalanceInput = z.infer<typeof leaveBalanceSchema>
+
+export const leaveListSchema = z.object({
+  employee_id: z.number().int().positive().optional(),
+  status: z.enum([LEAVE_STATUS.PENDING, LEAVE_STATUS.APPROVED, LEAVE_STATUS.REJECTED]).optional(),
+  date_from: z.string().optional(),
+  date_to: z.string().optional(),
+})
+
+export type LeaveListInput = z.infer<typeof leaveListSchema>
+
+// --- Phase C: Late detection ---
+
+export const excuseLateSchema = z.object({
+  log_id: z.number().int().positive('Log id is required'),
+})
+
+export type ExcuseLateInput = z.infer<typeof excuseLateSchema>
+
+export const lateReportSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+})
+
+export type LateReportInput = z.infer<typeof lateReportSchema>
+
+// --- Phase C: Monthly summary / export ---
+
+export const monthlySummarySchema = z.object({
+  employee_id: z.number().int().positive('Employee is required'),
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+})
+
+export type MonthlySummaryInput = z.infer<typeof monthlySummarySchema>

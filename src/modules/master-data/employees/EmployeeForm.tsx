@@ -6,7 +6,7 @@ import { Input, Select } from '@/shared/components/Input'
 import { Button } from '@/shared/components/Button'
 import { Modal } from '@/shared/components/Modal'
 import { EMPLOYEE_STATUS, EMPLOYEE_STATUS_LABEL } from './constants'
-import type { Employee, Department } from '@/shared/types/entities'
+import type { Employee, Department, Shift } from '@/shared/types/entities'
 import type { CreateEmployeeInput, UpdateEmployeeInput } from '@/shared/types/inputs'
 import { useIpcQuery } from '@/shared/hooks/useIpcQuery'
 
@@ -30,6 +30,7 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [departmentId, setDepartmentId] = useState<number | null>(null)
+  const [shiftId, setShiftId] = useState<number | null>(null)
   const [position, setPosition] = useState('')
   const [status, setStatus] = useState<string>(EMPLOYEE_STATUS.ACTIVE)
   const [dateJoined, setDateJoined] = useState('')
@@ -39,6 +40,13 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
   const { data: departments = [] } = useIpcQuery<Department[]>(
     ['departments'],
     () => window.api.departments.list(),
+    { enabled: isOpen },
+  )
+
+  // Phase C: fetch shifts for the dropdown
+  const { data: shifts = [] } = useIpcQuery<Shift[]>(
+    ['attendance', 'shifts'],
+    () => window.api.attendance.listShifts(),
     { enabled: isOpen },
   )
 
@@ -52,6 +60,7 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
       setPhone(employee.phone ?? '')
       setEmail(employee.email ?? '')
       setDepartmentId(employee.department_id)
+      setShiftId(employee.shift_id ?? null)
       setPosition(employee.position ?? '')
       setStatus(employee.status)
       setDateJoined(employee.date_joined.slice(0, 10))
@@ -62,6 +71,7 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
       setPhone('')
       setEmail('')
       setDepartmentId(null)
+      setShiftId(null)
       setPosition('')
       setStatus(EMPLOYEE_STATUS.ACTIVE)
       setDateJoined('')
@@ -92,7 +102,10 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
       position: position.trim() || null,
       status: status as 'active' | 'inactive',
       date_joined: dateJoined,
-    }
+      // Phase C: shift assignment (optional). The shift-aware schema accepts this;
+      // the base CreateEmployeeInput type doesn't declare it, so cast through.
+      shift_id: shiftId,
+    } as CreateEmployeeInput
 
     await onSubmit(data)
   }
@@ -100,6 +113,14 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
   const departmentOptions = [
     { value: '', label: '— None —' },
     ...departments.map((d) => ({ value: String(d.id), label: d.name })),
+  ]
+
+  const shiftOptions = [
+    { value: '', label: '— No fixed shift —' },
+    ...shifts.map((s) => ({
+      value: String(s.id),
+      label: `${s.name} (${s.start_time}–${s.end_time})`,
+    })),
   ]
 
   return (
@@ -185,6 +206,13 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
             placeholder="e.g. Software Engineer"
           />
         </div>
+
+        <Select
+          label="Assigned Shift"
+          options={shiftOptions}
+          value={shiftId !== null ? String(shiftId) : ''}
+          onChange={(e) => setShiftId(e.target.value ? Number(e.target.value) : null)}
+        />
 
         <div className="grid grid-cols-2 gap-4">
           <Select

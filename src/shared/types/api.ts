@@ -18,6 +18,13 @@ import type {
   PayrollRun,
   PayrollRunItem,
   EmployeeMonthlySummary,
+  Shift,
+  LeaveRecord,
+  LeaveBalance,
+  LeaveStatus,
+  LateReportRow,
+  ClockValidationResult,
+  AttendanceMonthlyCalendar,
 } from './entities'
 import type {
   CreateEmployeeInput,
@@ -47,6 +54,9 @@ import type {
   CreateSalaryAdvanceInput,
   UpdateSalaryAdvanceInput,
   CreatePayrollRunInput,
+  CreateShiftInput,
+  UpdateShiftInput,
+  CreateLeaveRequestInput,
 } from './inputs'
 
 export interface EmployeeApi {
@@ -125,6 +135,30 @@ export interface AttendanceApi {
   update: (id: number, data: UpdateAttendanceLogInput) => Promise<AttendanceLog>
   delete: (id: number) => Promise<void>
   syncFromDevice: () => Promise<DeviceSyncResult>
+
+  // Phase C — shifts
+  listShifts: () => Promise<Shift[]>
+  getShiftById: (id: number) => Promise<Shift | null>
+  createShift: (data: CreateShiftInput) => Promise<Shift>
+  updateShift: (id: number, data: UpdateShiftInput) => Promise<Shift>
+  deleteShift: (id: number) => Promise<void>
+  assignShift: (employeeId: number, shiftId: number | null) => Promise<Employee>
+  validateClock: (employeeId: number, timestamp: string) => Promise<ClockValidationResult>
+
+  // Phase C — leave
+  getLeaveBalance: (employeeId: number, year: number) => Promise<LeaveBalance>
+  createLeaveRequest: (data: CreateLeaveRequestInput) => Promise<LeaveRecord>
+  approveLeave: (id: number) => Promise<LeaveRecord>
+  rejectLeave: (id: number) => Promise<LeaveRecord>
+  listLeave: (filters?: { employeeId?: number; status?: LeaveStatus; dateFrom?: string; dateTo?: string }) => Promise<LeaveRecord[]>
+
+  // Phase C — late detection
+  excuseLate: (logId: number) => Promise<AttendanceLog>
+  getLateReport: (year: number, month: number) => Promise<LateReportRow[]>
+
+  // Phase C — monthly calendar / export
+  getMonthlyCalendar: (employeeId: number, year: number, month: number) => Promise<AttendanceMonthlyCalendar>
+  exportMonthly: (year: number, month: number) => Promise<{ filePath: string; filename: string }>
 }
 
 // --- Payroll ---
