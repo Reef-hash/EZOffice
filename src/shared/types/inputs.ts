@@ -322,3 +322,19 @@ export const monthlySummarySchema = z.object({
 })
 
 export type MonthlySummaryInput = z.infer<typeof monthlySummarySchema>
+
+// --- Phase D1: Company Settings ---
+
+export const updateCompanySettingsSchema = z.object({
+  company_name: z.string().optional(),
+  sst_number: z.string().optional(),
+  brn_number: z.string().optional(),
+  bank_account_name: z.string().optional(),
+  bank_account_number: z.string().optional(),
+  email: z.string().email('Invalid email').optional().or(z.literal('')),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  logo_base64: z.string().optional(),  // base64 PNG/JPG
+})
+
+export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>

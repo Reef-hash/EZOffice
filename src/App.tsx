@@ -14,6 +14,7 @@ import { ProductListPage } from './modules/master-data/products/ProductListPage'
 import { AttendanceListPage } from './modules/attendance/AttendanceListPage'
 import { PayrollListPage } from './modules/payroll/PayrollListPage'
 import { AuditLogPage } from './modules/audit/AuditLogPage'
+import { SettingsPage } from './shared/components/SettingsPage'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -121,6 +122,7 @@ export function App() {
             <Route path="/attendance" element={<AttendanceListPage />} />
             <Route path="/payroll" element={<PayrollListPage />} />
             <Route path="/audit" element={<AuditLogPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>
       </HashRouter>

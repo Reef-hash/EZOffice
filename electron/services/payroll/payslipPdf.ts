@@ -85,6 +85,7 @@ const MONTH_NAMES = [
 
 /**
  * Generates a payslip PDF for a single employee in a payroll run, and writes it to `outputDir`.
+ * Includes company logo and settings (address, email, phone) from company_settings table.
  * Returns the written file's path so the caller (IPC layer) can open it.
  */
 export async function generatePayslipPdf(
@@ -98,6 +99,15 @@ export async function generatePayslipPdf(
     throw new Error(`No payslip found for employee ${employeeId} in run ${runId}`)
   }
 
+  // Fetch company settings (Phase D1)
+  const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get() as {
+    company_name: string | null
+    email: string | null
+    phone: string | null
+    address: string | null
+    logo_base64: string | null
+  } | undefined
+
   const monthLabel = MONTH_NAMES[item.month - 1]
   const periodLabel = `${monthLabel} ${item.year}`
   const totalDeductions =
@@ -105,12 +115,53 @@ export async function generatePayslipPdf(
 
   ensureFontsRegistered()
 
+  const headerContent: Content[] = []
+
+  // Add company logo if available
+  if (settings?.logo_base64) {
+    headerContent.push({
+      columns: [
+        {
+          image: settings.logo_base64,
+          width: 60,
+          height: 60,
+        },
+        {
+          width: '*',
+          text: [
+            { text: settings.company_name || 'EZOffice', fontSize: 18, bold: true },
+            { text: settings.address ? `\n${settings.address}` : '', fontSize: 9 },
+            { text: settings.email ? `\nEmail: ${settings.email}` : '', fontSize: 9 },
+            { text: settings.phone ? `\nPhone: ${settings.phone}` : '', fontSize: 9 },
+          ],
+          margin: [10, 0, 0, 0],
+        },
+      ],
+      margin: [0, 0, 0, 16],
+    })
+  } else {
+    // No logo: show company name + address
+    headerContent.push({
+      text: settings?.company_name || 'EZOffice',
+      style: 'header',
+    })
+    if (settings?.address) {
+      headerContent.push({
+        text: settings.address,
+        fontSize: 9,
+        margin: [0, 2, 0, 10],
+      })
+    }
+  }
+
+  headerContent.push(
+    { text: 'Payslip', style: 'subheader' },
+    { text: periodLabel, style: 'period' },
+    { text: `Generated: ${new Date(item.run_date).toLocaleDateString()}`, style: 'generated', margin: [0, 0, 0, 12] },
+  )
+
   const content: Content[] = [
-      // ── Header ──
-      { text: 'EZOffice', style: 'header' },
-      { text: 'Payslip', style: 'subheader' },
-      { text: periodLabel, style: 'period' },
-      { text: `Generated: ${new Date(item.run_date).toLocaleDateString()}`, style: 'generated', margin: [0, 0, 0, 12] },
+      ...headerContent,
 
       // ── Employee Info ──
       { text: 'Employee Details', style: 'sectionHeader' },

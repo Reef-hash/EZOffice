@@ -25,6 +25,7 @@ import type {
   LateReportRow,
   ClockValidationResult,
   AttendanceMonthlyCalendar,
+  CompanySettings,
 } from './entities'
 import type {
   CreateEmployeeInput,
@@ -57,6 +58,7 @@ import type {
   CreateShiftInput,
   UpdateShiftInput,
   CreateLeaveRequestInput,
+  UpdateCompanySettingsInput,
 } from './inputs'
 
 export interface EmployeeApi {
@@ -235,6 +237,12 @@ export interface PayrollApi {
   runs: PayrollRunApi
 }
 
+// Phase D1: Company Settings
+export interface SettingsApi {
+  getCompany: () => Promise<CompanySettings>
+  updateCompany: (data: UpdateCompanySettingsInput) => Promise<CompanySettings>
+}
+
 export interface EzOfficeApi {
   admin: AdminApi
   audit: AuditApi
@@ -245,4 +253,5 @@ export interface EzOfficeApi {
   departments: DepartmentApi
   attendance: AttendanceApi
   payroll: PayrollApi
+  settings: SettingsApi
 }

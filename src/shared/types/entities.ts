@@ -427,3 +427,19 @@ export interface EmployeeMonthlySummary {
   total_ot_hours: number
   days_worked: number
 }
+
+// Phase D1: Company Settings (singleton)
+export interface CompanySettings {
+  id: 1
+  company_name: string | null
+  sst_number: string | null
+  brn_number: string | null
+  bank_account_name: string | null
+  bank_account_number: string | null
+  email: string | null
+  phone: string | null
+  address: string | null
+  logo_base64: string | null  // base64-encoded PNG/JPG for payslips
+  created_at: string
+  updated_at: string
+}

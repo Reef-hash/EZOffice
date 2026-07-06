@@ -134,6 +134,10 @@ const api: EzOfficeApi = {
       printPayslip: (runId, employeeId) => ipcRenderer.invoke('payroll:runs:printPayslip', runId, employeeId),
     },
   },
+  settings: {
+    getCompany: () => ipcRenderer.invoke('settings:getCompany'),
+    updateCompany: (data) => ipcRenderer.invoke('settings:updateCompany', data),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

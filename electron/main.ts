@@ -26,6 +26,7 @@ import { registerMasterDataHandlers } from './ipc/masterData'
 import { registerAttendanceHandlers } from './ipc/attendance'
 import { registerPayrollHandlers } from './ipc/payroll'
 import { registerAdminHandlers } from './ipc/admin'
+import { registerSettingsHandlers } from './ipc/settings'
 import * as adminService from './services/admin'
 
 function createWindow(): void {
@@ -84,6 +85,7 @@ function initDatabase(): void {
   registerMasterDataHandlers(db)
   registerAttendanceHandlers(db)
   registerPayrollHandlers(db)
+  registerSettingsHandlers(db)
 
   // Check if this is first-time setup (no admin users yet)
   const adminCount = adminService.getAdminUserCount(db)

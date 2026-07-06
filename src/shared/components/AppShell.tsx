@@ -73,6 +73,7 @@ export function AppShell({ onLogout }: AppShellProps) {
             Admin
           </p>
           <SidebarNavItem to="/audit">Audit Log</SidebarNavItem>
+          <SidebarNavItem to="/settings">Settings</SidebarNavItem>
         </nav>
 
         {/* Logout Button */}
