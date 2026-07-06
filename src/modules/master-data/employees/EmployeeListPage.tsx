@@ -82,6 +82,14 @@ export function EmployeeListPage() {
     [editingEmployee, createMutation, updateMutation],
   )
 
+  const handleExport = useCallback(async () => {
+    try {
+      await window.api.export.employees()
+    } catch (err) {
+      alert(`Export failed: ${String(err)}`)
+    }
+  }, [])
+
   const handleDelete = useCallback(
     async () => {
       if (!editingEmployee) return
@@ -100,6 +108,9 @@ export function EmployeeListPage() {
         subtitle={`${employees.length} employee${employees.length !== 1 ? 's' : ''}`}
         actions={
           <>
+            <Button variant="secondary" onClick={handleExport}>
+              Export
+            </Button>
             <Button variant="secondary" onClick={() => setIsImportOpen(true)}>
               Import CSV
             </Button>

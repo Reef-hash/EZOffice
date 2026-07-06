@@ -138,6 +138,11 @@ const api: EzOfficeApi = {
     getCompany: () => ipcRenderer.invoke('settings:getCompany'),
     updateCompany: (data) => ipcRenderer.invoke('settings:updateCompany', data),
   },
+  export: {
+    employees: () => ipcRenderer.invoke('export:employees'),
+    payroll: (runId) => ipcRenderer.invoke('export:payroll', runId),
+    attendance: (dateFrom, dateTo) => ipcRenderer.invoke('export:attendance', { dateFrom, dateTo }),
+  },
 }
 
 contextBridge.exposeInMainWorld('api', api)

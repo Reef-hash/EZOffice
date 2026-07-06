@@ -243,6 +243,13 @@ export interface SettingsApi {
   updateCompany: (data: UpdateCompanySettingsInput) => Promise<CompanySettings>
 }
 
+// Phase D3: Data Export
+export interface ExportApi {
+  employees: () => Promise<{ filePath: string; filename: string }>
+  payroll: (runId: number) => Promise<{ filePath: string; filename: string }>
+  attendance: (dateFrom: string, dateTo: string) => Promise<{ filePath: string; filename: string }>
+}
+
 export interface EzOfficeApi {
   admin: AdminApi
   audit: AuditApi
@@ -254,4 +261,5 @@ export interface EzOfficeApi {
   attendance: AttendanceApi
   payroll: PayrollApi
   settings: SettingsApi
+  export: ExportApi
 }

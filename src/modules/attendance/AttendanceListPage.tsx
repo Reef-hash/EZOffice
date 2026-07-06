@@ -227,6 +227,14 @@ export function AttendanceListPage() {
     [editingLog, deleteMutation],
   )
 
+  const handleExport = useCallback(async () => {
+    try {
+      await window.api.export.attendance(dateFrom, dateTo)
+    } catch (err) {
+      alert(`Export failed: ${String(err)}`)
+    }
+  }, [dateFrom, dateTo])
+
   // ── Quick Clock actions ────────────────────────────────
 
   const handleClockIn = useCallback(async () => {
@@ -257,7 +265,7 @@ export function AttendanceListPage() {
       <PageHeader
         title="Attendance"
         subtitle={subtitleForTab(activeTab, logs.length)}
-        actions={actionsForTab(activeTab, handleCreate, () => setIsLeaveFormOpen(true))}
+        actions={actionsForTab(activeTab, handleCreate, () => setIsLeaveFormOpen(true), handleExport)}
       />
 
       {/* Tabs */}
@@ -454,10 +462,16 @@ function actionsForTab(
   tab: AttendanceTab,
   onAddLog: () => void,
   onAddLeave: () => void,
+  onExport: () => void,
 ): React.ReactNode {
   switch (tab) {
     case 'logs':
-      return <Button onClick={onAddLog}>Add Log</Button>
+      return (
+        <>
+          <Button variant="secondary" onClick={onExport}>Export</Button>
+          <Button onClick={onAddLog}>Add Log</Button>
+        </>
+      )
     case 'leave':
       return <Button onClick={onAddLeave}>New Leave Request</Button>
     default:
