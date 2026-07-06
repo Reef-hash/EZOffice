@@ -38,6 +38,11 @@ export function App() {
     isFirstLaunch: false,
   })
   const [isInitializing, setIsInitializing] = useState(true)
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    // Phase D2: Initialize dark mode from localStorage
+    const stored = localStorage.getItem('darkMode')
+    return stored ? JSON.parse(stored) : false
+  })
 
   // Check on app start if any admin exists (determines if first launch)
   useEffect(() => {
@@ -60,6 +65,15 @@ export function App() {
 
     checkFirstLaunch()
   }, [])
+
+  // Phase D2: Persist dark mode preference
+  const handleToggleDarkMode = () => {
+    setIsDarkMode((prev: boolean) => {
+      const newValue = !prev
+      localStorage.setItem('darkMode', JSON.stringify(newValue))
+      return newValue
+    })
+  }
 
   const handleLoginSuccess = (adminId: number) => {
     localStorage.setItem('adminId', String(adminId))
@@ -110,10 +124,11 @@ export function App() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <HashRouter>
-        <Routes>
-          <Route element={<AppShell onLogout={handleLogout} />}>
+    <div className={isDarkMode ? 'dark' : ''}>
+      <QueryClientProvider client={queryClient}>
+        <HashRouter>
+          <Routes>
+            <Route element={<AppShell onLogout={handleLogout} isDarkMode={isDarkMode} onToggleDarkMode={handleToggleDarkMode} />}>
             <Route index element={<Navigate to="/employees" replace />} />
             <Route path="/employees" element={<EmployeeListPage />} />
             <Route path="/customers" element={<CustomerListPage />} />
@@ -127,5 +142,6 @@ export function App() {
         </Routes>
       </HashRouter>
     </QueryClientProvider>
+    </div>
   )
 }

@@ -15,6 +15,8 @@ interface NavItemProps {
 
 interface AppShellProps {
   onLogout: () => void
+  isDarkMode: boolean
+  onToggleDarkMode: () => void
 }
 
 function SidebarNavItem({ to, children }: NavItemProps) {
@@ -36,7 +38,7 @@ function SidebarNavItem({ to, children }: NavItemProps) {
   )
 }
 
-export function AppShell({ onLogout }: AppShellProps) {
+export function AppShell({ onLogout, isDarkMode, onToggleDarkMode }: AppShellProps) {
   return (
     <ToastProvider>
     <div className="flex h-screen overflow-hidden bg-background">
@@ -76,8 +78,17 @@ export function AppShell({ onLogout }: AppShellProps) {
           <SidebarNavItem to="/settings">Settings</SidebarNavItem>
         </nav>
 
-        {/* Logout Button */}
-        <div className="border-t border-white/10 p-3">
+        {/* Dark Mode Toggle + Logout */}
+        <div className="border-t border-white/10 p-3 space-y-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={onToggleDarkMode}
+            className="w-full text-xs"
+            title={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {isDarkMode ? '☀️ Light Mode' : '🌙 Dark Mode'}
+          </Button>
           <Button
             variant="secondary"
             size="sm"
