@@ -104,6 +104,8 @@ export interface AdminApi {
   login: (username: string, password: string) => Promise<{ success: boolean; adminId?: number }>
   logout: (adminId: number) => Promise<{ success: boolean }>
   validatePassword: (password: string) => Promise<{ valid: boolean; errors: string[] }>
+  /** Check if any admin user exists in the database — used to decide login vs signup screen on startup. */
+  hasAny: () => Promise<{ hasAdmin: boolean }>
 }
 
 export interface AuditEntry {

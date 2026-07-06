@@ -44,20 +44,25 @@ export function App() {
     return stored ? JSON.parse(stored) : false
   })
 
-  // Check on app start if any admin exists (determines if first launch)
+  // Check on app start if any admin exists in the database (determines if first launch).
+  // Uses the IPC call admin:hasAny so the check survives Vite dev server restarts
+  // and rebuilds — it queries the actual database, not volatile localStorage.
   useEffect(() => {
     const checkFirstLaunch = async () => {
       try {
-        // Try to validate password (cheap call that works regardless)
-        // If no admin exists, the IPC will handle it gracefully on first login attempt
+        const result = await window.api.admin.hasAny()
+        setAuth((prev) => ({
+          ...prev,
+          isFirstLaunch: !result.hasAdmin,
+        }))
+      } catch {
+        // If the IPC call fails (e.g. app not fully initialized yet), fall back to
+        // localStorage — but this is the rare path; normally the DB check works.
         const storedAdminId = localStorage.getItem('adminId')
         setAuth((prev) => ({
           ...prev,
           isFirstLaunch: !storedAdminId,
         }))
-      } catch {
-        // Assume first launch on any error
-        setAuth((prev) => ({ ...prev, isFirstLaunch: true }))
       } finally {
         setIsInitializing(false)
       }

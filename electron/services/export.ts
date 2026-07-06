@@ -2,10 +2,13 @@
 // Each export function takes `db`, generates an xlsx file, and returns the file path.
 
 import type Database from 'better-sqlite3'
-import { Workbook } from 'exceljs'
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import ExcelJS from 'exceljs'
 import path from 'node:path'
 import os from 'node:os'
 import fs from 'node:fs'
+
+const { Workbook } = ExcelJS
 
 /** Export all employees to Excel. */
 export async function exportEmployeesToExcel(db: Database.Database): Promise<{ filePath: string; filename: string }> {
@@ -217,7 +220,7 @@ export async function exportAttendanceToExcel(
 }
 
 /** Helper: Write workbook to temp file and return path. */
-async function writeWorkbookToFile(workbook: Workbook, filename: string): Promise<{ filePath: string; filename: string }> {
+async function writeWorkbookToFile(workbook: ExcelJS.Workbook, filename: string): Promise<{ filePath: string; filename: string }> {
   const tempDir = path.join(os.tmpdir(), 'ezoffice-exports')
 
   // Create temp directory if it doesn't exist

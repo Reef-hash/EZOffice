@@ -93,4 +93,17 @@ export function registerAdminHandlers(db: Database.Database): void {
       throw new Error(`Failed to fetch audit log: ${String(err)}`)
     }
   })
+
+  /**
+   * admin:hasAny — check if any admin user exists.
+   * Used by the renderer on startup to decide login vs signup screen.
+   */
+  ipcMain.handle('admin:hasAny', async () => {
+    try {
+      const count = adminService.getAdminUserCount(db)
+      return { hasAdmin: count > 0 }
+    } catch (err) {
+      throw new Error(`Failed to check admin users: ${String(err)}`)
+    }
+  })
 }

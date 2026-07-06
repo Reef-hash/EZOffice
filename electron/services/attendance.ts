@@ -113,7 +113,9 @@ function getGracePeriodMinutes(db: Database.Database): number {
   const row = db.prepare('SELECT grace_period_minutes FROM payroll_settings WHERE id = 1').get() as
     | { grace_period_minutes: number }
     | undefined
-  return row?.grace_period_minutes ?? 15
+  const grace = row?.grace_period_minutes ?? 15
+  console.log('[LATE-DETECT] getGracePeriodMinutes →', grace, '(raw:', row?.grace_period_minutes, ')')
+  return grace
 }
 
 /**
@@ -127,10 +129,13 @@ function computeMinutesLate(shift: Shift, punchTimestamp: string, graceMinutes: 
   const punchTime = punchTimestamp.slice(11, 16) // "HH:MM"
   const shiftStart = shift.start_time // "HH:MM"
 
+  console.log('[LATE-DETECT] computeMinutesLate — shift:', shift.name, '| start:', shiftStart, '| punchTime:', punchTime, '| punchTimestamp (full):', punchTimestamp, '| grace:', graceMinutes)
+
   // For night shifts (start > end, e.g. 22:00→06:00), a punch at 22:30 is 30 min late,
   // a punch at 21:50 is "early" (before shift) → 0 minutes late.
   // For day shifts (start < end), straightforward comparison.
   const minutesLateRaw = minutesBetween(shiftStart, punchTime)
+  console.log('[LATE-DETECT] minutesLateRaw:', minutesLateRaw, '→ after grace:', Math.max(0, minutesLateRaw - graceMinutes))
   // Negative = punched before shift start (early) → not late
   return Math.max(0, minutesLateRaw - graceMinutes)
 }
@@ -153,10 +158,16 @@ function computeClockInStatus(
   shift: Shift | null,
   punchTimestamp: string,
 ): 'on-time' | 'late' {
-  if (!shift) return 'on-time' // no assigned shift → no lateness rule
+  console.log('[LATE-DETECT] computeClockInStatus — hasShift:', !!shift, '| shiftName:', shift?.name, '| timestamp:', punchTimestamp)
+  if (!shift) {
+    console.log('[LATE-DETECT]   → on-time (no shift assigned)')
+    return 'on-time' // no assigned shift → no lateness rule
+  }
   const grace = getGracePeriodMinutes(db)
   const minutesLate = computeMinutesLate(shift, punchTimestamp, grace)
-  return minutesLate > 0 ? 'late' : 'on-time'
+  const result = minutesLate > 0 ? 'late' : 'on-time'
+  console.log('[LATE-DETECT]   → RESULT:', result, '| minutesLate:', minutesLate, '| grace:', grace)
+  return result
 }
 
 /**
@@ -254,14 +265,19 @@ export function clockIn(
   employeeId: number,
   timestamp?: string,
 ): AttendanceLog {
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  console.log('[LATE-DETECT] clockIn() called — employeeId:', employeeId, '| timestamp:', timestamp)
   assertAlternation(db, employeeId, 'in')
 
   const ts = timestamp ?? nowLocalISO()
   const now = new Date().toISOString()
+  console.log('[LATE-DETECT]   effective timestamp:', ts, '| now:', now)
 
   // Phase C: snapshot the employee's assigned shift and compute lateness at clock-in.
   const shift = getEmployeeShift(db, employeeId)
+  console.log('[LATE-DETECT]   employee shift:', shift?.name ?? 'NONE')
   const status = computeClockInStatus(db, shift, ts)
+  console.log('[LATE-DETECT]   FINAL STATUS:', status)
 
   const result = db.prepare(`
     INSERT INTO attendance_logs (employee_id, type, timestamp, source, shift_id, status, created_at, updated_at)

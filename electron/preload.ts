@@ -10,6 +10,7 @@ const api: EzOfficeApi = {
     login: (username, password) => ipcRenderer.invoke('admin:login', { username, password }),
     logout: (adminId) => ipcRenderer.invoke('admin:logout', adminId),
     validatePassword: (password) => ipcRenderer.invoke('admin:validatePassword', password),
+    hasAny: () => ipcRenderer.invoke('admin:hasAny'),
   },
   audit: {
     list: (filters) => ipcRenderer.invoke('audit:list', filters),
