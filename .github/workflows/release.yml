@@ -1,8 +1,9 @@
 # EZOffice — GitHub Actions CI/CD
-# Auto-build Windows .exe installer + portable on tag push or manual trigger.
+# Auto-build Windows .exe installer + portable on every push.
 #
 # Triggers:
-#   push tag v*    → build + create GitHub Release with .exe assets
+#   push to main  → build + update pre-release "Latest Build" (tag: latest)
+#   push tag v*   → build + create GitHub Release with .exe assets
 #   workflow_dispatch → build + upload artifacts (no release, for testing)
 #
 # Output (in dist/):
@@ -13,8 +14,10 @@ name: Build & Release
 
 on:
   push:
+    branches:
+      - main          # every push to main → update pre-release
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'   # e.g. v0.1.0, v1.2.3
+      - 'v[0-9]+.[0-9]+.[0-9]+'   # e.g. v0.1.0, v1.2.3 → versioned release
   workflow_dispatch:
     inputs:
       version:
@@ -60,6 +63,54 @@ jobs:
       - name: List built artifacts
         run: Get-ChildItem -Recurse dist/*.exe | Select-Object Name, @{N='Size(MB)';E={[math]::Round($_.Length/1MB,2)}}
         shell: powershell
+
+      # ── Push to main: force-update the 'latest' tag so the pre-release
+      #     always points to the most recent commit on main. Using GITHUB_TOKEN
+      #     prevents recursive workflow triggers from the tag push.
+      - name: Update latest tag (main push only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f latest
+          git push -f origin latest
+
+      # ── Push to main: create/update pre-release "Latest Build" ─────
+      - name: Update Latest Build pre-release (main push only)
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "EZOffice — Latest Build"
+          body: |
+            ## 🔧 EZOffice Latest Build
+
+            **Binari terkini dari branch `main` — auto-dibina setiap push.**
+
+            ### 📥 Muat turun
+            | Fail | Kegunaan |
+            |---|---|
+            | `EZOffice Setup *.exe` | **Installer (NSIS)** — wizard install, pilih folder, auto desktop + Start Menu shortcut |
+            | `EZOffice *.exe` | **Portable** — standalone, tak perlu install, run terus |
+
+            ### 🚀 Cara pasang
+            1. Muat turun `EZOffice Setup *.exe`
+            2. Run — pilih folder install (default `C:\Program Files\EZOffice`)
+            3. Buka EZOffice dari Desktop atau Start Menu
+            4. **Database disimpan di `%APPDATA%\EZOffice\data\ezoffice.db`** — data kekal walaupun uninstall
+
+            ### 📋 Nota
+            - ⚠️ Ini **pre-release** — mungkin mengandungi bug, fitur belum stabil
+            - ✅ Untuk versi stabil, muat turun release bertag `vX.Y.Z` di [Releases](https://github.com/Reef-hash/EZOffice/releases)
+            - ⚠️ Aplikasi **tidak ditandatangani** (unsigned) — Windows SmartScreen akan tunjuk amaran. Klik **"More info" → "Run anyway"**
+            - 📖 Bantuan lanjut: [`docs/DISTRIBUTION.md`](https://github.com/Reef-hash/EZOffice/blob/main/docs/DISTRIBUTION.md)
+            - 🔨 Commit: [`${{ github.sha }}`](https://github.com/Reef-hash/EZOffice/commit/${{ github.sha }})
+          draft: false
+          prerelease: true
+          files: |
+            dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # ── Tag push: create GitHub Release + attach .exe files ──────────
       - name: Create GitHub Release (tag only)
