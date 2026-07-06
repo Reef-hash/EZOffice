@@ -1,0 +1,106 @@
+# EZOffice — GitHub Actions CI/CD
+# Auto-build Windows .exe installer + portable on tag push or manual trigger.
+#
+# Triggers:
+#   push tag v*    → build + create GitHub Release with .exe assets
+#   workflow_dispatch → build + upload artifacts (no release, for testing)
+#
+# Output (in dist/):
+#   EZOffice Setup X.Y.Z.exe  (NSIS installer)
+#   EZOffice X.Y.Z.exe        (portable standalone)
+
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'   # e.g. v0.1.0, v1.2.3
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version override (leave empty for package.json version)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write   # needed to create GitHub Release + upload assets
+
+jobs:
+  build:
+    name: Build Windows .exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+        # better-sqlite3 will compile its native binding here.
+        # windows-latest has Python + VS Build Tools (C++ compiler) for node-gyp.
+
+      - name: Typecheck + Build
+        # tsc -b handles TypeScript compilation + type-checking for the whole project
+        # (tsconfig.app.json + tsconfig.node.json). vite build then bundles renderer +
+        # electron main/preload via vite-plugin-electron.
+        run: npm run build
+
+      - name: Package NSIS installer + portable
+        # electron-builder reads "build" field from package.json (also electron-builder.yml).
+        # Both NSIS and portable targets are defined — one run produces both.
+        # --publish never because we upload manually via softprops/action-gh-release.
+        run: npx electron-builder --win --publish never
+
+      - name: List built artifacts
+        run: Get-ChildItem -Recurse dist/*.exe | Select-Object Name, @{N='Size(MB)';E={[math]::Round($_.Length/1MB,2)}}
+        shell: powershell
+
+      # ── Tag push: create GitHub Release + attach .exe files ──────────
+      - name: Create GitHub Release (tag only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "EZOffice ${{ github.ref_name }}"
+          body: |
+            ## 🏢 EZOffice ${{ github.ref_name }}
+
+            **Windows installer + portable build — muat turun & pasang terus.**
+
+            ### 📥 Muat turun
+            | Fail | Kegunaan |
+            |---|---|
+            | `EZOffice Setup ${{ github.ref_name }}.exe` | **Installer (NSIS)** — wizard install, pilih folder, auto desktop + Start Menu shortcut |
+            | `EZOffice ${{ github.ref_name }}.exe` | **Portable** — standalone, tak perlu install, run terus |
+
+            ### 🚀 Cara pasang
+            1. Muat turun `EZOffice Setup *.exe`
+            2. Run — pilih folder install (default `C:\Program Files\EZOffice`)
+            3. Buka EZOffice dari Desktop atau Start Menu
+            4. **Database disimpan di `%APPDATA%\EZOffice\data\ezoffice.db`** — data kekal walaupun uninstall
+
+            ### 📋 Nota
+            - ✅ Windows 10/11 64-bit sahaja
+            - ⚠️ Aplikasi **tidak ditandatangani** (unsigned) — Windows SmartScreen akan tunjuk amaran. Klik **"More info" → "Run anyway"**
+            - 📖 Bantuan lanjut: [`docs/DISTRIBUTION.md`](https://github.com/Reef-hash/EZOffice/blob/main/docs/DISTRIBUTION.md)
+            - 🔧 **Tech stack:** Electron ${{ env.ELECTRON_VERSION || '42.5.0' }} + React 19 + TypeScript + better-sqlite3 + Tailwind v4
+          draft: false
+          prerelease: false
+          files: |
+            dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Manual trigger: upload artifacts (no release) ──────────────
+      - name: Upload artifacts (manual trigger)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EZOffice-Windows-${{ github.sha }}
+          path: dist/*.exe
+          retention-days: 7
