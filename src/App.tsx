@@ -44,6 +44,15 @@ export function App() {
     return stored ? JSON.parse(stored) : false
   })
 
+  // Synchronize dark mode class on HTML root element
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark')
+    } else {
+      document.documentElement.classList.remove('dark')
+    }
+  }, [isDarkMode])
+
   // Check on app start if any admin exists in the database (determines if first launch).
   // Uses the IPC call admin:hasAny so the check survives Vite dev server restarts
   // and rebuilds — it queries the actual database, not volatile localStorage.
@@ -90,11 +99,6 @@ export function App() {
   }
 
   const handleLogout = () => {
-    if (auth.adminId) {
-      window.api.admin.logout(auth.adminId).catch(() => {
-        // Logout failed, but proceed anyway
-      })
-    }
     localStorage.removeItem('adminId')
     setAuth({
       isAuthenticated: false,
@@ -105,18 +109,23 @@ export function App() {
 
   if (isInitializing) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-neutral-100">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-neutral-900">EZOffice</h1>
-          <p className="mt-2 text-sm text-neutral-600">Initializing...</p>
-        </div>
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="text-sm font-medium text-neutral-500">Loading EZOffice...</div>
       </div>
     )
   }
 
-  // QueryClientProvider wraps the WHOLE tree (including the login screen) because
-  // LoginPage uses useIpcMutation, which calls useQueryClient — rendering it outside
-  // the provider crashes on first launch with "No QueryClient set".
+  if (auth.isFirstLaunch) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <LoginPage
+          onLoginSuccess={handleLoginSuccess}
+          isFirstLaunch={auth.isFirstLaunch}
+        />
+      </QueryClientProvider>
+    )
+  }
+
   if (!auth.isAuthenticated) {
     return (
       <QueryClientProvider client={queryClient}>
@@ -129,11 +138,10 @@ export function App() {
   }
 
   return (
-    <div className={isDarkMode ? 'dark' : ''}>
-      <QueryClientProvider client={queryClient}>
-        <HashRouter>
-          <Routes>
-            <Route element={<AppShell onLogout={handleLogout} isDarkMode={isDarkMode} onToggleDarkMode={handleToggleDarkMode} />}>
+    <QueryClientProvider client={queryClient}>
+      <HashRouter>
+        <Routes>
+          <Route element={<AppShell onLogout={handleLogout} isDarkMode={isDarkMode} onToggleDarkMode={handleToggleDarkMode} />}>
             <Route index element={<Navigate to="/employees" replace />} />
             <Route path="/employees" element={<EmployeeListPage />} />
             <Route path="/customers" element={<CustomerListPage />} />
@@ -147,6 +155,5 @@ export function App() {
         </Routes>
       </HashRouter>
     </QueryClientProvider>
-    </div>
   )
 }

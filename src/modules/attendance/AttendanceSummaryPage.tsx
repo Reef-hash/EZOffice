@@ -177,19 +177,19 @@ export function AttendanceSummaryPage() {
 
       {calendar && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <div className="rounded-xl bg-white p-4 shadow-sm">
+          <div className="rounded-xl bg-surface p-4 shadow-sm">
             <p className="text-xs font-medium uppercase text-neutral-500">Total Hours</p>
             <p className="mt-1 text-2xl font-semibold text-neutral-900">{calendar.total_hours.toFixed(2)}</p>
           </div>
-          <div className="rounded-xl bg-white p-4 shadow-sm">
+          <div className="rounded-xl bg-surface p-4 shadow-sm">
             <p className="text-xs font-medium uppercase text-neutral-500">Days Worked</p>
             <p className="mt-1 text-2xl font-semibold text-neutral-900">{calendar.days_worked}</p>
           </div>
-          <div className="rounded-xl bg-white p-4 shadow-sm">
+          <div className="rounded-xl bg-surface p-4 shadow-sm">
             <p className="text-xs font-medium uppercase text-neutral-500">Days Late</p>
             <p className="mt-1 text-2xl font-semibold text-neutral-900">{calendar.days_late}</p>
           </div>
-          <div className="rounded-xl bg-white p-4 shadow-sm">
+          <div className="rounded-xl bg-surface p-4 shadow-sm">
             <p className="text-xs font-medium uppercase text-neutral-500">Days Leave</p>
             <p className="mt-1 text-2xl font-semibold text-neutral-900">{calendar.days_leave}</p>
           </div>

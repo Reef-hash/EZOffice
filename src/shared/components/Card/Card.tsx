@@ -13,7 +13,7 @@ export function Card({ title, subtitle, actions, footer, className, children, ..
 
   return (
     <div
-      className={cn('rounded-xl bg-white shadow-sm', className)}
+      className={cn('rounded-xl bg-surface shadow-sm', className)}
       {...props}
     >
       {hasHeader && (
