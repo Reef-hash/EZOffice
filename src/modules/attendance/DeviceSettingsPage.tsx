@@ -1,13 +1,14 @@
 // Device settings for fingerprint reader sync (ZKTeco V1000 integration).
 // Stores device IP/port in payroll_settings table and provides sync trigger.
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import type { ChangeEvent } from 'react'
 import { Card } from '@/shared/components/Card'
 import { Button } from '@/shared/components/Button'
 import { Input } from '@/shared/components/Input'
-import { useIpcMutation } from '@/shared/hooks/useIpcQuery'
+import { useIpcMutation, useIpcQuery } from '@/shared/hooks/useIpcQuery'
 import { useToast } from '@/shared/components/Toast'
+import type { PayrollSettings } from '@/shared/types/entities'
 
 interface SyncResult {
   inserted: number
@@ -19,12 +20,31 @@ export function DeviceSettingsPage() {
   const { addToast } = useToast()
   const [deviceIp, setDeviceIp] = useState('')
   const [devicePort, setDevicePort] = useState('4370')
-  const [isSaved, setIsSaved] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
+
+  // Fetch current settings on load
+  const { data: settings } = useIpcQuery<PayrollSettings>(
+    ['payroll', 'settings'],
+    () => window.api.payroll.settings.get(),
+  )
+
+  // Populate form when settings load
+  useEffect(() => {
+    if (settings) {
+      setDeviceIp(settings.device_ip || '')
+      setDevicePort(String(settings.device_port || 4370))
+    }
+  }, [settings])
 
   const syncMutation = useIpcMutation<SyncResult, void>(
     () => window.api.attendance.syncFromDevice(),
     [],
+  )
+
+  const updateSettingsMutation = useIpcMutation<PayrollSettings, Record<string, unknown>>(
+    (data) => window.api.payroll.settings.update(data as never),
+    [['payroll', 'settings']],
   )
 
   const handleSync = useCallback(async () => {
@@ -41,10 +61,24 @@ export function DeviceSettingsPage() {
     }
   }, [syncMutation, addToast])
 
-  const handleSaveSettings = useCallback(() => {
-    setIsSaved(true)
-    setTimeout(() => setIsSaved(false), 3000)
-  }, [])
+  const handleSaveSettings = useCallback(async () => {
+    if (!deviceIp) {
+      addToast('Please enter a device IP address', 'error')
+      return
+    }
+    try {
+      setIsSaving(true)
+      await updateSettingsMutation.mutateAsync({
+        device_ip: deviceIp,
+        device_port: parseInt(devicePort, 10),
+      })
+      addToast('Device settings saved successfully', 'success')
+    } catch (err) {
+      addToast(`Failed to save settings: ${String(err)}`, 'error')
+    } finally {
+      setIsSaving(false)
+    }
+  }, [deviceIp, devicePort, updateSettingsMutation, addToast])
 
   const handleTestConnection = useCallback(() => {
     if (!deviceIp) {
@@ -94,8 +128,14 @@ export function DeviceSettingsPage() {
             <Button size="sm" variant="secondary" onClick={handleTestConnection}>
               Test Connection
             </Button>
-            <Button size="sm" variant="primary" onClick={handleSaveSettings}>
-              {isSaved ? '✓ Saved' : 'Save Settings'}
+            <Button
+              size="sm"
+              variant="primary"
+              onClick={handleSaveSettings}
+              disabled={isSaving}
+              isLoading={isSaving}
+            >
+              {isSaving ? 'Saving...' : 'Save Settings'}
             </Button>
           </div>
         </div>
