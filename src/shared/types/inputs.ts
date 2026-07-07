@@ -153,6 +153,9 @@ export const updatePayrollSettingsSchema = z.object({
   ot_rule_type: z.enum(['flat_addition', 'multiplier']).optional(),
   ot_rule_value: z.number().min(0, 'OT value must be non-negative').optional(),
   grace_period_minutes: z.number().int().min(0, 'Grace period must be non-negative').optional(),
+  // Phase 3: Device integration (ZKTeco V1000 / K40 Pro)
+  device_ip: z.string().min(1, 'Device IP is required').optional(),
+  device_port: z.number().int().min(1, 'Port must be between 1 and 65535').max(65535).optional(),
 })
 
 export type UpdatePayrollSettingsInput = z.infer<typeof updatePayrollSettingsSchema>
