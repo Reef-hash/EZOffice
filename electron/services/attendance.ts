@@ -456,7 +456,7 @@ export async function syncFromDeviceEthernet(
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Zkteco = require('zkteco-js').default
+    const Zkteco = require('zkteco-js')
     device = new Zkteco(deviceIp, devicePort, 5200, 5000)
 
     await device.createSocket()
