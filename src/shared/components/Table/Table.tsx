@@ -77,9 +77,9 @@ export function Table<T>({
   }
 
   return (
-    <div className={cn('overflow-x-auto rounded-xl bg-white shadow-sm', className)}>
+    <div className={cn('overflow-x-auto rounded-xl bg-surface shadow-sm', className)}>
       <table className="w-full text-sm">
-        <thead className="sticky top-0 z-10 border-b border-neutral-200 bg-white">
+        <thead className="sticky top-0 z-10 border-b border-neutral-200 bg-surface">
           <tr>
             {columns.map((column) => (
               <th

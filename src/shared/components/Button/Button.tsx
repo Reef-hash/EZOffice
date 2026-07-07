@@ -14,7 +14,7 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 const variantClasses: Record<ButtonVariant, string> = {
   primary: 'bg-primary-600 text-white hover:bg-primary-700 active:bg-primary-800',
   secondary:
-    'bg-white text-neutral-800 border border-neutral-300 hover:bg-neutral-50 active:bg-neutral-100',
+    'bg-surface text-neutral-800 border border-neutral-300 hover:bg-neutral-100 active:bg-neutral-200',
   // High-emphasis, sparingly used — global/standout actions (e.g. "Manage Team", "Add Task"),
   // not the per-form primary action. See DESIGN_SYSTEM.md Button section.
   dark: 'bg-ink-900 text-white hover:bg-ink-800 active:bg-ink-950',

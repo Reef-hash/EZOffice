@@ -1,6 +1,8 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter/wght.css";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /*
  * Design tokens for EZOffice.
  * Source of truth: docs/DESIGN_SYSTEM.md — keep both in sync.
@@ -87,3 +89,21 @@ body {
   color: var(--color-neutral-900);
   font-feature-settings: "cv11", "ss01";
 }
+
+.dark {
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-border: #334155;
+
+  --color-neutral-50: #1e293b;
+  --color-neutral-100: #334155;
+  --color-neutral-200: #475569;
+  --color-neutral-300: #64748b;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #cbd5e1;
+  --color-neutral-600: #e2e8f0;
+  --color-neutral-700: #f1f5f9;
+  --color-neutral-800: #f8fafc;
+  --color-neutral-900: #ffffff;
+}
+

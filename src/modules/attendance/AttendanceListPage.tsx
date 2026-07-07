@@ -311,7 +311,7 @@ export function AttendanceListPage() {
       <div>
 
       {/* Quick Clock panel */}
-      <div className="mb-6 rounded-md border border-neutral-200 bg-white p-4">
+      <div className="mb-6 rounded-md border border-neutral-200 bg-surface p-4">
         <h3 className="mb-3 text-sm font-semibold text-neutral-900">Quick Clock</h3>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[240px]">
