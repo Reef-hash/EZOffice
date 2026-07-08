@@ -94,7 +94,7 @@ export function LoginPage({ onLoginSuccess, isFirstLaunch }: LoginPageProps) {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm rounded-lg border border-neutral-200 bg-surface p-8 shadow-sm">
+      <div className="w-full max-w-sm rounded-xl border border-neutral-200 bg-surface p-8 shadow-sm">
         {/* Logo / Header */}
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-bold text-neutral-900">EZOffice</h1>

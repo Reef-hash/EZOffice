@@ -81,32 +81,42 @@ export function Table<T>({
       <table className="w-full text-sm">
         <thead className="sticky top-0 z-10 border-b border-neutral-200 bg-surface">
           <tr>
-            {columns.map((column) => (
-              <th
-                key={column.key}
-                style={column.width ? { width: column.width } : undefined}
-                className={cn(
-                  'whitespace-nowrap px-5 py-3.5 text-xs font-medium uppercase tracking-wide text-neutral-500',
-                  alignClass[column.align ?? 'left'],
-                )}
-              >
-                {column.sortable ? (
-                  <button
-                    type="button"
-                    onClick={() => toggleSort(column)}
-                    className={cn(
-                      'inline-flex items-center gap-1 hover:text-neutral-900',
-                      column.align === 'right' && 'flex-row-reverse',
-                    )}
-                  >
-                    {column.header}
-                    <SortIcon active={sortKey === column.key} direction={sortDirection} />
-                  </button>
-                ) : (
-                  column.header
-                )}
-              </th>
-            ))}
+            {columns.map((column) => {
+              const isSorted = sortKey === column.key
+              const ariaSortVal = column.sortable
+                ? (isSorted ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none')
+                : undefined
+
+              return (
+                <th
+                  key={column.key}
+                  style={column.width ? { width: column.width } : undefined}
+                  aria-sort={ariaSortVal}
+                  className={cn(
+                    'whitespace-nowrap px-5 py-3.5 text-xs font-medium uppercase tracking-wide text-neutral-500',
+                    alignClass[column.align ?? 'left'],
+                  )}
+                >
+                  {column.sortable ? (
+                    <button
+                      type="button"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => toggleSort(column)}
+                      className={cn(
+                        'inline-flex items-center gap-1 hover:text-neutral-900',
+                        column.align === 'right' && 'flex-row-reverse',
+                      )}
+                    >
+                      {column.header}
+                      <SortIcon active={isSorted} direction={sortDirection} />
+                    </button>
+                  ) : (
+                    column.header
+                  )}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>
@@ -124,13 +134,31 @@ export function Table<T>({
           {!isLoading && data.length === 0 && emptyState && (
             <tr>
               <td colSpan={columns.length} className="px-4 py-12 text-center">
-                <p className="text-sm font-medium text-neutral-700">{emptyState.title}</p>
-                {emptyState.description && (
-                  <p className="mt-1 text-sm text-neutral-500">{emptyState.description}</p>
-                )}
-                {emptyState.action && (
-                  <div className="mt-4 flex justify-center">{emptyState.action}</div>
-                )}
+                <div className="flex flex-col items-center justify-center gap-3">
+                  <svg
+                    className="h-10 w-10 text-neutral-400 dark:text-neutral-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M2.25 13.5h3.86a2.25 2.25 0 0 1 2.008 1.24l.885 1.77a2.25 2.25 0 0 0 2.007 1.24h1.98a2.25 2.25 0 0 0 2.007-1.24l.885-1.77a2.25 2.25 0 0 1 2.007-1.24h3.86m-18 0h18a2.25 2.25 0 0 1 2.25 2.25v4.5A2.25 2.25 0 0 1 18 22.5H6a2.25 2.25 0 0 1-2.25-2.25v-4.5A2.25 2.25 0 0 1 2.25 13.5m18 0V5.25A2.25 2.25 0 0 0 18 3H6a2.25 2.25 0 0 0-2.25 2.25V13.5"
+                    />
+                  </svg>
+                  <div>
+                    <p className="text-sm font-medium text-neutral-700 dark:text-neutral-300">{emptyState.title}</p>
+                    {emptyState.description && (
+                      <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{emptyState.description}</p>
+                    )}
+                  </div>
+                  {emptyState.action && (
+                    <div className="mt-2 flex justify-center">{emptyState.action}</div>
+                  )}
+                </div>
               </td>
             </tr>
           )}

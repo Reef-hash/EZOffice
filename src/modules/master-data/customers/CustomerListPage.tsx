@@ -6,6 +6,8 @@ import { Button } from '@/shared/components/Button'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { CustomerForm } from './CustomerForm'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { useKeyboardShortcut } from '@/shared/hooks/useKeyboardShortcut'
 import type { Column } from '@/shared/components/Table'
 import type { Customer } from '@/shared/types/entities'
 import type { CreateCustomerInput, UpdateCustomerInput } from '@/shared/types/inputs'
@@ -13,9 +15,8 @@ import type { CreateCustomerInput, UpdateCustomerInput } from '@/shared/types/in
 const columns: Column<Customer>[] = [
   { key: 'name', header: 'Name', accessor: (r) => r.name, sortable: true, sortValue: (r) => r.name },
   { key: 'contact_person', header: 'Contact', accessor: (r) => r.contact_person || '—', sortable: true, sortValue: (r) => r.contact_person || '' },
-  { key: 'phone', header: 'Phone', accessor: (r) => r.phone || '—', sortable: true, sortValue: (r) => r.phone || '' },
   { key: 'email', header: 'Email', accessor: (r) => r.email || '—', sortable: true, sortValue: (r) => r.email || '' },
-  { key: 'address', header: 'Address', accessor: (r) => r.address || '—', sortable: true, sortValue: (r) => r.address || '' },
+  { key: 'phone', header: 'Phone', accessor: (r) => r.phone || '—', sortable: true, sortValue: (r) => r.phone || '' },
 ]
 
 export function CustomerListPage() {
@@ -26,20 +27,24 @@ export function CustomerListPage() {
 
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [customerToDelete, setCustomerToDelete] = useState<Customer | null>(null)
 
   const createMutation = useIpcMutation<Customer, CreateCustomerInput>(
     (data) => window.api.customers.create(data),
     [['customers']],
+    { onSuccessMessage: 'Customer created successfully' },
   )
 
   const updateMutation = useIpcMutation<Customer, { id: number; data: UpdateCustomerInput }>(
     ({ id, data }) => window.api.customers.update(id, data),
     [['customers']],
+    { onSuccessMessage: 'Customer updated successfully' },
   )
 
   const deleteMutation = useIpcMutation<void, number>(
     (id) => window.api.customers.delete(id),
     [['customers']],
+    { onSuccessMessage: 'Customer deleted successfully' },
   )
 
   const handleCreate = useCallback(() => {
@@ -47,18 +52,33 @@ export function CustomerListPage() {
     setIsFormOpen(true)
   }, [])
 
+  useKeyboardShortcut([
+    {
+      key: 'n',
+      ctrlKey: true,
+      callback: handleCreate,
+    },
+  ])
+
   const handleEdit = useCallback((customer: Customer) => {
     setEditingCustomer(customer)
     setIsFormOpen(true)
   }, [])
 
-  const handleDelete = useCallback(
-    async (customer: Customer) => {
-      if (!confirm(`Delete customer "${customer.name}"? This cannot be undone.`)) return
-      deleteMutation.mutate(customer.id)
-    },
-    [deleteMutation],
-  )
+  const handleDelete = useCallback((customer: Customer) => {
+    setCustomerToDelete(customer)
+  }, [])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!customerToDelete) return
+    try {
+      await deleteMutation.mutateAsync(customerToDelete.id)
+      setCustomerToDelete(null)
+      setEditingCustomer(null)
+    } catch {
+      // Handled by global onError toast
+    }
+  }, [customerToDelete, deleteMutation])
 
   const handleFormSubmit = useCallback(
     async (data: CreateCustomerInput | UpdateCustomerInput) => {
@@ -118,6 +138,16 @@ export function CustomerListPage() {
         onSubmit={handleFormSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         customer={editingCustomer}
+      />
+
+      <ConfirmDialog
+        isOpen={customerToDelete !== null}
+        title="Delete Customer"
+        message={`Are you sure you want to delete customer "${customerToDelete?.name || ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setCustomerToDelete(null)}
       />
     </div>
   )

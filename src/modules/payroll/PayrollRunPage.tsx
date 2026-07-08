@@ -54,11 +54,13 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
   const calculateMutation = useIpcMutation<PayrollRun, number>(
     (id) => window.api.payroll.runs.calculate(id),
     [['payroll', 'runs', String(runId)], ['payroll', 'runs', String(runId), 'items']],
+    { onSuccessMessage: 'Payroll run calculated successfully' },
   )
 
   const finalizeMutation = useIpcMutation<PayrollRun, number>(
     (id) => window.api.payroll.runs.finalize(id),
     [['payroll', 'runs'], ['payroll', 'runs', String(runId)]],
+    { onSuccessMessage: 'Payroll run finalized successfully' },
   )
 
   const handleCalculate = useCallback(async () => {

@@ -19,6 +19,7 @@ export function PayrollSettingsPage() {
   const updateMutation = useIpcMutation<PayrollSettings, UpdatePayrollSettingsInput>(
     (data) => window.api.payroll.settings.update(data),
     [['payroll', 'settings']],
+    { onSuccessMessage: 'Payroll settings updated successfully' },
   )
 
   const [otRuleType, setOtRuleType] = useState<'flat_addition' | 'multiplier'>('flat_addition')
