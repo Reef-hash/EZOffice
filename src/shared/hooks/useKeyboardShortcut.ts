@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 export interface ShortcutConfig {
   key: string
@@ -7,10 +7,20 @@ export interface ShortcutConfig {
 }
 
 export function useKeyboardShortcut(shortcuts: ShortcutConfig[], enabled = true) {
+  const shortcutsRef = useRef(shortcuts)
+
+  useEffect(() => {
+    shortcutsRef.current = shortcuts
+  }, [shortcuts])
+
   useEffect(() => {
     if (!enabled) return
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // If a modal/dialog is currently open in the DOM, do not fire page-level list shortcuts
+      const hasOpenModal = document.querySelector('[role="dialog"]') !== null
+      if (hasOpenModal) return
+
       const target = e.target as HTMLElement
       const isInput =
         target.tagName === 'INPUT' ||
@@ -18,7 +28,7 @@ export function useKeyboardShortcut(shortcuts: ShortcutConfig[], enabled = true)
         target.tagName === 'SELECT' ||
         target.isContentEditable
 
-      for (const shortcut of shortcuts) {
+      for (const shortcut of shortcutsRef.current) {
         const keyMatch = e.key.toLowerCase() === shortcut.key.toLowerCase()
         // Match Ctrl or Command key
         const ctrlMatch = shortcut.ctrlKey ? (e.ctrlKey || e.metaKey) : true
@@ -37,5 +47,5 @@ export function useKeyboardShortcut(shortcuts: ShortcutConfig[], enabled = true)
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [shortcuts, enabled])
+  }, [enabled])
 }

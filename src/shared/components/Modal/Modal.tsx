@@ -21,6 +21,8 @@ const sizeClasses: Record<ModalSize, string> = {
   lg: 'max-w-[720px]',
 }
 
+const activeModals: string[] = []
+
 export function Modal({ isOpen, onClose, title, size = 'md', footer, children }: ModalProps) {
   const titleId = useId()
   const containerRef = useFocusTrap(isOpen)
@@ -28,7 +30,12 @@ export function Modal({ isOpen, onClose, title, size = 'md', footer, children }:
   useEffect(() => {
     if (!isOpen) return
 
+    activeModals.push(titleId)
+
     function handleKeyDown(event: KeyboardEvent) {
+      // Only respond if this modal is the topmost one in the stack
+      if (activeModals[activeModals.length - 1] !== titleId) return
+
       if (event.key === 'Escape') {
         onClose()
       } else if (event.key.toLowerCase() === 's' && (event.ctrlKey || event.metaKey)) {
@@ -41,8 +48,14 @@ export function Modal({ isOpen, onClose, title, size = 'md', footer, children }:
     }
 
     document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      const index = activeModals.indexOf(titleId)
+      if (index > -1) {
+        activeModals.splice(index, 1)
+      }
+    }
+  }, [isOpen, onClose, titleId])
 
   if (!isOpen) return null
 

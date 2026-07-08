@@ -85,10 +85,14 @@ export function SupplierListPage() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!editingSupplier) return
-    await deleteMutation.mutateAsync(editingSupplier.id)
-    setIsFormOpen(false)
-    setEditingSupplier(null)
-    setShowDeleteConfirm(false)
+    try {
+      await deleteMutation.mutateAsync(editingSupplier.id)
+      setIsFormOpen(false)
+      setEditingSupplier(null)
+      setShowDeleteConfirm(false)
+    } catch {
+      // Handled by global onError toast
+    }
   }, [editingSupplier, deleteMutation])
 
   return (

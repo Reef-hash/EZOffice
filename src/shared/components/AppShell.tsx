@@ -56,8 +56,12 @@ function SidebarNavItem({ to, label, icon, collapsed }: NavItemProps) {
 export function AppShell({ onLogout, isDarkMode, onToggleDarkMode }: AppShellProps) {
   const location = useLocation()
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    const stored = localStorage.getItem('sidebarCollapsed')
-    return stored ? JSON.parse(stored) : false
+    try {
+      const stored = localStorage.getItem('sidebarCollapsed')
+      return stored ? JSON.parse(stored) : false
+    } catch {
+      return false
+    }
   })
 
   const toggleSidebar = () => {

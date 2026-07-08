@@ -99,13 +99,13 @@ export function SettingsPage() {
       await updateMutation.mutateAsync(trimmedData)
     } catch (err) {
       const errMsg = String(err)
-      if (errMsg.includes('Failed to update company settings: [')) {
+      if (errMsg.includes('[')) {
         try {
           const jsonStart = errMsg.indexOf('[')
           const jsonStr = errMsg.substring(jsonStart)
           const issues = JSON.parse(jsonStr)
           if (Array.isArray(issues) && issues.length > 0) {
-            const formatted = issues.map((i) => i.message || i.code).join(', ')
+            const formatted = issues.map((i: any) => i.message || i.code).join(', ')
             addToast(`Failed to save settings: ${formatted}`, 'error')
             return
           }

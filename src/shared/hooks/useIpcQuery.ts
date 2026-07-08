@@ -39,6 +39,9 @@ export function useIpcMutation<TData, TVariables>(
         addToast(options.onSuccessMessage, 'success')
       }
     },
+    onError: (err) => {
+      addToast(err.message || String(err), 'error')
+    },
     ...options,
   })
 }

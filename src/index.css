@@ -100,7 +100,9 @@ body {
   --color-neutral-300: #3f3f46;
   --color-neutral-400: #71717a;
   --color-neutral-500: #a1a1aa;
+  --color-neutral-600: #cbd5e1;
   --color-neutral-700: #d4d4d8;
+  --color-neutral-800: #f1f5f9;
   --color-neutral-900: #f4f4f5;
   color-scheme: dark;
 }

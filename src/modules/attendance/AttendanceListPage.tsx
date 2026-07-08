@@ -245,10 +245,14 @@ export function AttendanceListPage() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!editingLog) return
-    await deleteMutation.mutateAsync(editingLog.id)
-    setIsFormOpen(false)
-    setEditingLog(null)
-    setShowDeleteConfirm(false)
+    try {
+      await deleteMutation.mutateAsync(editingLog.id)
+      setIsFormOpen(false)
+      setEditingLog(null)
+      setShowDeleteConfirm(false)
+    } catch {
+      // Handled by global onError toast
+    }
   }, [editingLog, deleteMutation])
 
   const handleExport = useCallback(async () => {

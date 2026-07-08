@@ -79,10 +79,14 @@ export function ShiftManagementPanel() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!editingShift) return
-    await deleteMutation.mutateAsync(editingShift.id)
-    setIsFormOpen(false)
-    setEditingShift(null)
-    setShowDeleteConfirm(false)
+    try {
+      await deleteMutation.mutateAsync(editingShift.id)
+      setIsFormOpen(false)
+      setEditingShift(null)
+      setShowDeleteConfirm(false)
+    } catch {
+      // Handled by global onError toast
+    }
   }, [editingShift, deleteMutation])
 
   return (

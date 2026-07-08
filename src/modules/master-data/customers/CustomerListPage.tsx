@@ -71,9 +71,13 @@ export function CustomerListPage() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!customerToDelete) return
-    await deleteMutation.mutateAsync(customerToDelete.id)
-    setCustomerToDelete(null)
-    setEditingCustomer(null)
+    try {
+      await deleteMutation.mutateAsync(customerToDelete.id)
+      setCustomerToDelete(null)
+      setEditingCustomer(null)
+    } catch {
+      // Handled by global onError toast
+    }
   }, [customerToDelete, deleteMutation])
 
   const handleFormSubmit = useCallback(

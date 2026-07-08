@@ -97,10 +97,14 @@ export function SalaryAdvanceListPage() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!editingAdvance) return
-    await deleteMutation.mutateAsync(editingAdvance.id)
-    setIsFormOpen(false)
-    setEditingAdvance(null)
-    setShowDeleteConfirm(false)
+    try {
+      await deleteMutation.mutateAsync(editingAdvance.id)
+      setIsFormOpen(false)
+      setEditingAdvance(null)
+      setShowDeleteConfirm(false)
+    } catch {
+      // Handled by global onError toast
+    }
   }, [editingAdvance, deleteMutation])
 
   return (

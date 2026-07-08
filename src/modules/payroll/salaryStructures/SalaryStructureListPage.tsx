@@ -101,10 +101,14 @@ export function SalaryStructureListPage() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!editingStructure) return
-    await deleteMutation.mutateAsync(editingStructure.id)
-    setIsFormOpen(false)
-    setEditingStructure(null)
-    setShowDeleteConfirm(false)
+    try {
+      await deleteMutation.mutateAsync(editingStructure.id)
+      setIsFormOpen(false)
+      setEditingStructure(null)
+      setShowDeleteConfirm(false)
+    } catch {
+      // Handled by global onError toast
+    }
   }, [editingStructure, deleteMutation])
 
   return (

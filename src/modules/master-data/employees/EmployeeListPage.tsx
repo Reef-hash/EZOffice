@@ -113,10 +113,14 @@ export function EmployeeListPage() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!editingEmployee) return
-    await deleteMutation.mutateAsync(editingEmployee.id)
-    setIsFormOpen(false)
-    setEditingEmployee(null)
-    setShowDeleteConfirm(false)
+    try {
+      await deleteMutation.mutateAsync(editingEmployee.id)
+      setIsFormOpen(false)
+      setEditingEmployee(null)
+      setShowDeleteConfirm(false)
+    } catch {
+      // Handled by global onError toast
+    }
   }, [editingEmployee, deleteMutation])
 
   return (

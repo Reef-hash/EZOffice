@@ -79,9 +79,13 @@ export function ProductListPage() {
 
   const handleConfirmDelete = useCallback(async () => {
     if (!productToDelete) return
-    await deleteMutation.mutateAsync(productToDelete.id)
-    setProductToDelete(null)
-    setEditingProduct(null)
+    try {
+      await deleteMutation.mutateAsync(productToDelete.id)
+      setProductToDelete(null)
+      setEditingProduct(null)
+    } catch {
+      // Handled by global onError toast
+    }
   }, [productToDelete, deleteMutation])
 
   const handleFormSubmit = useCallback(
