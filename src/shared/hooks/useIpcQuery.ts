@@ -1,7 +1,5 @@
-// IPC query hook — typed wrapper around useQuery for window.api calls.
-// Uses @tanstack/react-query for caching and automatic refetching.
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useToast } from '../components/Toast'
 
 /** Creates a typed useQuery hook keyed to a specific IPC call. */
 export function useIpcQuery<T>(
@@ -29,12 +27,16 @@ export function useIpcMutation<TData, TVariables>(
   },
 ) {
   const queryClient = useQueryClient()
+  const { addToast } = useToast()
 
   return useMutation<TData, Error, TVariables>({
     mutationFn,
     onSuccess: () => {
       for (const key of invalidateKeys) {
         queryClient.invalidateQueries({ queryKey: key })
+      }
+      if (options?.onSuccessMessage) {
+        addToast(options.onSuccessMessage, 'success')
       }
     },
     ...options,

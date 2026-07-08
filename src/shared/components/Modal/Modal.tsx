@@ -2,6 +2,7 @@ import { useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 export type ModalSize = 'sm' | 'md' | 'lg'
 
@@ -22,12 +23,21 @@ const sizeClasses: Record<ModalSize, string> = {
 
 export function Modal({ isOpen, onClose, title, size = 'md', footer, children }: ModalProps) {
   const titleId = useId()
+  const containerRef = useFocusTrap(isOpen)
 
   useEffect(() => {
     if (!isOpen) return
 
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        onClose()
+      } else if (event.key.toLowerCase() === 's' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault()
+        const form = containerRef.current?.querySelector('form')
+        if (form) {
+          form.requestSubmit()
+        }
+      }
     }
 
     document.addEventListener('keydown', handleKeyDown)
@@ -40,11 +50,13 @@ export function Modal({ isOpen, onClose, title, size = 'md', footer, children }:
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-neutral-900/50" onClick={onClose} aria-hidden="true" />
       <div
+        ref={containerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         className={cn(
-          'relative flex max-h-[85vh] w-full flex-col rounded-xl bg-surface shadow-md',
+          'relative flex max-h-[85vh] w-full flex-col rounded-xl bg-surface shadow-md focus:outline-none',
           sizeClasses[size],
         )}
       >

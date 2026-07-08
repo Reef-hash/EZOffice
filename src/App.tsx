@@ -1,12 +1,13 @@
 // EZOffice App — root component with routing & authentication.
 // Phase A: Admin login required before accessing main app.
 // Uses HashRouter because Electron works best with hash-based routing (no server to handle paths).
-
 import { useEffect, useState } from 'react'
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './shared/components/AppShell'
 import { LoginPage } from './modules/auth/LoginPage'
+import { ToastProvider } from './shared/components/Toast'
+
 import { EmployeeListPage } from './modules/master-data/employees/EmployeeListPage'
 import { CustomerListPage } from './modules/master-data/customers/CustomerListPage'
 import { SupplierListPage } from './modules/master-data/suppliers/SupplierListPage'
@@ -15,6 +16,8 @@ import { AttendanceListPage } from './modules/attendance/AttendanceListPage'
 import { PayrollListPage } from './modules/payroll/PayrollListPage'
 import { AuditLogPage } from './modules/audit/AuditLogPage'
 import { SettingsPage } from './shared/components/SettingsPage'
+import { ErrorBoundary } from './shared/components/ErrorBoundary'
+import { Spinner } from './shared/components/Spinner/Spinner'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -109,51 +112,55 @@ export function App() {
 
   if (isInitializing) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-sm font-medium text-neutral-500">Loading EZOffice...</div>
-      </div>
-    )
-  }
-
-  if (auth.isFirstLaunch) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <LoginPage
-          onLoginSuccess={handleLoginSuccess}
-          isFirstLaunch={auth.isFirstLaunch}
-        />
-      </QueryClientProvider>
-    )
-  }
-
-  if (!auth.isAuthenticated) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <LoginPage
-          onLoginSuccess={handleLoginSuccess}
-          isFirstLaunch={auth.isFirstLaunch}
-        />
-      </QueryClientProvider>
+      <ErrorBoundary>
+        <div className={isDarkMode ? 'dark' : ''}>
+          <div className="flex h-screen flex-col items-center justify-center bg-background gap-4">
+            <div className="flex size-14 items-center justify-center rounded-full bg-primary-600 text-lg font-bold text-white shadow-sm animate-pulse">
+              EZ
+            </div>
+            <div className="text-center">
+              <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">EZOffice</h1>
+              <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 flex items-center justify-center gap-2">
+                <Spinner className="size-4 text-primary-600" />
+                Loading...
+              </p>
+            </div>
+          </div>
+        </div>
+      </ErrorBoundary>
     )
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <HashRouter>
-        <Routes>
-          <Route element={<AppShell onLogout={handleLogout} isDarkMode={isDarkMode} onToggleDarkMode={handleToggleDarkMode} />}>
-            <Route index element={<Navigate to="/employees" replace />} />
-            <Route path="/employees" element={<EmployeeListPage />} />
-            <Route path="/customers" element={<CustomerListPage />} />
-            <Route path="/suppliers" element={<SupplierListPage />} />
-            <Route path="/products" element={<ProductListPage />} />
-            <Route path="/attendance" element={<AttendanceListPage />} />
-            <Route path="/payroll" element={<PayrollListPage />} />
-            <Route path="/audit" element={<AuditLogPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
-        </Routes>
-      </HashRouter>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <div className={isDarkMode ? 'dark' : ''}>
+        <QueryClientProvider client={queryClient}>
+          <ToastProvider>
+            {auth.isFirstLaunch || !auth.isAuthenticated ? (
+              <LoginPage
+                onLoginSuccess={handleLoginSuccess}
+                isFirstLaunch={auth.isFirstLaunch}
+              />
+            ) : (
+              <HashRouter>
+                <Routes>
+                  <Route element={<AppShell onLogout={handleLogout} isDarkMode={isDarkMode} onToggleDarkMode={handleToggleDarkMode} />}>
+                    <Route index element={<Navigate to="/employees" replace />} />
+                    <Route path="/employees" element={<EmployeeListPage />} />
+                    <Route path="/customers" element={<CustomerListPage />} />
+                    <Route path="/suppliers" element={<SupplierListPage />} />
+                    <Route path="/products" element={<ProductListPage />} />
+                    <Route path="/attendance" element={<AttendanceListPage />} />
+                    <Route path="/payroll" element={<PayrollListPage />} />
+                    <Route path="/audit" element={<AuditLogPage />} />
+                    <Route path="/settings" element={<SettingsPage />} />
+                  </Route>
+                </Routes>
+              </HashRouter>
+            )}
+          </ToastProvider>
+        </QueryClientProvider>
+      </div>
+    </ErrorBoundary>
   )
 }

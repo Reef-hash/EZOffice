@@ -1,6 +1,7 @@
 import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes, ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { Spinner } from '../Spinner/Spinner'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'dark' | 'danger' | 'ghost'
 export type ButtonSize = 'sm' | 'md' | 'lg'
@@ -28,23 +29,7 @@ const sizeClasses: Record<ButtonSize, string> = {
   lg: 'h-12 px-6 text-base gap-2',
 }
 
-function Spinner({ className }: { className?: string }) {
-  return (
-    <svg
-      className={cn('animate-spin', className)}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 0 1 8-8V0C5.373 0 0 5.373 0 12h4Z"
-      />
-    </svg>
-  )
-}
+
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   (
@@ -58,7 +43,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         aria-busy={isLoading || undefined}
         className={cn(
           'inline-flex items-center justify-center rounded-full font-medium leading-none',
-          'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600/40 focus-visible:ring-offset-2',
+          'transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-600/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
           'disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
           variantClasses[variant],
           sizeClasses[size],

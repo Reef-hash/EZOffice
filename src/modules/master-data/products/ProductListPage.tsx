@@ -6,6 +6,8 @@ import { Button } from '@/shared/components/Button'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { ProductForm } from './ProductForm'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { useKeyboardShortcut } from '@/shared/hooks/useKeyboardShortcut'
 import type { Column } from '@/shared/components/Table'
 import type { Product } from '@/shared/types/entities'
 import type { CreateProductInput, UpdateProductInput } from '@/shared/types/inputs'
@@ -33,20 +35,24 @@ export function ProductListPage() {
 
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null)
 
   const createMutation = useIpcMutation<Product, CreateProductInput>(
     (data) => window.api.products.create(data),
     [['products']],
+    { onSuccessMessage: 'Product created successfully' },
   )
 
   const updateMutation = useIpcMutation<Product, { id: number; data: UpdateProductInput }>(
     ({ id, data }) => window.api.products.update(id, data),
     [['products']],
+    { onSuccessMessage: 'Product updated successfully' },
   )
 
   const deleteMutation = useIpcMutation<void, number>(
     (id) => window.api.products.delete(id),
     [['products']],
+    { onSuccessMessage: 'Product deleted successfully' },
   )
 
   const handleCreate = useCallback(() => {
@@ -54,18 +60,29 @@ export function ProductListPage() {
     setIsFormOpen(true)
   }, [])
 
+  useKeyboardShortcut([
+    {
+      key: 'n',
+      ctrlKey: true,
+      callback: handleCreate,
+    },
+  ])
+
   const handleEdit = useCallback((product: Product) => {
     setEditingProduct(product)
     setIsFormOpen(true)
   }, [])
 
-  const handleDelete = useCallback(
-    async (product: Product) => {
-      if (!confirm(`Delete product "${product.name}"? This cannot be undone.`)) return
-      deleteMutation.mutate(product.id)
-    },
-    [deleteMutation],
-  )
+  const handleDelete = useCallback((product: Product) => {
+    setProductToDelete(product)
+  }, [])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!productToDelete) return
+    await deleteMutation.mutateAsync(productToDelete.id)
+    setProductToDelete(null)
+    setEditingProduct(null)
+  }, [productToDelete, deleteMutation])
 
   const handleFormSubmit = useCallback(
     async (data: CreateProductInput | UpdateProductInput) => {
@@ -124,6 +141,16 @@ export function ProductListPage() {
         onSubmit={handleFormSubmit}
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         product={editingProduct}
+      />
+
+      <ConfirmDialog
+        isOpen={productToDelete !== null}
+        title="Delete Product"
+        message={`Are you sure you want to delete product "${productToDelete?.name || ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setProductToDelete(null)}
       />
     </div>
   )

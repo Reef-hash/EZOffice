@@ -11,6 +11,9 @@ import { Select } from '@/shared/components/Input'
 import { StatusBadge } from '@/shared/components/StatusBadge'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { useToast } from '@/shared/components/Toast'
+import { useKeyboardShortcut } from '@/shared/hooks/useKeyboardShortcut'
 import { AttendanceLogForm } from './AttendanceLogForm'
 import { DeviceSettingsPage } from './DeviceSettingsPage'
 import { ShiftManagementPanel } from './ShiftManagementPanel'
@@ -74,6 +77,7 @@ const columns: Column<AttendanceLog>[] = [
 ]
 
 export function AttendanceListPage() {
+  const { addToast } = useToast()
   const [activeTab, setActiveTab] = useState<AttendanceTab>('logs')
   const today = useMemo(() => new Date().toISOString().slice(0, 10), [])
 
@@ -198,6 +202,22 @@ export function AttendanceListPage() {
     setIsFormOpen(true)
   }, [])
 
+  const handleKeyboardN = useCallback(() => {
+    if (activeTab === 'logs') {
+      handleCreate()
+    } else if (activeTab === 'leave') {
+      setIsLeaveFormOpen(true)
+    }
+  }, [activeTab, handleCreate])
+
+  useKeyboardShortcut([
+    {
+      key: 'n',
+      ctrlKey: true,
+      callback: handleKeyboardN,
+    },
+  ])
+
   const handleEdit = useCallback((log: AttendanceLog) => {
     setEditingLog(log)
     setIsFormOpen(true)
@@ -216,24 +236,28 @@ export function AttendanceListPage() {
     [editingLog, createMutation, updateMutation],
   )
 
-  const handleDelete = useCallback(
-    async () => {
-      if (!editingLog) return
-      if (!confirm(`Delete this attendance log? This cannot be undone.`)) return
-      await deleteMutation.mutateAsync(editingLog.id)
-      setIsFormOpen(false)
-      setEditingLog(null)
-    },
-    [editingLog, deleteMutation],
-  )
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  const handleDelete = useCallback(async () => {
+    if (!editingLog) return
+    setShowDeleteConfirm(true)
+  }, [editingLog])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!editingLog) return
+    await deleteMutation.mutateAsync(editingLog.id)
+    setIsFormOpen(false)
+    setEditingLog(null)
+    setShowDeleteConfirm(false)
+  }, [editingLog, deleteMutation])
 
   const handleExport = useCallback(async () => {
     try {
       await window.api.export.attendance(dateFrom, dateTo)
     } catch (err) {
-      alert(`Export failed: ${String(err)}`)
+      addToast(`Export failed: ${String(err)}`, 'error')
     }
-  }, [dateFrom, dateTo])
+  }, [dateFrom, dateTo, addToast])
 
   // ── Quick Clock actions ────────────────────────────────
 
@@ -287,9 +311,10 @@ export function AttendanceListPage() {
         ))}
       </div>
 
-      {activeTab === 'deviceSettings' && (
-        <DeviceSettingsPage />
-      )}
+      <div key={activeTab} className="animate-[fade-in_0.15s_ease-out]">
+        {activeTab === 'deviceSettings' && (
+          <DeviceSettingsPage />
+        )}
 
       {activeTab === 'shifts' && (
         <ShiftManagementPanel />
@@ -418,6 +443,7 @@ export function AttendanceListPage() {
       />
       </div>
       )}
+      </div>
 
       {/* Phase C2 — leave request form (available from the Leave tab header) */}
       <LeaveRequestForm
@@ -428,6 +454,16 @@ export function AttendanceListPage() {
           setIsLeaveFormOpen(false)
         }}
         isSubmitting={createLeaveMutation.isPending}
+      />
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Attendance Log"
+        message="Are you sure you want to delete this attendance log? This cannot be undone."
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
       />
     </div>
   )

@@ -7,6 +7,7 @@ import { Table } from '@/shared/components/Table'
 import { Button } from '@/shared/components/Button'
 import { Input } from '@/shared/components/Input'
 import { Modal } from '@/shared/components/Modal'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import type { Column } from '@/shared/components/Table'
@@ -29,20 +30,24 @@ export function ShiftManagementPanel() {
   const createMutation = useIpcMutation<Shift, CreateShiftInput>(
     (data) => window.api.attendance.createShift(data),
     [['attendance', 'shifts']],
+    { onSuccessMessage: 'Shift created successfully' },
   )
 
   const updateMutation = useIpcMutation<Shift, { id: number; data: UpdateShiftInput }>(
     ({ id, data }) => window.api.attendance.updateShift(id, data),
     [['attendance', 'shifts']],
+    { onSuccessMessage: 'Shift updated successfully' },
   )
 
   const deleteMutation = useIpcMutation<void, number>(
     (id) => window.api.attendance.deleteShift(id),
     [['attendance', 'shifts']],
+    { onSuccessMessage: 'Shift deleted successfully' },
   )
 
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingShift, setEditingShift] = useState<Shift | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const handleCreate = useCallback(() => {
     setEditingShift(null)
@@ -69,10 +74,15 @@ export function ShiftManagementPanel() {
 
   const handleDelete = useCallback(async () => {
     if (!editingShift) return
-    if (!confirm(`Delete shift "${editingShift.name}"? Employees assigned to it will lose their shift.`)) return
+    setShowDeleteConfirm(true)
+  }, [editingShift])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!editingShift) return
     await deleteMutation.mutateAsync(editingShift.id)
     setIsFormOpen(false)
     setEditingShift(null)
+    setShowDeleteConfirm(false)
   }, [editingShift, deleteMutation])
 
   return (
@@ -108,6 +118,16 @@ export function ShiftManagementPanel() {
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         isDeleting={deleteMutation.isPending}
         shift={editingShift}
+      />
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Shift"
+        message={`Are you sure you want to delete shift "${editingShift?.name || ''}"? Employees assigned to it will lose their shift.`}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
       />
     </div>
   )

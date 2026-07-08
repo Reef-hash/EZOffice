@@ -7,6 +7,7 @@ import { Button } from '@/shared/components/Button'
 import { StatusBadge } from '@/shared/components/StatusBadge'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { SalaryStructureForm } from './SalaryStructureForm'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import type { Column } from '@/shared/components/Table'
 import type { Employee, SalaryStructure } from '@/shared/types/entities'
 import type { CreateSalaryStructureInput, UpdateSalaryStructureInput } from '@/shared/types/inputs'
@@ -50,20 +51,24 @@ export function SalaryStructureListPage() {
 
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingStructure, setEditingStructure] = useState<SalaryStructure | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const createMutation = useIpcMutation<SalaryStructure, CreateSalaryStructureInput>(
     (data) => window.api.payroll.salaryStructures.create(data),
     [['payroll', 'salaryStructures']],
+    { onSuccessMessage: 'Salary structure created successfully' },
   )
 
   const updateMutation = useIpcMutation<SalaryStructure, { id: number; data: UpdateSalaryStructureInput }>(
     ({ id, data }) => window.api.payroll.salaryStructures.update(id, data),
     [['payroll', 'salaryStructures']],
+    { onSuccessMessage: 'Salary structure updated successfully' },
   )
 
   const deleteMutation = useIpcMutation<void, number>(
     (id) => window.api.payroll.salaryStructures.delete(id),
     [['payroll', 'salaryStructures']],
+    { onSuccessMessage: 'Salary structure deleted successfully' },
   )
 
   const handleCreate = useCallback(() => {
@@ -89,16 +94,18 @@ export function SalaryStructureListPage() {
     [editingStructure, createMutation, updateMutation],
   )
 
-  const handleDelete = useCallback(
-    async () => {
-      if (!editingStructure) return
-      if (!confirm('Delete this salary structure? This cannot be undone.')) return
-      await deleteMutation.mutateAsync(editingStructure.id)
-      setIsFormOpen(false)
-      setEditingStructure(null)
-    },
-    [editingStructure, deleteMutation],
-  )
+  const handleDelete = useCallback(async () => {
+    if (!editingStructure) return
+    setShowDeleteConfirm(true)
+  }, [editingStructure])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!editingStructure) return
+    await deleteMutation.mutateAsync(editingStructure.id)
+    setIsFormOpen(false)
+    setEditingStructure(null)
+    setShowDeleteConfirm(false)
+  }, [editingStructure, deleteMutation])
 
   return (
     <div>
@@ -135,6 +142,16 @@ export function SalaryStructureListPage() {
         isDeleting={deleteMutation.isPending}
         structure={editingStructure}
         employeeOptions={employeeOptions}
+      />
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Salary Structure"
+        message="Are you sure you want to delete this salary structure? This cannot be undone."
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
       />
     </div>
   )

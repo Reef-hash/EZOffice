@@ -37,11 +37,13 @@ export function LeaveApprovalPanel() {
   const approveMutation = useIpcMutation<LeaveRecord, number>(
     (id) => window.api.attendance.approveLeave(id),
     [['attendance', 'leave']],
+    { onSuccessMessage: 'Leave request approved successfully' },
   )
 
   const rejectMutation = useIpcMutation<LeaveRecord, number>(
     (id) => window.api.attendance.rejectLeave(id),
     [['attendance', 'leave']],
+    { onSuccessMessage: 'Leave request rejected successfully' },
   )
 
   const columns: Column<LeaveRecord>[] = [

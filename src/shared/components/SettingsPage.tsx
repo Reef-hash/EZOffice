@@ -3,8 +3,8 @@
 // Used by payslips, invoices, and exports.
 
 import { useState, useEffect } from 'react'
-import { useIpcQuery } from '@/shared/hooks/useIpcQuery'
-import { Input } from '@/shared/components/Input'
+import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
+import { Input, FileInput, Field } from '@/shared/components/Input'
 import { Button } from '@/shared/components/Button'
 import { Card } from '@/shared/components/Card'
 import { useToast } from '@/shared/components/Toast'
@@ -21,6 +21,12 @@ export function SettingsPage() {
   const { data: settings, isLoading } = useIpcQuery<CompanySettings>(
     ['settings', 'company'],
     () => window.api.settings.getCompany(),
+  )
+
+  const updateMutation = useIpcMutation<CompanySettings, UpdateCompanySettingsInput>(
+    (data) => window.api.settings.updateCompany(data),
+    [['settings', 'company']],
+    { onSuccessMessage: 'Company settings saved' },
   )
 
   // Populate form when settings load
@@ -43,43 +49,71 @@ export function SettingsPage() {
     }
   }, [settings])
 
-  const handleChange = (field: keyof UpdateCompanySettingsInput, value: string) => {
-    setFormData((prev: UpdateCompanySettingsInput) => ({
-      ...prev,
-      [field]: value.trim() || undefined,
-    }))
-  }
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Validate file size (max 2MB for logo)
+    // 2MB validation
     if (file.size > 2 * 1024 * 1024) {
       addToast('Logo must be smaller than 2MB', 'error')
       return
     }
 
     const reader = new FileReader()
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string
-      setFormData((prev) => ({
-        ...prev,
-        logo_base64: base64,
-      }))
-      setLogoPreview(base64)
+    reader.onloadend = () => {
+      const base64String = reader.result as string
+      setFormData((prev) => ({ ...prev, logo_base64: base64String }))
+      setLogoPreview(base64String)
       addToast('Logo uploaded', 'success')
     }
     reader.readAsDataURL(file)
   }
 
+  const handleChange = (field: keyof UpdateCompanySettingsInput, value: string) => {
+    setFormData((prev: UpdateCompanySettingsInput) => ({
+      ...prev,
+      [field]: value,
+    }))
+  }
+
   async function handleSave() {
+    // Client-side quick email validation if entered
+    if (formData.email && formData.email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(formData.email.trim())) {
+        addToast('Failed to save: Invalid email address format', 'error')
+        return
+      }
+    }
+
+    setIsSaving(true)
     try {
-      setIsSaving(true)
-      await window.api.settings.updateCompany(formData)
-      addToast('Company settings saved', 'success')
+      const trimmedData: UpdateCompanySettingsInput = {}
+      for (const [key, val] of Object.entries(formData)) {
+        if (typeof val === 'string') {
+          trimmedData[key as keyof UpdateCompanySettingsInput] = key === 'logo_base64' ? val : val.trim()
+        } else {
+          trimmedData[key as keyof UpdateCompanySettingsInput] = val
+        }
+      }
+      await updateMutation.mutateAsync(trimmedData)
     } catch (err) {
-      addToast(`Failed to save settings: ${String(err)}`, 'error')
+      const errMsg = String(err)
+      if (errMsg.includes('Failed to update company settings: [')) {
+        try {
+          const jsonStart = errMsg.indexOf('[')
+          const jsonStr = errMsg.substring(jsonStart)
+          const issues = JSON.parse(jsonStr)
+          if (Array.isArray(issues) && issues.length > 0) {
+            const formatted = issues.map((i) => i.message || i.code).join(', ')
+            addToast(`Failed to save settings: ${formatted}`, 'error')
+            return
+          }
+        } catch {
+          // Fall back to general toast
+        }
+      }
+      addToast(`Failed to save settings: ${errMsg}`, 'error')
     } finally {
       setIsSaving(false)
     }
@@ -87,8 +121,15 @@ export function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <p className="text-neutral-500">Loading settings...</p>
+      <div className="space-y-6 p-6 max-w-2xl">
+        <div className="h-8 w-48 bg-neutral-200 animate-pulse rounded-sm" />
+        <Card>
+          <div className="space-y-4">
+            <div className="h-10 bg-neutral-200 animate-pulse rounded-md" />
+            <div className="h-10 bg-neutral-200 animate-pulse rounded-md" />
+            <div className="h-10 bg-neutral-200 animate-pulse rounded-md" />
+          </div>
+        </Card>
       </div>
     )
   }
@@ -106,20 +147,11 @@ export function SettingsPage() {
           <div className="border-b pb-6">
             <label className="block text-sm font-medium text-neutral-700 mb-3">Company Logo</label>
             <div className="grid grid-cols-2 gap-6">
-              <div>
-                <label className="block text-xs text-neutral-600 mb-2">Upload Logo (PNG or JPG, max 2MB)</label>
-                <input
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  onChange={handleLogoUpload}
-                  className="block w-full text-sm text-neutral-500
-                    file:mr-4 file:py-2 file:px-4
-                    file:rounded-md file:border-0
-                    file:text-xs file:font-semibold
-                    file:bg-primary-50 file:text-primary-700
-                    hover:file:bg-primary-100"
-                />
-              </div>
+              <FileInput
+                label="Upload Logo (PNG or JPG, max 2MB)"
+                accept="image/png,image/jpeg"
+                onChange={handleLogoUpload}
+              />
               {logoPreview && (
                 <div className="flex items-center justify-center">
                   <img src={logoPreview} alt="Company Logo" className="max-h-24 max-w-24 object-contain" />
@@ -132,47 +164,41 @@ export function SettingsPage() {
           <div>
             <h3 className="text-sm font-medium text-neutral-900 mb-4">Company Information</h3>
             <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Company Name</label>
+              <Input
+                label="Company Name"
+                type="text"
+                value={formData.company_name ?? ''}
+                onChange={(e) => handleChange('company_name', e.target.value)}
+                placeholder="e.g., PT Maju Jaya Sdn Bhd"
+              />
+
+              <div className="grid grid-cols-2 gap-4">
                 <Input
-                  type="text"
-                  value={formData.company_name ?? ''}
-                  onChange={(e) => handleChange('company_name', e.target.value)}
-                  placeholder="e.g., PT Maju Jaya Sdn Bhd"
+                  label="Email"
+                  type="email"
+                  value={formData.email ?? ''}
+                  onChange={(e) => handleChange('email', e.target.value)}
+                  placeholder="e.g., info@company.com"
+                />
+                <Input
+                  label="Phone"
+                  type="tel"
+                  value={formData.phone ?? ''}
+                  onChange={(e) => handleChange('phone', e.target.value)}
+                  placeholder="e.g., +60 3 1234 5678"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Email</label>
-                  <Input
-                    type="email"
-                    value={formData.email ?? ''}
-                    onChange={(e) => handleChange('email', e.target.value)}
-                    placeholder="e.g., info@company.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">Phone</label>
-                  <Input
-                    type="tel"
-                    value={formData.phone ?? ''}
-                    onChange={(e) => handleChange('phone', e.target.value)}
-                    placeholder="e.g., +60 3 1234 5678"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Address</label>
+              <Field id="company-address" label="Address">
                 <textarea
+                  id="company-address"
                   value={formData.address ?? ''}
                   onChange={(e) => handleChange('address', e.target.value)}
                   placeholder="Company address for invoices..."
                   rows={3}
-                  className="w-full px-3 py-2 border border-neutral-300 rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-neutral-300 rounded-md text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-surface text-neutral-900 placeholder:text-neutral-400 focus:outline-none focus:border-primary-600 focus:ring-primary-600/40 transition-colors"
                 />
-              </div>
+              </Field>
             </div>
           </div>
 
@@ -181,46 +207,38 @@ export function SettingsPage() {
             <h3 className="text-sm font-medium text-neutral-900 mb-4">Tax & Banking</h3>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">SST Number</label>
-                  <Input
-                    type="text"
-                    value={formData.sst_number ?? ''}
-                    onChange={(e) => handleChange('sst_number', e.target.value)}
-                    placeholder="e.g., 001234567890"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-neutral-700 mb-1">BRN Number</label>
-                  <Input
-                    type="text"
-                    value={formData.brn_number ?? ''}
-                    onChange={(e) => handleChange('brn_number', e.target.value)}
-                    placeholder="e.g., 000123456789"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Bank Account Name</label>
                 <Input
+                  label="SST Number"
                   type="text"
-                  value={formData.bank_account_name ?? ''}
-                  onChange={(e) => handleChange('bank_account_name', e.target.value)}
-                  placeholder="e.g., PT Maju Jaya Sdn Bhd"
+                  value={formData.sst_number ?? ''}
+                  onChange={(e) => handleChange('sst_number', e.target.value)}
+                  placeholder="e.g., 001234567890"
+                />
+
+                <Input
+                  label="BRN Number"
+                  type="text"
+                  value={formData.brn_number ?? ''}
+                  onChange={(e) => handleChange('brn_number', e.target.value)}
+                  placeholder="e.g., 000123456789"
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Bank Account Number</label>
-                <Input
-                  type="text"
-                  value={formData.bank_account_number ?? ''}
-                  onChange={(e) => handleChange('bank_account_number', e.target.value)}
-                  placeholder="e.g., 0123456789"
-                />
-              </div>
+              <Input
+                label="Bank Account Name"
+                type="text"
+                value={formData.bank_account_name ?? ''}
+                onChange={(e) => handleChange('bank_account_name', e.target.value)}
+                placeholder="e.g., PT Maju Jaya Sdn Bhd"
+              />
+
+              <Input
+                label="Bank Account Number"
+                type="text"
+                value={formData.bank_account_number ?? ''}
+                onChange={(e) => handleChange('bank_account_number', e.target.value)}
+                placeholder="e.g., 0123456789"
+              />
             </div>
           </div>
 
