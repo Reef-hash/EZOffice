@@ -11,6 +11,7 @@ import { Modal } from '@/shared/components/Modal'
 import { Select } from '@/shared/components/Input'
 import { cn } from '@/shared/lib/cn'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
+import { useKeyboardShortcut } from '@/shared/hooks/useKeyboardShortcut'
 import { PayrollRunPage } from './PayrollRunPage'
 import { SalaryStructureListPage } from './salaryStructures/SalaryStructureListPage'
 import { PayrollSettingsPage } from './settings/PayrollSettingsPage'
@@ -84,6 +85,20 @@ export function PayrollListPage() {
   const [newYear, setNewYear] = useState(String(currentYear))
   const [newMonth, setNewMonth] = useState(String(currentMonth))
 
+  const handleKeyboardN = useCallback(() => {
+    if (activeTab === 'runs') {
+      setShowCreateRun(true)
+    }
+  }, [activeTab])
+
+  useKeyboardShortcut([
+    {
+      key: 'n',
+      ctrlKey: true,
+      callback: handleKeyboardN,
+    },
+  ])
+
   // ── Payroll runs list ──
   const { data: runs = [], isLoading } = useIpcQuery<PayrollRun[]>(
     ['payroll', 'runs'],
@@ -93,6 +108,7 @@ export function PayrollListPage() {
   const createRunMutation = useIpcMutation<PayrollRun, CreatePayrollRunInput>(
     (data) => window.api.payroll.runs.create(data),
     [['payroll', 'runs']],
+    { onSuccessMessage: 'Payroll run created successfully' },
   )
 
   const handleCreateRun = useCallback(async () => {
@@ -143,8 +159,9 @@ export function PayrollListPage() {
         ))}
       </div>
 
-      {activeTab === 'runs' && (
-        <>
+      <div key={activeTab} className="animate-[fade-in_0.15s_ease-out]">
+        {activeTab === 'runs' && (
+          <>
           {/* Quick Actions */}
           <div className="flex items-center gap-3">
             <Button variant="dark" onClick={() => setShowCreateRun(true)}>
@@ -219,10 +236,11 @@ export function PayrollListPage() {
         </>
       )}
 
-      {activeTab === 'salaryStructures' && <SalaryStructureListPage />}
-      {activeTab === 'advances' && <SalaryAdvanceListPage />}
-      {activeTab === 'rateTables' && <RateTablesPage />}
-      {activeTab === 'settings' && <PayrollSettingsPage />}
+        {activeTab === 'salaryStructures' && <SalaryStructureListPage />}
+        {activeTab === 'advances' && <SalaryAdvanceListPage />}
+        {activeTab === 'rateTables' && <RateTablesPage />}
+        {activeTab === 'settings' && <PayrollSettingsPage />}
+      </div>
     </div>
   )
 }

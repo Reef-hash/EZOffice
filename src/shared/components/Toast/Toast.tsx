@@ -1,89 +1,86 @@
-// Toast notification system — minimal, client-side only.
+// Global toast notification system.
+// Wrap the app with <ToastProvider> (done in AppShell), then call useToast()
+// anywhere in the tree to get addToast(message, tone?).
+// Each toast auto-dismisses after 4.5 s and can be manually closed.
 
-import { createContext, useContext, useState, useCallback } from 'react'
-import type { ReactNode } from 'react'
+import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { cn } from '../../lib/cn'
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning'
 
-interface Toast {
+interface ToastItem {
   id: string
   message: string
-  type: ToastType
+  tone: ToastType
+  isLeaving?: boolean
 }
 
-interface ToastContextType {
-  addToast: (message: string, type: ToastType) => void
-  removeToast: (id: string) => void
-  toasts: Toast[]
+interface ToastContextValue {
+  addToast: (message: string, tone?: ToastType) => void
 }
 
-const ToastContext = createContext<ToastContextType | undefined>(undefined)
+const TOAST_DURATION_MS = 4500
+
+const ToastContext = createContext<ToastContextValue | null>(null)
+
+export function useToast(): ToastContextValue {
+  const ctx = useContext(ToastContext)
+  if (!ctx) throw new Error('useToast must be used inside <ToastProvider>')
+  return ctx
+}
 
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([])
-
-  const addToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = `${Date.now()}-${Math.random()}`
-    setToasts((prev) => [...prev, { id, message, type }])
-
-    // Auto-remove after 4 seconds
-    setTimeout(() => {
-      removeToast(id)
-    }, 4000)
-  }, [])
+  const [toasts, setToasts] = useState<ToastItem[]>([])
 
   const removeToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
-  return (
-    <ToastContext.Provider value={{ addToast, removeToast, toasts }}>
-      {children}
-      <ToastContainer toasts={toasts} onRemove={removeToast} />
-    </ToastContext.Provider>
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, isLeaving: true } : t)),
+    )
+    setTimeout(() => {
+      removeToast(id)
+    }, 200)
+  }, [removeToast])
+
+  const addToast = useCallback(
+    (message: string, tone: ToastType = 'info') => {
+      const id = crypto.randomUUID()
+      setToasts((prev) => [...prev, { id, message, tone }])
+      setTimeout(() => dismissToast(id), TOAST_DURATION_MS)
+    },
+    [dismissToast],
   )
-}
 
-export function useToast() {
-  const context = useContext(ToastContext)
-  if (!context) {
-    throw new Error('useToast must be used within ToastProvider')
-  }
-  return context
-}
-
-interface ToastContainerProps {
-  toasts: Toast[]
-  onRemove: (id: string) => void
-}
-
-function ToastContainer({ toasts, onRemove }: ToastContainerProps) {
   return (
-    <div className="fixed right-4 top-4 flex flex-col gap-2 space-y-2 z-50">
-      {toasts.map((toast) => (
-        <div
-          key={toast.id}
-          className={`rounded-sm px-4 py-3 text-sm font-medium shadow-sm animate-in fade-in slide-in-from-right ${
-            toast.type === 'success'
-              ? 'bg-success-50 text-success-700'
-              : toast.type === 'error'
-                ? 'bg-error-50 text-error-700'
-                : toast.type === 'warning'
-                  ? 'bg-warning-50 text-warning-700'
-                  : 'bg-info-50 text-info-700'
-          }`}
-        >
-          <div className="flex items-center justify-between gap-3">
+    <ToastContext.Provider value={{ addToast }}>
+      {children}
+      <div className="pointer-events-none fixed right-4 top-4 z-50 flex w-80 flex-col gap-2">
+        {toasts.map((toast) => (
+          <div
+            key={toast.id}
+            className={cn(
+              'pointer-events-auto flex items-start justify-between gap-3 rounded-xl border-l-4 px-4 py-3 shadow-md text-sm transition-all duration-200',
+              toast.isLeaving ? 'animate-[toast-out_0.2s_ease-in_forwards]' : 'animate-[toast-in_0.2s_ease-out]',
+              toast.tone === 'success' && 'border-success-600 bg-success-50 text-success-700',
+              toast.tone === 'error' && 'border-error-600 bg-error-50 text-error-700',
+              toast.tone === 'warning' && 'border-warning-600 bg-warning-50 text-warning-700',
+              toast.tone === 'info' && 'border-primary-600 bg-primary-50 text-primary-700',
+            )}
+          >
             <span>{toast.message}</span>
             <button
-              onClick={() => onRemove(toast.id)}
-              className="text-current opacity-60 hover:opacity-100"
+              onClick={() => dismissToast(toast.id)}
+              className="shrink-0 leading-none opacity-50 hover:opacity-100 cursor-pointer"
+              aria-label="Dismiss"
             >
               ✕
             </button>
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+    </ToastContext.Provider>
   )
 }

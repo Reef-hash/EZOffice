@@ -6,6 +6,8 @@ import { Button } from '@/shared/components/Button'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { SupplierForm } from './SupplierForm'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { useKeyboardShortcut } from '@/shared/hooks/useKeyboardShortcut'
 import type { Column } from '@/shared/components/Table'
 import type { Supplier } from '@/shared/types/entities'
 import type { CreateSupplierInput, UpdateSupplierInput } from '@/shared/types/inputs'
@@ -13,9 +15,8 @@ import type { CreateSupplierInput, UpdateSupplierInput } from '@/shared/types/in
 const columns: Column<Supplier>[] = [
   { key: 'name', header: 'Name', accessor: (r) => r.name, sortable: true, sortValue: (r) => r.name },
   { key: 'contact_person', header: 'Contact', accessor: (r) => r.contact_person || '—', sortable: true, sortValue: (r) => r.contact_person || '' },
-  { key: 'phone', header: 'Phone', accessor: (r) => r.phone || '—', sortable: true, sortValue: (r) => r.phone || '' },
   { key: 'email', header: 'Email', accessor: (r) => r.email || '—', sortable: true, sortValue: (r) => r.email || '' },
-  { key: 'address', header: 'Address', accessor: (r) => r.address || '—', sortable: true, sortValue: (r) => r.address || '' },
+  { key: 'phone', header: 'Phone', accessor: (r) => r.phone || '—', sortable: true, sortValue: (r) => r.phone || '' },
 ]
 
 export function SupplierListPage() {
@@ -26,26 +27,38 @@ export function SupplierListPage() {
 
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const createMutation = useIpcMutation<Supplier, CreateSupplierInput>(
     (data) => window.api.suppliers.create(data),
     [['suppliers']],
+    { onSuccessMessage: 'Supplier created successfully' },
   )
 
   const updateMutation = useIpcMutation<Supplier, { id: number; data: UpdateSupplierInput }>(
     ({ id, data }) => window.api.suppliers.update(id, data),
     [['suppliers']],
+    { onSuccessMessage: 'Supplier updated successfully' },
   )
 
   const deleteMutation = useIpcMutation<void, number>(
     (id) => window.api.suppliers.delete(id),
     [['suppliers']],
+    { onSuccessMessage: 'Supplier deleted successfully' },
   )
 
   const handleCreate = useCallback(() => {
     setEditingSupplier(null)
     setIsFormOpen(true)
   }, [])
+
+  useKeyboardShortcut([
+    {
+      key: 'n',
+      ctrlKey: true,
+      callback: handleCreate,
+    },
+  ])
 
   const handleEdit = useCallback((supplier: Supplier) => {
     setEditingSupplier(supplier)
@@ -65,16 +78,22 @@ export function SupplierListPage() {
     [editingSupplier, createMutation, updateMutation],
   )
 
-  const handleDelete = useCallback(
-    async () => {
-      if (!editingSupplier) return
-      if (!confirm(`Delete supplier "${editingSupplier.name}"? This cannot be undone.`)) return
+  const handleDelete = useCallback(async () => {
+    if (!editingSupplier) return
+    setShowDeleteConfirm(true)
+  }, [editingSupplier])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!editingSupplier) return
+    try {
       await deleteMutation.mutateAsync(editingSupplier.id)
       setIsFormOpen(false)
       setEditingSupplier(null)
-    },
-    [editingSupplier, deleteMutation],
-  )
+      setShowDeleteConfirm(false)
+    } catch {
+      // Handled by global onError toast
+    }
+  }, [editingSupplier, deleteMutation])
 
   return (
     <div>
@@ -109,6 +128,16 @@ export function SupplierListPage() {
         isSubmitting={createMutation.isPending || updateMutation.isPending}
         isDeleting={deleteMutation.isPending}
         supplier={editingSupplier}
+      />
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Supplier"
+        message={`Are you sure you want to delete supplier "${editingSupplier?.name || ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
       />
     </div>
   )

@@ -19,10 +19,12 @@ export function RateTablesPage() {
   const createEpf = useIpcMutation<EpfRate, CreateEpfRateInput>(
     (data) => window.api.payroll.epfRates.create(data),
     [['payroll', 'epfRates']],
+    { onSuccessMessage: 'EPF rate created successfully' },
   )
   const deleteEpf = useIpcMutation<void, number>(
     (id) => window.api.payroll.epfRates.delete(id),
     [['payroll', 'epfRates']],
+    { onSuccessMessage: 'EPF rate deleted successfully' },
   )
 
   // ── SOCSO ──
@@ -33,10 +35,12 @@ export function RateTablesPage() {
   const createSocso = useIpcMutation<SocsoRate, CreateSocsoRateInput>(
     (data) => window.api.payroll.socsoRates.create(data),
     [['payroll', 'socsoRates']],
+    { onSuccessMessage: 'SOCSO rate created successfully' },
   )
   const deleteSocso = useIpcMutation<void, number>(
     (id) => window.api.payroll.socsoRates.delete(id),
     [['payroll', 'socsoRates']],
+    { onSuccessMessage: 'SOCSO rate deleted successfully' },
   )
 
   // ── EIS ──
@@ -47,10 +51,12 @@ export function RateTablesPage() {
   const createEis = useIpcMutation<EisRate, CreateEisRateInput>(
     (data) => window.api.payroll.eisRates.create(data),
     [['payroll', 'eisRates']],
+    { onSuccessMessage: 'EIS rate created successfully' },
   )
   const deleteEis = useIpcMutation<void, number>(
     (id) => window.api.payroll.eisRates.delete(id),
     [['payroll', 'eisRates']],
+    { onSuccessMessage: 'EIS rate deleted successfully' },
   )
 
   // ── PCB ──
@@ -61,10 +67,12 @@ export function RateTablesPage() {
   const createPcb = useIpcMutation<PcbBracket, CreatePcbBracketInput>(
     (data) => window.api.payroll.pcbBrackets.create(data),
     [['payroll', 'pcbBrackets']],
+    { onSuccessMessage: 'PCB bracket created successfully' },
   )
   const deletePcb = useIpcMutation<void, number>(
     (id) => window.api.payroll.pcbBrackets.delete(id),
     [['payroll', 'pcbBrackets']],
+    { onSuccessMessage: 'PCB bracket deleted successfully' },
   )
 
   async function handleCreateEpf(draft: RateBracketDraft) {

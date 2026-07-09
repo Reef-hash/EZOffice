@@ -10,6 +10,9 @@ import { useIpcQuery } from '@/shared/hooks/useIpcQuery'
 import type { Column } from '@/shared/components/Table'
 import type { AuditEntry } from '@/shared/types/api'
 
+import { StatusBadge } from '@/shared/components/StatusBadge'
+import { AUDIT_ACTION_TONE } from './constants'
+
 const ACTIONS: Array<{ value: string; label: string }> = [
   { value: '', label: 'All Actions' },
   { value: 'create', label: 'Create' },
@@ -39,15 +42,9 @@ const columns: Column<AuditEntry>[] = [
     key: 'action',
     header: 'Action',
     accessor: (r) => (
-      <span className={`inline-block rounded-sm px-2 py-1 text-xs font-medium ${
-        r.action === 'create' ? 'bg-success-50 text-success-700' :
-        r.action === 'update' ? 'bg-info-50 text-info-700' :
-        r.action === 'delete' ? 'bg-error-50 text-error-700' :
-        r.action === 'login' ? 'bg-primary-50 text-primary-700' :
-        'bg-neutral-50 text-neutral-700'
-      }`}>
+      <StatusBadge tone={AUDIT_ACTION_TONE[r.action] || 'neutral'}>
         {r.action}
-      </span>
+      </StatusBadge>
     ),
     sortable: true,
     sortValue: (r) => r.action,

@@ -4,6 +4,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { Table } from '@/shared/components/Table'
 import { Button } from '@/shared/components/Button'
 import { StatusBadge } from '@/shared/components/StatusBadge'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { SalaryAdvanceForm } from './SalaryAdvanceForm'
 import type { Column } from '@/shared/components/Table'
@@ -46,20 +47,24 @@ export function SalaryAdvanceListPage() {
 
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingAdvance, setEditingAdvance] = useState<SalaryAdvance | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const createMutation = useIpcMutation<SalaryAdvance, CreateSalaryAdvanceInput>(
     (data) => window.api.payroll.salaryAdvances.create(data),
     [['payroll', 'salaryAdvances']],
+    { onSuccessMessage: 'Salary advance created successfully' },
   )
 
   const updateMutation = useIpcMutation<SalaryAdvance, { id: number; data: UpdateSalaryAdvanceInput }>(
     ({ id, data }) => window.api.payroll.salaryAdvances.update(id, data),
     [['payroll', 'salaryAdvances']],
+    { onSuccessMessage: 'Salary advance updated successfully' },
   )
 
   const deleteMutation = useIpcMutation<void, number>(
     (id) => window.api.payroll.salaryAdvances.delete(id),
     [['payroll', 'salaryAdvances']],
+    { onSuccessMessage: 'Salary advance deleted successfully' },
   )
 
   const handleCreate = useCallback(() => {
@@ -85,16 +90,22 @@ export function SalaryAdvanceListPage() {
     [editingAdvance, createMutation, updateMutation],
   )
 
-  const handleDelete = useCallback(
-    async () => {
-      if (!editingAdvance) return
-      if (!confirm('Delete this salary advance? This cannot be undone.')) return
+  const handleDelete = useCallback(async () => {
+    if (!editingAdvance) return
+    setShowDeleteConfirm(true)
+  }, [editingAdvance])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!editingAdvance) return
+    try {
       await deleteMutation.mutateAsync(editingAdvance.id)
       setIsFormOpen(false)
       setEditingAdvance(null)
-    },
-    [editingAdvance, deleteMutation],
-  )
+      setShowDeleteConfirm(false)
+    } catch {
+      // Handled by global onError toast
+    }
+  }, [editingAdvance, deleteMutation])
 
   return (
     <div>
@@ -130,6 +141,16 @@ export function SalaryAdvanceListPage() {
         isDeleting={deleteMutation.isPending}
         advance={editingAdvance}
         employeeOptions={employeeOptions}
+      />
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Salary Advance"
+        message="Are you sure you want to delete this salary advance? This cannot be undone."
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
       />
     </div>
   )
