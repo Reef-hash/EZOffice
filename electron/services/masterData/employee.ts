@@ -36,11 +36,35 @@ export function getEmployeeById(db: Database.Database, id: number): Employee | n
   return row ?? null
 }
 
+/**
+ * Validates that device_user_id is unique (application-level since SQLite ALTER TABLE
+ * doesn't support ADD COLUMN with UNIQUE). Skips check when deviceUserId is null.
+ * When updating, optionally excludes a given employee ID from the check.
+ */
+function assertDeviceUserIdUnique(
+  db: Database.Database,
+  deviceUserId: number | null,
+  excludeEmployeeId?: number,
+): void {
+  if (deviceUserId == null) return
+  const existing = db.prepare(
+    `SELECT id FROM employees WHERE device_user_id = ? AND id != ?`,
+  ).get(deviceUserId, excludeEmployeeId ?? -1) as { id: number } | undefined
+  if (existing) {
+    throw new Error(
+      `Device User ID ${deviceUserId} is already assigned to employee ID ${existing.id}. Each device user can only map to one employee.`,
+    )
+  }
+}
+
 export function createEmployee(db: Database.Database, input: CreateEmployeeWithShiftInput): Employee {
   const now = new Date().toISOString()
+
+  // Validate device_user_id uniqueness
+  assertDeviceUserIdUnique(db, input.device_user_id ?? null)
   const stmt = db.prepare(
-    `INSERT INTO employees (employee_code, name, ic_number, phone, email, department_id, position, status, date_joined, shift_id, created_at, updated_at)
-     VALUES (@employee_code, @name, @ic_number, @phone, @email, @department_id, @position, @status, @date_joined, @shift_id, @created_at, @updated_at)`,
+    `INSERT INTO employees (employee_code, name, ic_number, phone, email, department_id, position, status, date_joined, device_user_id, shift_id, created_at, updated_at)
+     VALUES (@employee_code, @name, @ic_number, @phone, @email, @department_id, @position, @status, @date_joined, @device_user_id, @shift_id, @created_at, @updated_at)`,
   )
 
   const result = stmt.run({
@@ -53,6 +77,7 @@ export function createEmployee(db: Database.Database, input: CreateEmployeeWithS
     position: input.position ?? null,
     status: input.status ?? EMPLOYEE_STATUS.ACTIVE,
     date_joined: input.date_joined,
+    device_user_id: input.device_user_id ?? null,
     // shift_id is optional — null means "no fixed shift" (falls back to salary
     // structure's standard_hours_per_day for OT classification).
     shift_id: input.shift_id ?? null,
@@ -74,6 +99,12 @@ export function updateEmployee(
     throw new Error(`Employee with id ${id} not found`)
   }
 
+  // Validate device_user_id uniqueness (skip if value unchanged from existing)
+  const newDeviceUserId = input.device_user_id !== undefined ? input.device_user_id : existing.device_user_id
+  if (newDeviceUserId !== existing.device_user_id) {
+    assertDeviceUserIdUnique(db, newDeviceUserId, id)
+  }
+
   const now = new Date().toISOString()
   const merged = {
     employee_code: input.employee_code ?? existing.employee_code,
@@ -85,6 +116,8 @@ export function updateEmployee(
     position: input.position !== undefined ? input.position : existing.position,
     status: input.status ?? existing.status,
     date_joined: input.date_joined ?? existing.date_joined,
+    // device_user_id: undefined = leave unchanged; null = explicitly unassign; number = assign
+    device_user_id: newDeviceUserId,
     // shift_id: undefined = leave unchanged; null = explicitly unassign; number = assign
     shift_id: input.shift_id !== undefined ? input.shift_id : existing.shift_id,
   }
@@ -100,6 +133,7 @@ export function updateEmployee(
          position = @position,
          status = @status,
          date_joined = @date_joined,
+         device_user_id = @device_user_id,
          shift_id = @shift_id,
          updated_at = @updated_at
      WHERE id = @id`,

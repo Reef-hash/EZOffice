@@ -19,6 +19,7 @@ const columns: Column<Employee>[] = [
   { key: 'ic_number', header: 'IC Number', accessor: (r) => r.ic_number, sortable: true, sortValue: (r) => r.ic_number, width: '140px' },
   { key: 'department_name', header: 'Department', accessor: (r) => r.department_name || '—', sortable: true, sortValue: (r) => r.department_name || '' },
   { key: 'position', header: 'Position', accessor: (r) => r.position || '—', sortable: true, sortValue: (r) => r.position || '' },
+  { key: 'device_user_id', header: 'Device ID', accessor: (r) => r.device_user_id ?? '—', sortable: true, sortValue: (r) => String(r.device_user_id ?? ''), width: '90px', align: 'center' },
   {
     key: 'status',
     header: 'Status',

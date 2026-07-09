@@ -18,6 +18,7 @@ import { LeaveRequestForm } from './LeaveRequestForm'
 import { LeaveApprovalPanel } from './LeaveApprovalPanel'
 import { LateReportPage } from './LateReportPage'
 import { AttendanceSummaryPage } from './AttendanceSummaryPage'
+import { ExceptionsPanel } from './ExceptionsPanel'
 import type { Column } from '@/shared/components/Table'
 import type { Employee, AttendanceLog } from '@/shared/types/entities'
 import type { CreateAttendanceLogInput, UpdateAttendanceLogInput } from '@/shared/types/inputs'
@@ -32,7 +33,7 @@ import {
   ATTENDANCE_STATUS_LABEL,
 } from './constants'
 
-type AttendanceTab = 'logs' | 'deviceSettings' | 'shifts' | 'leave' | 'lateReport' | 'summary'
+type AttendanceTab = 'logs' | 'deviceSettings' | 'shifts' | 'leave' | 'lateReport' | 'summary' | 'exceptions'
 
 const TABS: Array<{ key: AttendanceTab; label: string }> = [
   { key: 'logs', label: 'Logs' },
@@ -40,6 +41,7 @@ const TABS: Array<{ key: AttendanceTab; label: string }> = [
   { key: 'leave', label: 'Leave' },
   { key: 'lateReport', label: 'Late Report' },
   { key: 'summary', label: 'Monthly Summary' },
+  { key: 'exceptions', label: 'Exceptions' },
   { key: 'deviceSettings', label: 'Device Settings' },
 ]
 
@@ -307,6 +309,10 @@ export function AttendanceListPage() {
         <AttendanceSummaryPage />
       )}
 
+      {activeTab === 'exceptions' && (
+        <ExceptionsPanel />
+      )}
+
       {activeTab === 'logs' && (
       <div>
 
@@ -455,6 +461,8 @@ function subtitleForTab(tab: AttendanceTab, logCount: number): React.ReactNode {
       return 'Lateness summary by employee'
     case 'summary':
       return 'Per-employee monthly attendance calendar'
+    case 'exceptions':
+      return 'Anomalies to resolve before running payroll'
   }
 }
 

@@ -7,6 +7,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppShell } from './shared/components/AppShell'
 import { LoginPage } from './modules/auth/LoginPage'
+import { ActivateLicensePage } from './modules/auth/ActivateLicensePage'
 import { EmployeeListPage } from './modules/master-data/employees/EmployeeListPage'
 import { CustomerListPage } from './modules/master-data/customers/CustomerListPage'
 import { SupplierListPage } from './modules/master-data/suppliers/SupplierListPage'
@@ -38,6 +39,11 @@ export function App() {
     isFirstLaunch: false,
   })
   const [isInitializing, setIsInitializing] = useState(true)
+  const [licenseCheck, setLicenseCheck] = useState<{
+    done: boolean
+    allowed: boolean
+    reasonMessage: string | null
+  }>({ done: false, allowed: false, reasonMessage: null })
   const [isDarkMode, setIsDarkMode] = useState(() => {
     // Phase D2: Initialize dark mode from localStorage
     const stored = localStorage.getItem('darkMode')
@@ -80,6 +86,38 @@ export function App() {
     checkFirstLaunch()
   }, [])
 
+  // License gate — checked before admin auth, and before rendering the app
+  // shell at all. This is a pure local read (checkGrace never touches the
+  // network) so it resolves instantly even fully offline.
+  useEffect(() => {
+    const checkLicense = async () => {
+      try {
+        const result = await window.api.license.checkGrace()
+        if (result.allowed) {
+          setLicenseCheck({ done: true, allowed: true, reasonMessage: null })
+        } else if (!result.isActivated) {
+          setLicenseCheck({ done: true, allowed: false, reasonMessage: null })
+        } else {
+          setLicenseCheck({
+            done: true,
+            allowed: false,
+            reasonMessage:
+              'Your EZOffice activation could not be renewed and the offline grace period has ended. Please reconnect to the internet and reactivate.',
+          })
+        }
+      } catch {
+        // IPC itself failing is not expected — fail closed rather than silently unlock.
+        setLicenseCheck({ done: true, allowed: false, reasonMessage: null })
+      }
+    }
+
+    checkLicense()
+  }, [])
+
+  const handleLicenseActivated = () => {
+    setLicenseCheck({ done: true, allowed: true, reasonMessage: null })
+  }
+
   // Phase D2: Persist dark mode preference
   const handleToggleDarkMode = () => {
     setIsDarkMode((prev: boolean) => {
@@ -107,11 +145,19 @@ export function App() {
     })
   }
 
-  if (isInitializing) {
+  if (isInitializing || !licenseCheck.done) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="text-sm font-medium text-neutral-500">Loading EZOffice...</div>
       </div>
+    )
+  }
+
+  if (!licenseCheck.allowed) {
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ActivateLicensePage onActivated={handleLicenseActivated} reasonMessage={licenseCheck.reasonMessage} />
+      </QueryClientProvider>
     )
   }
 

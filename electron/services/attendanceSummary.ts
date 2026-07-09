@@ -1,44 +1,115 @@
 // getMonthlyAttendanceSummary — aggregates hours per employee per month.
-// This was deferred from Phase 2 (attendance.ts line ~268) because it depends on
-// salary_structures.standard_hours_per_day for OT classification.
 //
-// Logic:
-//  1. Get the active salary structure for each employee during the target month
-//  2. Get attendance logs for the month, ordered chronologically
-//  3. Pair consecutive IN→OUT punches per employee/day
-//  4. Hours in each pair ≤ standard_hours_per_day → regular; excess → OT
-//  5. Sum per employee
+// Rewritten per DEVICE_SYNC_AUDIT.md C1+C3 findings (2026-07-08):
+//   OLD: paired IN→OUT globally, called regular/OT per pair, counted daysWorked per pair
+//        → double-paid split days (lunch-break = 2 pairs = 2 days); OT sessions counted
+//          as regular (pair hours ≤ standard → OT never triggered for a 3h evening session)
+//
+//   NEW: aggregate per CALENDAR DAY
+//     1. Fetch logs with ±1 day margin around the month (fixes M1: cross-midnight sessions)
+//     2. Pair consecutive IN→OUT globally per employee (orphan INs/OUTs discarded)
+//     3. Attribute each pair to the date of its IN punch
+//     4. Filter: only pairs whose IN date falls in the month, not on approved leave
+//     5. Per date: dayTotalHours = sum of all pair hours; regular = min(total, standard);
+//        OT = max(0, total − standard)  ← D1: hours-based OT rule (locked 2026-07-08)
+//     6. days_worked = count of unique dates with dayTotalHours > 0
+//
+// Session cap (max_session_hours, D4) is applied here: pairs exceeding the cap are
+// excluded from hours. The payroll pre-flight gate (D5) blocks the run if open
+// attendance_exceptions exist for the month (set up by computeAttendanceExceptions in
+// step 3 of the sync overhaul).
+//
+// The pure computation is isolated in aggregateDailyHours() so unit tests can exercise
+// the math without requiring better-sqlite3 (which is compiled against Electron's Node
+// and cannot load under the system Node that vitest runs on).
 
 import type Database from 'better-sqlite3'
 import type { EmployeeMonthlySummary } from '../../src/shared/types/entities'
 
-/**
- * Get the salary structure effective for a given employee on a given date.
- * Returns the single most recent structure whose effective_from ≤ asOfDate.
- */
-function getEffectiveSalaryStructure(
-  db: Database.Database,
-  employeeId: number,
-  asOfDate: string,
-): { rate_type: string; rate_amount: number; standard_hours_per_day: number } | null {
-  const row = db.prepare(`
-    SELECT rate_type, rate_amount, standard_hours_per_day
-    FROM salary_structures
-    WHERE employee_id = ? AND effective_from <= ?
-    ORDER BY effective_from DESC
-    LIMIT 1
-  `).get(employeeId, asOfDate) as
-    { rate_type: string; rate_amount: number; standard_hours_per_day: number } | undefined
-  return row ?? null
+// ── Pure computation (unit-testable, no DB) ───────────────────────────────────
+
+export interface PunchLog {
+  type: 'in' | 'out'
+  timestamp: string // ISO 8601 naive local: "YYYY-MM-DDTHH:MM:SS"
+}
+
+export interface DailyAggregation {
+  total_regular_hours: number
+  total_ot_hours: number
+  days_worked: number
 }
 
 /**
- * Get the standard daily hours that govern OT classification for an employee.
+ * Pure function: given a sorted sequence of punch logs for one employee,
+ * aggregate hours per calendar day and split into regular/OT.
+ *
+ * @param logs          Sorted chronologically. All must belong to one employee.
+ * @param monthStart    "YYYY-MM-DD" — only pairs whose IN date ≥ monthStart count.
+ * @param monthEnd      "YYYY-MM-DD" — only pairs whose IN date ≤ monthEnd count.
+ * @param standardHours Standard daily hours (e.g. 8). D1: OT = excess beyond this.
+ * @param leaveDates    Set of "YYYY-MM-DD" approved leave dates; pairs on these days excluded.
+ * @param maxSessionHours Session cap (D4). Pairs longer than this are excluded from pay.
+ */
+export function aggregateDailyHours(
+  logs: PunchLog[],
+  monthStart: string,
+  monthEnd: string,
+  standardHours: number,
+  leaveDates: Set<string>,
+  maxSessionHours: number,
+): DailyAggregation {
+  // Step 1: Pair consecutive IN→OUT globally (orphan INs/OUTs discarded)
+  type Pair = { inDate: string; hours: number }
+  const pairs: Pair[] = []
+  let currentIn: string | null = null // pending IN timestamp
+
+  for (const log of logs) {
+    if (log.type === 'in') {
+      currentIn = log.timestamp // overwrite any unresolved IN (orphan IN → discarded)
+    } else if (log.type === 'out' && currentIn !== null) {
+      const hours = (new Date(log.timestamp).getTime() - new Date(currentIn).getTime()) / (1000 * 60 * 60)
+      if (hours > 0 && hours <= maxSessionHours) {
+        // Session cap: pairs > maxSessionHours are excluded (flagged as exceptions elsewhere)
+        pairs.push({ inDate: currentIn.slice(0, 10), hours })
+      }
+      currentIn = null
+    }
+    // Orphan OUT (no pending IN): discard
+  }
+
+  // Step 2: Group by IN date, apply month + leave filters
+  const hoursPerDay = new Map<string, number>()
+  for (const pair of pairs) {
+    if (pair.inDate < monthStart || pair.inDate > monthEnd) continue // outside month
+    if (leaveDates.has(pair.inDate)) continue // approved leave day
+    hoursPerDay.set(pair.inDate, (hoursPerDay.get(pair.inDate) ?? 0) + pair.hours)
+  }
+
+  // Step 3: Split each day into regular/OT
+  let totalRegularHours = 0
+  let totalOtHours = 0
+  let daysWorked = 0
+
+  for (const dayTotal of hoursPerDay.values()) {
+    if (dayTotal <= 0) continue
+    totalRegularHours += Math.min(dayTotal, standardHours)
+    totalOtHours += Math.max(0, dayTotal - standardHours)
+    daysWorked++
+  }
+
+  return {
+    total_regular_hours: Math.round(totalRegularHours * 100) / 100,
+    total_ot_hours: Math.round(totalOtHours * 100) / 100,
+    days_worked: daysWorked,
+  }
+}
+
+/**
+ * Returns the standard daily hours that govern OT classification for an employee.
  * Phase C rule: if the employee has an assigned shift, use shift.standard_hours
  * (shifts are the authoritative source of expected work hours post-Phase C).
  * Fall back to salary_structures.standard_hours_per_day for employees with no
- * shift (e.g. salaried staff not on a fixed shift). Returns null if neither
- * exists — caller skips that employee (can't classify OT without a baseline).
+ * shift. Returns null if neither exists — caller skips that employee.
  */
 function getStandardHoursForEmployee(
   db: Database.Database,
@@ -58,7 +129,14 @@ function getStandardHoursForEmployee(
   }
 
   // 2. Fall back to salary structure
-  const structure = getEffectiveSalaryStructure(db, employeeId, asOfDate)
+  const structure = db.prepare(`
+    SELECT standard_hours_per_day
+    FROM salary_structures
+    WHERE employee_id = ? AND effective_from <= ?
+    ORDER BY effective_from DESC
+    LIMIT 1
+  `).get(employeeId, asOfDate) as { standard_hours_per_day: number } | undefined
+
   if (structure && structure.standard_hours_per_day > 0) {
     return structure.standard_hours_per_day
   }
@@ -68,9 +146,8 @@ function getStandardHoursForEmployee(
 
 /**
  * Returns the set of dates (YYYY-MM-DD) on which an employee has APPROVED leave
- * that overlaps the given month range. Approved leave days are excluded from
- * days_worked and hours aggregation — the employee was not expected to work,
- * so their punches on those days (if any) are not counted as regular work.
+ * that overlaps the given month range. Leave days are excluded from work-hours
+ * aggregation per pair (not per punch) — see M1 fix in DEVICE_SYNC_AUDIT.md.
  */
 function getApprovedLeaveDates(
   db: Database.Database,
@@ -87,7 +164,6 @@ function getApprovedLeaveDates(
 
   const dates = new Set<string>()
   for (const row of rows) {
-    // Walk date_from → date_to inclusive, adding each date that falls in the month
     const from = new Date(row.date_from + 'T00:00:00')
     const to = new Date(row.date_to + 'T00:00:00')
     for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
@@ -101,6 +177,17 @@ function getApprovedLeaveDates(
 }
 
 /**
+ * Reads the configured max session cap in hours from payroll_settings.
+ * Falls back to 16 h (D4 decision default) if the row or column is missing.
+ */
+function getMaxSessionHours(db: Database.Database): number {
+  const row = db.prepare(
+    'SELECT max_session_hours FROM payroll_settings WHERE id = 1',
+  ).get() as { max_session_hours?: number } | undefined
+  return row?.max_session_hours ?? 16
+}
+
+/**
  * Aggregates monthly attendance for one or more employees.
  *
  * @param employeeIds — if omitted, aggregates ALL employees who have attendance logs in the month
@@ -111,18 +198,24 @@ export function getMonthlyAttendanceSummary(
   filters: { employeeIds?: number[]; year: number; month: number },
 ): EmployeeMonthlySummary[] {
   const { year, month } = filters
-  const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+  const pad = (n: number) => String(n).padStart(2, '0')
 
-  // Compute month end: last day of the month
-  const lastDay = new Date(year, month, 0).getDate() // month is 1-based here, day 0 = last day of prev
-  const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  const monthStart = `${year}-${pad(month)}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const monthEnd = `${year}-${pad(month)}-${pad(lastDay)}`
+
+  // ±1 day margin so that IN punches on monthEnd that pair with an OUT on the first
+  // day of next month are captured (cross-midnight month-boundary sessions, M1).
+  const prevDay = new Date(year, month - 1, 0) // last day of previous month
+  const nextDay = new Date(year, month, 1) // first day of next month
+  const fetchStart = `${prevDay.getFullYear()}-${pad(prevDay.getMonth() + 1)}-${pad(prevDay.getDate())}`
+  const fetchEnd = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`
 
   // Determine which employees to process
   let employeeIds: number[]
   if (filters.employeeIds && filters.employeeIds.length > 0) {
     employeeIds = filters.employeeIds
   } else {
-    // Get all employees who have attendance in the month
     const rows = db.prepare(`
       SELECT DISTINCT employee_id FROM attendance_logs
       WHERE date(timestamp) >= ? AND date(timestamp) <= ?
@@ -130,6 +223,7 @@ export function getMonthlyAttendanceSummary(
     employeeIds = rows.map((r) => r.employee_id)
   }
 
+  const maxSessionHours = getMaxSessionHours(db)
   const summaries: EmployeeMonthlySummary[] = []
 
   for (const employeeId of employeeIds) {
@@ -138,66 +232,26 @@ export function getMonthlyAttendanceSummary(
     const standardHoursPerDay = getStandardHoursForEmployee(db, employeeId, monthEnd)
     if (standardHoursPerDay == null) continue
 
-    // Approved leave days in this month — punches on these days are not counted
-    // as worked days/hours (employee was on approved leave, not expected to work).
+    // Approved leave days — pairs whose IN date is a leave day are excluded.
     const leaveDates = getApprovedLeaveDates(db, employeeId, monthStart, monthEnd)
 
-    // Fetch ALL attendance logs for this employee in the month, ordered chronologically
+    // Fetch logs with ±1 day margin to capture cross-midnight sessions at month ends (M1).
     const logs = db.prepare(`
       SELECT type, timestamp
       FROM attendance_logs
       WHERE employee_id = ? AND date(timestamp) >= ? AND date(timestamp) <= ?
       ORDER BY timestamp ASC
-    `).all(employeeId, monthStart, monthEnd) as Array<{ type: string; timestamp: string }>
+    `).all(employeeId, fetchStart, fetchEnd) as Array<PunchLog>
 
     if (logs.length === 0) continue
 
-    // Pair consecutive IN→OUT punches.
-    // Isolated INs (missing OUT) or isolated OUTs (missing IN) are ignored.
-    // Punches on approved-leave days are skipped entirely.
-    let totalRegularHours = 0
-    let totalOtHours = 0
-    let daysWorked = 0
+    const result = aggregateDailyHours(
+      logs, monthStart, monthEnd, standardHoursPerDay, leaveDates, maxSessionHours,
+    )
 
-    let currentIn: Date | null = null
+    if (result.days_worked === 0 && result.total_regular_hours === 0) continue
 
-    for (const log of logs) {
-      const logDate = log.timestamp.slice(0, 10) // YYYY-MM-DD
-      if (leaveDates.has(logDate)) {
-        // On an approved leave day — don't pair these punches
-        currentIn = null
-        continue
-      }
-
-      if (log.type === 'in') {
-        // If there's already a pending IN without a matching OUT, discard it (orphan IN)
-        currentIn = new Date(log.timestamp)
-      } else if (log.type === 'out' && currentIn !== null) {
-        // We have a complete IN→OUT pair
-        const outTime = new Date(log.timestamp)
-        const hoursWorked = (outTime.getTime() - currentIn.getTime()) / (1000 * 60 * 60)
-
-        // Sanity: ignore pairs where out is before in or duration is zero/negative
-        if (hoursWorked > 0) {
-          const regular = Math.min(hoursWorked, standardHoursPerDay)
-          const ot = Math.max(0, hoursWorked - standardHoursPerDay)
-
-          totalRegularHours += regular
-          totalOtHours += ot
-          daysWorked++
-        }
-
-        currentIn = null // reset for next pair
-      }
-      // If type is 'out' but currentIn is null, it's an orphan OUT — ignore
-    }
-
-    summaries.push({
-      employee_id: employeeId,
-      total_regular_hours: Math.round(totalRegularHours * 100) / 100,
-      total_ot_hours: Math.round(totalOtHours * 100) / 100,
-      days_worked: daysWorked,
-    })
+    summaries.push({ employee_id: employeeId, ...result })
   }
 
   return summaries

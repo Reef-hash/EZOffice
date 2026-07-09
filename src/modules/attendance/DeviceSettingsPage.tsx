@@ -1,14 +1,21 @@
-// Device settings for fingerprint reader sync (ZKTeco V1000 integration).
+// Device settings for fingerprint reader sync (ZKTeco V1000/K40 Pro integration).
 // Stores device IP/port in payroll_settings table and provides sync trigger.
+//
+// H3/H4/M5 (docs/DEVICE_SYNC_AUDIT.md): Test Connection now actually contacts the
+// device (deviceName/serial/user+log counts, clock drift warning + fix action);
+// device user mapping panel below lets the admin match device users to employees;
+// Last Sync reads the persisted device_sync_log row so it survives a tab switch.
 
 import { useState, useCallback, useEffect } from 'react'
 import type { ChangeEvent } from 'react'
 import { Card } from '@/shared/components/Card'
 import { Button } from '@/shared/components/Button'
 import { Input } from '@/shared/components/Input'
+import { StatusBadge } from '@/shared/components/StatusBadge'
 import { useIpcMutation, useIpcQuery } from '@/shared/hooks/useIpcQuery'
 import { useToast } from '@/shared/components/Toast'
-import type { PayrollSettings } from '@/shared/types/entities'
+import { DeviceUserMappingPanel } from './DeviceUserMappingPanel'
+import type { PayrollSettings, DeviceTestResult, DeviceSyncLog } from '@/shared/types/entities'
 
 interface SyncResult {
   inserted: number
@@ -16,17 +23,29 @@ interface SyncResult {
   errors: string[]
 }
 
+function formatLocal(iso: string): string {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? iso : d.toLocaleString()
+}
+
 export function DeviceSettingsPage() {
   const { addToast } = useToast()
   const [deviceIp, setDeviceIp] = useState('')
   const [devicePort, setDevicePort] = useState('4370')
   const [isSaving, setIsSaving] = useState(false)
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null)
+  const [syncErrors, setSyncErrors] = useState<string[] | null>(null)
+  const [testResult, setTestResult] = useState<DeviceTestResult | null>(null)
 
   // Fetch current settings on load
   const { data: settings } = useIpcQuery<PayrollSettings>(
     ['payroll', 'settings'],
     () => window.api.payroll.settings.get(),
+  )
+
+  // Persisted last-sync result (H4) — survives a tab switch/reload, unlike local state.
+  const { data: lastSyncLog, refetch: refetchLastSyncLog } = useIpcQuery<DeviceSyncLog | null>(
+    ['attendance', 'lastSyncLog'],
+    () => window.api.attendance.getLastSyncLog(),
   )
 
   // Populate form when settings load
@@ -47,19 +66,37 @@ export function DeviceSettingsPage() {
     [['payroll', 'settings']],
   )
 
+  const testConnectionMutation = useIpcMutation<DeviceTestResult, void>(
+    () => window.api.attendance.testDevice(),
+    [],
+  )
+
+  const setDeviceTimeMutation = useIpcMutation<{ ok: boolean; error?: string }, void>(
+    () => window.api.attendance.setDeviceTime(),
+    [],
+  )
+
   const handleSync = useCallback(async () => {
     try {
+      setSyncErrors(null)
       const result = await syncMutation.mutateAsync()
-      setLastSyncTime(new Date().toLocaleString())
-      const errorNote = result.errors.length > 0 ? `, ${result.errors.length} skipped (errors)` : ''
-      addToast(
-        `Sync complete: ${result.inserted} inserted, ${result.skipped} skipped${errorNote}`,
-        'success',
-      )
+      await refetchLastSyncLog()
+      if (result.errors.length > 0) {
+        setSyncErrors(result.errors)
+        addToast(
+          `${result.inserted} inserted, ${result.skipped} skipped — ${result.errors.length} error(s)`,
+          'warning',
+        )
+      } else {
+        addToast(
+          `Sync complete: ${result.inserted} inserted, ${result.skipped} skipped`,
+          'success',
+        )
+      }
     } catch (err) {
       addToast(`Sync failed: ${String(err)}`, 'error')
     }
-  }, [syncMutation, addToast])
+  }, [syncMutation, addToast, refetchLastSyncLog])
 
   const handleSaveSettings = useCallback(async () => {
     if (!deviceIp) {
@@ -80,16 +117,36 @@ export function DeviceSettingsPage() {
     }
   }, [deviceIp, devicePort, updateSettingsMutation, addToast])
 
-  const handleTestConnection = useCallback(() => {
+  const handleTestConnection = useCallback(async () => {
     if (!deviceIp) {
-      addToast('Please enter a device IP address first.', 'error')
+      addToast('Please enter and save a device IP address first.', 'error')
       return
     }
-    addToast(
-      `Device configured at ${deviceIp}:${devicePort}. Click "Sync Now" to test the connection.`,
-      'info',
-    )
-  }, [deviceIp, devicePort, addToast])
+    try {
+      const result = await testConnectionMutation.mutateAsync()
+      setTestResult(result)
+      addToast(result.ok ? 'Device connected successfully' : `Connection failed: ${result.error}`, result.ok ? 'success' : 'error')
+    } catch (err) {
+      addToast(`Test connection failed: ${String(err)}`, 'error')
+    }
+  }, [deviceIp, testConnectionMutation, addToast])
+
+  const handleSetDeviceTime = useCallback(async () => {
+    if (!confirm('This will set the device clock to match this PC\'s current time. Continue?')) return
+    try {
+      const result = await setDeviceTimeMutation.mutateAsync()
+      if (result.ok) {
+        addToast('Device clock updated', 'success')
+        // Re-test so the drift warning clears once the clock is fixed.
+        const refreshed = await testConnectionMutation.mutateAsync()
+        setTestResult(refreshed)
+      } else {
+        addToast(`Failed to set device time: ${result.error}`, 'error')
+      }
+    } catch (err) {
+      addToast(`Failed to set device time: ${String(err)}`, 'error')
+    }
+  }, [setDeviceTimeMutation, testConnectionMutation, addToast])
 
   return (
     <div className="max-w-2xl">
@@ -97,7 +154,7 @@ export function DeviceSettingsPage() {
         <div className="mb-4">
           <h3 className="text-base font-semibold text-neutral-900">Device Configuration</h3>
           <p className="mt-1 text-sm text-neutral-600">
-            Configure your ZKTeco V1000 fingerprint reader connection settings.
+            Configure your ZKTeco fingerprint reader connection settings.
           </p>
         </div>
 
@@ -125,7 +182,13 @@ export function DeviceSettingsPage() {
           </div>
 
           <div className="flex gap-2 pt-2">
-            <Button size="sm" variant="secondary" onClick={handleTestConnection}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleTestConnection}
+              disabled={testConnectionMutation.isPending}
+              isLoading={testConnectionMutation.isPending}
+            >
               Test Connection
             </Button>
             <Button
@@ -138,7 +201,43 @@ export function DeviceSettingsPage() {
               {isSaving ? 'Saving...' : 'Save Settings'}
             </Button>
           </div>
+
+          {testResult && (
+            <div
+              className={`rounded-sm border p-3 text-sm ${
+                testResult.ok ? 'border-success-200 bg-success-50 text-success-700' : 'border-error-200 bg-error-50 text-error-700'
+              }`}
+            >
+              {testResult.ok ? (
+                <div className="space-y-1">
+                  <p className="font-semibold">Connected</p>
+                  <p>Device: {testResult.deviceName ?? 'Unknown'} (S/N {testResult.serial ?? 'Unknown'})</p>
+                  <p>
+                    {testResult.userCount ?? '?'} user(s) enrolled, {testResult.logCount ?? '?'} log(s) stored
+                  </p>
+                </div>
+              ) : (
+                <p>{testResult.error}</p>
+              )}
+
+              {testResult.clockDriftWarning && (
+                <div className="mt-2 flex items-center justify-between gap-3 rounded-sm bg-warning-50 p-2 text-warning-700">
+                  <span className="text-xs">{testResult.clockDriftWarning}</span>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleSetDeviceTime}
+                    isLoading={setDeviceTimeMutation.isPending}
+                  >
+                    Set Device Time
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
+        <DeviceUserMappingPanel />
       </Card>
 
       <Card className="mt-6">
@@ -150,9 +249,14 @@ export function DeviceSettingsPage() {
         </div>
 
         <div className="space-y-3">
-          {lastSyncTime && (
+          {lastSyncLog && (
             <p className="text-sm text-neutral-600">
-              Last sync: <span className="font-medium">{lastSyncTime}</span>
+              Last sync: <span className="font-medium">{formatLocal(lastSyncLog.started_at)}</span>
+              {' — '}
+              {lastSyncLog.inserted} inserted, {lastSyncLog.skipped} skipped
+              {lastSyncLog.errors_json && (
+                <StatusBadge tone="warning" className="ml-2">Had errors</StatusBadge>
+              )}
             </p>
           )}
 
@@ -164,6 +268,21 @@ export function DeviceSettingsPage() {
           >
             {syncMutation.isPending ? 'Syncing...' : 'Sync Now'}
           </Button>
+
+          {syncErrors && syncErrors.length > 0 && (
+            <div className="mt-4 rounded-sm border border-error-200 bg-error-50 p-3">
+              <p className="mb-2 text-sm font-semibold text-error-700">
+                Sync Errors ({syncErrors.length})
+              </p>
+              <ul className="max-h-40 space-y-1 overflow-y-auto">
+                {syncErrors.map((err, i) => (
+                  <li key={i} className="text-xs text-error-600">
+                    {err}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </Card>
 

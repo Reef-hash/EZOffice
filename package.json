@@ -13,15 +13,22 @@
     "build:installer": "npm run build && electron-builder --publish never",
     "build:portable": "npm run build && electron-builder --win portable --publish never",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "npm run typecheck-app && npm run typecheck-node",
+    "typecheck-app": "node node_modules/typescript/lib/tsc.js -p tsconfig.app.json --noEmit",
+    "typecheck-node": "node node_modules/typescript/lib/tsc.js -p tsconfig.node.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.2.8",
+    "@supabase/supabase-js": "^2.110.1",
     "@tanstack/react-query": "^5.101.1",
     "@types/pdfmake": "^0.3.3",
     "better-sqlite3": "^12.11.1",
     "clsx": "^2.1.1",
+    "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
+    "node-machine-id": "^1.1.12",
     "pdfmake": "^0.3.11",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
@@ -36,12 +43,14 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "@vitest/coverage-v8": "^4.1.10",
     "electron": "^42.5.0",
     "electron-builder": "^25.1.8",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",
     "vite": "^8.1.0",
-    "vite-plugin-electron": "^1.1.0"
+    "vite-plugin-electron": "^1.1.0",
+    "vitest": "^4.1.10"
   },
   "build": {
     "appId": "com.ezoffice.app",
