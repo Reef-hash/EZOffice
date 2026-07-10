@@ -38,4 +38,4 @@ Untuk memicu CI/CD dan membina aplikasi untuk sistem pelanggan:
 
 Tindakan ini akan memicu GitHub Actions untuk membina fail `.exe` pemasang (installer) dan fail metadata `latest.yml` untuk tujuan auto-update secara automatik.
 
-Sila rujuk panduan terperinci di [Proses Release & CI/CD](file:///c:/Users/KAIHARA/Desktop/ezofis-clone/docs/RELEASE.md).
+Sila rujuk panduan terperinci di [Proses Release & CI/CD](docs/RELEASE.md).

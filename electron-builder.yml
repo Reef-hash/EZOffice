@@ -6,7 +6,7 @@ productName: EZOffice
 
 publish:
   provider: github
-  owner: ferlin070
+  owner: Reef-hash
   repo: EZOffice
 
 directories:

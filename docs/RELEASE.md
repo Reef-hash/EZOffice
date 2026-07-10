@@ -101,7 +101,7 @@ Pastikan `GITHUB_TOKEN` mempunyai keizinan menulis (`contents: write`) dalam rep
 
 Arahkan pengguna akhir (admin PKS) ke:
 
-> Pergi ke https://github.com/ferlin070/EZOffice/releases  
+> Pergi ke https://github.com/Reef-hash/EZOffice/releases  
 > Muat turun `EZOffice Setup X.Y.Z.exe` (yang terbaharu)  
 > Jalankan fail pemasang (installer) tersebut.  
 > 💡 **Nota Penting:** Fail pangkalan data disimpan secara selamat di folder `%APPDATA%\EZOffice\data\` dan tidak akan dipadam/hilang walaupun aplikasi dinyahpasang (uninstall) atau dikemas kini.
