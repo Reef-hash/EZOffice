@@ -19,6 +19,7 @@ Object.defineProperty(globalThis, '__dirname', {
 })
 
 import { app, BrowserWindow } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
 import { getDb, resolveDbPath, closeDb } from './db/connection'
 import { runMigrations } from './db/migrate'
@@ -97,9 +98,62 @@ function initDatabase(): void {
   }
 }
 
+function setupAutoUpdater(): void {
+  // Only check for updates when packaged (production)
+  if (!app.isPackaged) {
+    // eslint-disable-next-line no-console
+    console.log('[Updater] Skipping update check in development mode')
+    return
+  }
+
+  try {
+    autoUpdater.autoDownload = true
+    autoUpdater.autoInstallOnAppQuit = true
+
+    autoUpdater.on('checking-for-update', () => {
+      // eslint-disable-next-line no-console
+      console.log('[Updater] Checking for update...')
+    })
+
+    autoUpdater.on('update-available', (info) => {
+      // eslint-disable-next-line no-console
+      console.log(`[Updater] Update available: ${info.version}`)
+    })
+
+    autoUpdater.on('update-not-available', () => {
+      // eslint-disable-next-line no-console
+      console.log('[Updater] Update not available')
+    })
+
+    autoUpdater.on('error', (err) => {
+      // eslint-disable-next-line no-console
+      console.error('[Updater] Error in auto-updater:', err)
+    })
+
+    autoUpdater.on('download-progress', (progressObj) => {
+      // eslint-disable-next-line no-console
+      console.log(`[Updater] Download progress: ${progressObj.percent}%`)
+    })
+
+    autoUpdater.on('update-downloaded', (info) => {
+      // eslint-disable-next-line no-console
+      console.log(`[Updater] Update downloaded: ${info.version}. Will install on quit.`)
+    })
+
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error('[Updater] Failed to check for updates:', err)
+    })
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[Updater] Failed to initialize auto-updater:', err)
+  }
+}
+
 app.whenReady().then(() => {
   initDatabase()
   createWindow()
+  setupAutoUpdater()
 
   app.on('activate', () => {
     // On macOS, re-create a window when the dock icon is clicked and no windows are open

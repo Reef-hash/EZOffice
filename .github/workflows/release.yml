@@ -1,36 +1,20 @@
 # EZOffice — GitHub Actions CI/CD
-# Auto-build Windows .exe installer + portable on every push.
-#
-# Triggers:
-#   push to main  → build + update pre-release "Latest Build" (tag: latest)
-#   push tag v*   → build + create GitHub Release with .exe assets
-#   workflow_dispatch → build + upload artifacts (no release, for testing)
-#
-# Output (in dist/):
-#   EZOffice Setup X.Y.Z.exe  (NSIS installer)
-#   EZOffice X.Y.Z.exe        (portable standalone)
+# Auto-build and release Windows installer + portable on tag push.
 
 name: Build & Release
 
 on:
   push:
-    branches:
-      - main          # every push to main → update pre-release
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'   # e.g. v0.1.0, v1.2.3 → versioned release
+      - 'v*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version override (leave empty for package.json version)'
-        required: false
-        default: ''
 
 permissions:
   contents: write   # needed to create GitHub Release + upload assets
 
 jobs:
   build:
-    name: Build Windows .exe
+    name: Build & Release Windows .exe
     runs-on: windows-latest
 
     steps:
@@ -45,113 +29,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        # better-sqlite3 will compile its native binding here.
-        # windows-latest has Python + VS Build Tools (C++ compiler) for node-gyp.
 
-      - name: Typecheck + Build
-        # tsc -b handles TypeScript compilation + type-checking for the whole project
-        # (tsconfig.app.json + tsconfig.node.json). vite build then bundles renderer +
-        # electron main/preload via vite-plugin-electron.
-        run: npm run build
+      - name: Run Typecheck
+        run: npm run typecheck
 
-      - name: Package NSIS installer + portable
-        # electron-builder reads "build" field from package.json (also electron-builder.yml).
-        # Both NSIS and portable targets are defined — one run produces both.
-        # --publish never because we upload manually via softprops/action-gh-release.
-        run: npx electron-builder --win --publish never
-
-      - name: List built artifacts
-        run: Get-ChildItem -Recurse dist/*.exe | Select-Object Name, @{N='Size(MB)';E={[math]::Round($_.Length/1MB,2)}}
-        shell: powershell
-
-      # ── Push to main: force-update the 'latest' tag so the pre-release
-      #     always points to the most recent commit on main. Using GITHUB_TOKEN
-      #     prevents recursive workflow triggers from the tag push.
-      - name: Update latest tag (main push only)
-        if: github.ref == 'refs/heads/main'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f latest
-          git push -f origin latest
-
-      # ── Push to main: create/update pre-release "Latest Build" ─────
-      - name: Update Latest Build pre-release (main push only)
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          name: "EZOffice — Latest Build"
-          body: |
-            ## 🔧 EZOffice Latest Build
-
-            **Binari terkini dari branch `main` — auto-dibina setiap push.**
-
-            ### 📥 Muat turun
-            | Fail | Kegunaan |
-            |---|---|
-            | `EZOffice Setup *.exe` | **Installer (NSIS)** — wizard install, pilih folder, auto desktop + Start Menu shortcut |
-            | `EZOffice *.exe` | **Portable** — standalone, tak perlu install, run terus |
-
-            ### 🚀 Cara pasang
-            1. Muat turun `EZOffice Setup *.exe`
-            2. Run — pilih folder install (default `C:\Program Files\EZOffice`)
-            3. Buka EZOffice dari Desktop atau Start Menu
-            4. **Database disimpan di `%APPDATA%\EZOffice\data\ezoffice.db`** — data kekal walaupun uninstall
-
-            ### 📋 Nota
-            - ⚠️ Ini **pre-release** — mungkin mengandungi bug, fitur belum stabil
-            - ✅ Untuk versi stabil, muat turun release bertag `vX.Y.Z` di [Releases](https://github.com/Reef-hash/EZOffice/releases)
-            - ⚠️ Aplikasi **tidak ditandatangani** (unsigned) — Windows SmartScreen akan tunjuk amaran. Klik **"More info" → "Run anyway"**
-            - 📖 Bantuan lanjut: [`docs/DISTRIBUTION.md`](https://github.com/Reef-hash/EZOffice/blob/main/docs/DISTRIBUTION.md)
-            - 🔨 Commit: [`${{ github.sha }}`](https://github.com/Reef-hash/EZOffice/commit/${{ github.sha }})
-          draft: false
-          prerelease: true
-          files: |
-            dist/*.exe
+      - name: Build & Publish Release
+        run: npx electron-builder --win --publish always
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── Tag push: create GitHub Release + attach .exe files ──────────
-      - name: Create GitHub Release (tag only)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: "EZOffice ${{ github.ref_name }}"
-          body: |
-            ## 🏢 EZOffice ${{ github.ref_name }}
-
-            **Windows installer + portable build — muat turun & pasang terus.**
-
-            ### 📥 Muat turun
-            | Fail | Kegunaan |
-            |---|---|
-            | `EZOffice Setup ${{ github.ref_name }}.exe` | **Installer (NSIS)** — wizard install, pilih folder, auto desktop + Start Menu shortcut |
-            | `EZOffice ${{ github.ref_name }}.exe` | **Portable** — standalone, tak perlu install, run terus |
-
-            ### 🚀 Cara pasang
-            1. Muat turun `EZOffice Setup *.exe`
-            2. Run — pilih folder install (default `C:\Program Files\EZOffice`)
-            3. Buka EZOffice dari Desktop atau Start Menu
-            4. **Database disimpan di `%APPDATA%\EZOffice\data\ezoffice.db`** — data kekal walaupun uninstall
-
-            ### 📋 Nota
-            - ✅ Windows 10/11 64-bit sahaja
-            - ⚠️ Aplikasi **tidak ditandatangani** (unsigned) — Windows SmartScreen akan tunjuk amaran. Klik **"More info" → "Run anyway"**
-            - 📖 Bantuan lanjut: [`docs/DISTRIBUTION.md`](https://github.com/Reef-hash/EZOffice/blob/main/docs/DISTRIBUTION.md)
-            - 🔧 **Tech stack:** Electron ${{ env.ELECTRON_VERSION || '42.5.0' }} + React 19 + TypeScript + better-sqlite3 + Tailwind v4
-          draft: false
-          prerelease: false
-          files: |
-            dist/*.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── Manual trigger: upload artifacts (no release) ──────────────
-      - name: Upload artifacts (manual trigger)
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: EZOffice-Windows-${{ github.sha }}
-          path: dist/*.exe
-          retention-days: 7

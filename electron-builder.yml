@@ -4,6 +4,11 @@
 appId: com.ezoffice.app
 productName: EZOffice
 
+publish:
+  provider: github
+  owner: ferlin070
+  repo: EZOffice
+
 directories:
   buildResources: build/assets
   output: dist
