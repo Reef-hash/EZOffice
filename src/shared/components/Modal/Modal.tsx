@@ -2,6 +2,7 @@ import { useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { cn } from '../../lib/cn'
+import { useFocusTrap } from '../../hooks/useFocusTrap'
 
 export type ModalSize = 'sm' | 'md' | 'lg'
 
@@ -20,19 +21,41 @@ const sizeClasses: Record<ModalSize, string> = {
   lg: 'max-w-[720px]',
 }
 
+const activeModals: string[] = []
+
 export function Modal({ isOpen, onClose, title, size = 'md', footer, children }: ModalProps) {
   const titleId = useId()
+  const containerRef = useFocusTrap(isOpen)
 
   useEffect(() => {
     if (!isOpen) return
 
+    activeModals.push(titleId)
+
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') onClose()
+      // Only respond if this modal is the topmost one in the stack
+      if (activeModals[activeModals.length - 1] !== titleId) return
+
+      if (event.key === 'Escape') {
+        onClose()
+      } else if (event.key.toLowerCase() === 's' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault()
+        const form = containerRef.current?.querySelector('form')
+        if (form) {
+          form.requestSubmit()
+        }
+      }
     }
 
     document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen, onClose])
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown)
+      const index = activeModals.indexOf(titleId)
+      if (index > -1) {
+        activeModals.splice(index, 1)
+      }
+    }
+  }, [isOpen, onClose, titleId])
 
   if (!isOpen) return null
 
@@ -40,11 +63,13 @@ export function Modal({ isOpen, onClose, title, size = 'md', footer, children }:
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-neutral-900/50" onClick={onClose} aria-hidden="true" />
       <div
+        ref={containerRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         className={cn(
-          'relative flex max-h-[85vh] w-full flex-col rounded-xl bg-surface shadow-md',
+          'relative flex max-h-[85vh] w-full flex-col rounded-xl bg-surface shadow-md focus:outline-none',
           sizeClasses[size],
         )}
       >

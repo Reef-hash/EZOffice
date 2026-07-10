@@ -14,7 +14,8 @@
       "Bash(npx --no-install -p playwright echo found)",
       "Bash(command -v magick)",
       "Bash(command -v convert)",
-      "Bash(grep -E \"^\\\\s*//\\\\s*\\(const|let|function|export|if|return\\)\" electron/services/attendance.ts src/modules/attendance/*.tsx)"
+      "Bash(grep -E \"^\\\\s*//\\\\s*\\(const|let|function|export|if|return\\)\" electron/services/attendance.ts src/modules/attendance/*.tsx)",
+      "Bash(git commit *)"
     ]
   }
 }

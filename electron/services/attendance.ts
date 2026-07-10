@@ -14,6 +14,7 @@ import type {
   ClockValidationResult,
   AttendanceMonthlyCalendar,
   AttendanceSummaryDay,
+  DeviceSyncResult,
 } from '../../src/shared/types/entities'
 import type {
   CreateAttendanceLogInput,
@@ -114,7 +115,6 @@ function getGracePeriodMinutes(db: Database.Database): number {
     | { grace_period_minutes: number }
     | undefined
   const grace = row?.grace_period_minutes ?? 15
-  console.log('[LATE-DETECT] getGracePeriodMinutes →', grace, '(raw:', row?.grace_period_minutes, ')')
   return grace
 }
 
@@ -129,13 +129,10 @@ function computeMinutesLate(shift: Shift, punchTimestamp: string, graceMinutes: 
   const punchTime = punchTimestamp.slice(11, 16) // "HH:MM"
   const shiftStart = shift.start_time // "HH:MM"
 
-  console.log('[LATE-DETECT] computeMinutesLate — shift:', shift.name, '| start:', shiftStart, '| punchTime:', punchTime, '| punchTimestamp (full):', punchTimestamp, '| grace:', graceMinutes)
-
   // For night shifts (start > end, e.g. 22:00→06:00), a punch at 22:30 is 30 min late,
   // a punch at 21:50 is "early" (before shift) → 0 minutes late.
   // For day shifts (start < end), straightforward comparison.
   const minutesLateRaw = minutesBetween(shiftStart, punchTime)
-  console.log('[LATE-DETECT] minutesLateRaw:', minutesLateRaw, '→ after grace:', Math.max(0, minutesLateRaw - graceMinutes))
   // Negative = punched before shift start (early) → not late
   return Math.max(0, minutesLateRaw - graceMinutes)
 }
@@ -158,16 +155,12 @@ function computeClockInStatus(
   shift: Shift | null,
   punchTimestamp: string,
 ): 'on-time' | 'late' {
-  console.log('[LATE-DETECT] computeClockInStatus — hasShift:', !!shift, '| shiftName:', shift?.name, '| timestamp:', punchTimestamp)
   if (!shift) {
-    console.log('[LATE-DETECT]   → on-time (no shift assigned)')
     return 'on-time' // no assigned shift → no lateness rule
   }
   const grace = getGracePeriodMinutes(db)
   const minutesLate = computeMinutesLate(shift, punchTimestamp, grace)
-  const result = minutesLate > 0 ? 'late' : 'on-time'
-  console.log('[LATE-DETECT]   → RESULT:', result, '| minutesLate:', minutesLate, '| grace:', grace)
-  return result
+  return minutesLate > 0 ? 'late' : 'on-time'
 }
 
 /**
@@ -265,19 +258,14 @@ export function clockIn(
   employeeId: number,
   timestamp?: string,
 ): AttendanceLog {
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
-  console.log('[LATE-DETECT] clockIn() called — employeeId:', employeeId, '| timestamp:', timestamp)
   assertAlternation(db, employeeId, 'in')
 
   const ts = timestamp ?? nowLocalISO()
   const now = new Date().toISOString()
-  console.log('[LATE-DETECT]   effective timestamp:', ts, '| now:', now)
 
   // Phase C: snapshot the employee's assigned shift and compute lateness at clock-in.
   const shift = getEmployeeShift(db, employeeId)
-  console.log('[LATE-DETECT]   employee shift:', shift?.name ?? 'NONE')
   const status = computeClockInStatus(db, shift, ts)
-  console.log('[LATE-DETECT]   FINAL STATUS:', status)
 
   const result = db.prepare(`
     INSERT INTO attendance_logs (employee_id, type, timestamp, source, shift_id, status, created_at, updated_at)
@@ -436,132 +424,312 @@ export function deleteAttendanceLog(db: Database.Database, id: number): void {
   }
 }
 
-// ── Device Sync (Phase 3: ZKTeco V1000) ──────────────────
+// ── Device Sync (ZKTeco K40 Pro / V1000) ─────────────────
+// Redesigned per DEVICE_SYNC_AUDIT.md C2 findings (2026-07-08):
+//   OLD: position-based IN/OUT per download batch → type flips on re-sync;
+//        dedup key included derived type → same punch re-inserted with opposite type
+//        after any sequence shift (device purge, manual backfill, duplicate punches)
+//   NEW (Flow 2): debounce → per-day type assignment → ±60s dedup ignoring type
+//
+// D2 (locked): device `state` field is permanently ignored. Staff are not trained
+// on OT/break state keys. Raw punch timestamps are all that matters.
 
-interface DeviceSyncResult {
-  inserted: number
-  skipped: number
-  errors: string[]
+/**
+ * Reads sync-related device settings from payroll_settings row 1.
+ * Returns safe defaults if the row or columns are missing.
+ */
+function getDeviceSyncSettings(db: Database.Database): {
+  deviceIp: string | null
+  devicePort: number
+  debounceMinutes: number
+  lastSyncedAt: string | null
+} {
+  const row = db.prepare(`
+    SELECT device_ip, device_port, punch_debounce_minutes, device_last_synced_at
+    FROM payroll_settings WHERE id = 1
+  `).get() as {
+    device_ip: string | null
+    device_port: number
+    punch_debounce_minutes?: number
+    device_last_synced_at?: string | null
+  } | undefined
+  return {
+    deviceIp: row?.device_ip ?? null,
+    devicePort: row?.device_port ?? 4370,
+    debounceMinutes: row?.punch_debounce_minutes ?? 2,
+    lastSyncedAt: row?.device_last_synced_at ?? null,
+  }
 }
 
+/**
+ * Converts a device timestamp string to a naive local ISO string
+ * ("YYYY-MM-DDTHH:MM:SS" with no timezone suffix), matching EZOffice's
+ * convention. Returns null if the string cannot be parsed (M4 validation).
+ */
+function parseDeviceTimestamp(raw: unknown): string | null {
+  if (!raw) return null
+  const d = new Date(String(raw))
+  if (isNaN(d.getTime())) return null // M4: explicit validation, not silent NaN
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
+
+/**
+ * Persists a sync run result to device_sync_log. Returns the row id.
+ */
+function persistSyncLog(
+  db: Database.Database,
+  deviceIp: string,
+  startedAt: string,
+  inserted: number,
+  skipped: number,
+  errors: string[],
+): number {
+  const result = db.prepare(`
+    INSERT INTO device_sync_log (device_ip, started_at, inserted, skipped, errors_json)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(deviceIp, startedAt, inserted, skipped, errors.length > 0 ? JSON.stringify(errors) : null)
+  return result.lastInsertRowid as number
+}
+
+/**
+ * Pulls attendance logs from a ZKTeco device and inserts new ones into the DB.
+ *
+ * Flow (per DEVICE_SYNC_AUDIT.md Flow 2):
+ *  a. Pull all logs; drop any older than the watermark (H1 optimisation).
+ *  b. Map device user_id → employee via device_user_id; collect unmapped users.
+ *  c. Debounce: collapse same-employee punches < punch_debounce_minutes apart (keep first).
+ *  d. Per-day type assignment: for each employee+day, sort by time;
+ *     odd position in the day = IN, even = OUT.
+ *  e. Dedup: skip if a punch exists for (employee, timestamp ±60 s) — type-independent.
+ *  f. Insert with source='device', device_id=deviceIp; snapshot shift + status.
+ *  g. Update watermark; persist sync log.
+ */
 export async function syncFromDeviceEthernet(
   db: Database.Database,
   deviceIp: string,
   devicePort: number,
 ): Promise<DeviceSyncResult> {
-  let device: any // zkteco-js types are loose; isolate here
+  const startedAt = nowLocalISO()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let device: any // zkteco-js types are loose; type boundary isolated here
   const errors: string[] = []
   let inserted = 0
   let skipped = 0
 
+  const { debounceMinutes, lastSyncedAt } = getDeviceSyncSettings(db)
+
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Zkteco = require('zkteco-js').default
+    const Zkteco = require('zkteco-js')
     device = new Zkteco(deviceIp, devicePort, 5200, 5000)
 
     await device.createSocket()
-    const logs = await device.getAttendances()
+    const response = await device.getAttendances()
     await device.disconnect()
 
-    if (!Array.isArray(logs) || logs.length === 0) {
-      return { inserted: 0, skipped: 0, errors: [] }
+    // zkteco-js getAttendances() returns { data: records }
+    const rawLogs: unknown[] = Array.isArray(response) ? response : (response?.data ?? [])
+    if (!Array.isArray(rawLogs) || rawLogs.length === 0) {
+      const logId = persistSyncLog(db, deviceIp, startedAt, 0, 0, [])
+      return { inserted: 0, skipped: 0, errors: [], syncLogId: logId, completedAt: nowLocalISO() }
     }
 
-    // Map device logs: expected structure from zkteco-js is
-    // { user_id, punch_time, punch_state } or similar.
-    // Normalize to { employeeId, timestamp, type }
-    const mappedLogs = logs
-      .map((log: any) => {
-        const employeeId = log.user_id || log.employeeId
-        // punch_state: 0=Check-in, 1=Check-out (ZKTeco convention)
-        // Normalize to 'in' | 'out'
-        const punchState = log.punch_state ?? log.type
-        const type: 'in' | 'out' = (punchState === 0 || punchState === 'in' || String(punchState).toLowerCase() === 'in')
-          ? 'in'
-          : 'out'
-        // punch_time or timestamp; convert to ISO if needed
-        const timestamp = typeof log.punch_time === 'string'
-          ? log.punch_time
-          : new Date(log.punch_time * 1000).toISOString()
+    // ── a. Parse + timestamp-validate + watermark filter ─────────────────────
+    type RawPunch = { deviceUserId: number; timestamp: string }
+    const parsed: RawPunch[] = []
+    for (const log of rawLogs) {
+      const rec = log as Record<string, unknown>
+      const deviceUserId = rec.user_id ?? rec.employeeId
+      if (deviceUserId == null) { skipped++; continue }
 
-        return { employeeId, timestamp, type }
+      const rawTimestamp = rec.record_time ?? rec.punch_time
+      const timestamp = parseDeviceTimestamp(rawTimestamp) // M4
+      if (!timestamp) {
+        errors.push(`Skipped: Could not parse timestamp '${String(rawTimestamp)}' for device user ${String(deviceUserId)}`)
+        skipped++
+        continue
+      }
+
+      // H1 watermark: skip logs at or before the last synced timestamp (optimisation)
+      if (lastSyncedAt && timestamp <= lastSyncedAt) { skipped++; continue }
+
+      // D2: device `state` field intentionally discarded
+      parsed.push({ deviceUserId: Number(deviceUserId), timestamp })
+    }
+
+    // ── b. Map device user_id → employee; collect unmapped (deduplicated) ────
+    const employeeLookupStmt = db.prepare('SELECT id FROM employees WHERE device_user_id = ?')
+    const unmappedUserIds = new Set<number>()
+
+    type MappedPunch = { employeeId: number; timestamp: string }
+    const mapped: MappedPunch[] = []
+    for (const punch of parsed) {
+      const empRow = employeeLookupStmt.get(punch.deviceUserId) as { id: number } | undefined
+      if (!empRow) {
+        unmappedUserIds.add(punch.deviceUserId)
+        skipped++
+        continue
+      }
+      mapped.push({ employeeId: empRow.id, timestamp: punch.timestamp })
+    }
+    // One error message per unmapped user (not one per punch)
+    for (const uid of unmappedUserIds) {
+      errors.push(`Device user ${uid}: punches skipped — set the employee's device_user_id in Master Data to map them`)
+    }
+
+    // ── c. Debounce: per employee, collapse punches < debounceMinutes apart ──
+    const byEmployee = new Map<number, string[]>()
+    for (const p of mapped) {
+      const arr = byEmployee.get(p.employeeId) ?? []
+      arr.push(p.timestamp)
+      byEmployee.set(p.employeeId, arr)
+    }
+    // Sort each employee's punches chronologically, then apply debounce
+    type DebouncedPunch = { employeeId: number; timestamp: string }
+    const debounced: DebouncedPunch[] = []
+    const debounceMs = debounceMinutes * 60 * 1000
+
+    for (const [employeeId, timestamps] of byEmployee) {
+      timestamps.sort()
+      let prevTime = -Infinity
+      for (const ts of timestamps) {
+        const t = new Date(ts).getTime()
+        if (t - prevTime >= debounceMs) {
+          debounced.push({ employeeId, timestamp: ts })
+          prevTime = t
+        } else {
+          skipped++ // debounced away (bounce/double-tap)
+        }
+      }
+    }
+
+    // ── d. Per-day type assignment: group by employee+day, assign IN/OUT ─────
+    // Odd position within the day = IN, even = OUT. This is deterministic across
+    // syncs: the same punch always gets the same type regardless of what was in
+    // a previous sync batch or what was added manually in EZOffice.
+    type TypedPunch = { employeeId: number; timestamp: string; type: 'in' | 'out' }
+    const typed: TypedPunch[] = []
+    const byEmployeeDay = new Map<string, { employeeId: number; timestamps: string[] }>()
+
+    for (const p of debounced) {
+      const day = p.timestamp.slice(0, 10) // YYYY-MM-DD
+      const key = `${p.employeeId}:${day}`
+      const entry = byEmployeeDay.get(key) ?? { employeeId: p.employeeId, timestamps: [] }
+      entry.timestamps.push(p.timestamp)
+      byEmployeeDay.set(key, entry)
+    }
+    for (const { employeeId, timestamps } of byEmployeeDay.values()) {
+      timestamps.sort()
+      timestamps.forEach((ts, idx) => {
+        typed.push({ employeeId, timestamp: ts, type: idx % 2 === 0 ? 'in' : 'out' })
       })
-      .filter((log) => log.employeeId && log.timestamp)
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+    }
+    // Sort globally by timestamp for the insert transaction
+    typed.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
 
-    // Transaction: insert all new logs, respecting alternation per employee
+    // ── e+f. Dedup (±60 s, type-independent) + insert ────────────────────────
+    // Dedup ignores the derived type — a physical punch at a moment in time is
+    // unique regardless of what we label it. The ±60s window absorbs manual-vs-
+    // device double capture where timestamps differ by seconds.
+    const dedupStmt = db.prepare(`
+      SELECT COUNT(*) AS cnt FROM attendance_logs
+      WHERE employee_id = @employeeId
+        AND timestamp >= @tsMin AND timestamp <= @tsMax
+    `)
     const insertStmt = db.prepare(`
-      INSERT INTO attendance_logs (employee_id, type, timestamp, source, shift_id, status, created_at, updated_at)
-      VALUES (@employee_id, @type, @timestamp, 'device', @shift_id, @status, @created_at, @updated_at)
+      INSERT INTO attendance_logs
+        (employee_id, type, timestamp, source, device_id, shift_id, status, created_at, updated_at)
+      VALUES
+        (@employee_id, @type, @timestamp, 'device', @device_id, @shift_id, @status, @now, @now)
     `)
 
-    // Check which logs already exist to avoid duplicates
-    const existsStmt = db.prepare(`
-      SELECT COUNT(*) as cnt FROM attendance_logs
-      WHERE employee_id = @employee_id AND timestamp = @timestamp AND type = @type
-    `)
-
-    // Validate that the device user_id maps to a known employee — device numbering may not
-    // match EZOffice IDs. Logs for unknown employee IDs are skipped rather than inserted
-    // under a nonexistent or wrong employee.
-    const employeeExistsStmt = db.prepare('SELECT COUNT(*) as cnt FROM employees WHERE id = ?')
+    const today = new Date().toISOString().slice(0, 10)
+    let newestInsertedTimestamp: string | null = null
 
     db.transaction(() => {
-      for (const log of mappedLogs) {
-        const empExists = employeeExistsStmt.get(log.employeeId) as { cnt: number }
-        if (empExists.cnt === 0) {
-          errors.push(`Skipped: Device user_id ${log.employeeId} does not match any employee in EZOffice`)
-          skipped++
-          continue
-        }
+      for (const p of typed) {
+        // ±60 s window
+        const pMs = new Date(p.timestamp).getTime()
+        const tsMin = parseDeviceTimestamp(new Date(pMs - 60000).toString())!
+        const tsMax = parseDeviceTimestamp(new Date(pMs + 60000).toString())!
 
-        const exists = existsStmt.get({
-          employee_id: log.employeeId,
-          timestamp: log.timestamp,
-          type: log.type,
-        }) as { cnt: number }
+        const dup = dedupStmt.get({ employeeId: p.employeeId, tsMin, tsMax }) as { cnt: number }
+        if (dup.cnt > 0) { skipped++; continue }
 
-        if (exists.cnt > 0) {
-          skipped++
-          continue
-        }
+        const shift = getEmployeeShift(db, p.employeeId)
 
-        // Check alternation — re-use the same validator
-        try {
-          assertAlternation(db, log.employeeId, log.type)
-          const now = new Date().toISOString()
-          // Phase C: snapshot shift + status for device-sourced logs too.
-          const shift = getEmployeeShift(db, log.employeeId)
-          const status: 'on-time' | 'late' =
-            log.type === 'in' ? computeClockInStatus(db, shift, log.timestamp) : 'on-time'
-          insertStmt.run({
-            employee_id: log.employeeId,
-            type: log.type,
-            timestamp: log.timestamp,
-            shift_id: shift?.id ?? null,
-            status,
-            created_at: now,
-            updated_at: now,
-          })
-          inserted++
-        } catch (err) {
-          errors.push(
-            `Skipped: Employee ${log.employeeId} at ${log.timestamp}: ${String(err)}`,
-          )
-          skipped++
+        // M2: don't evaluate lateness for historical punches (> 1 day before today)
+        // — synced old data was stamped with the drifted/old device clock; marking it
+        // 'late' retroactively would silently corrupt the late report with stale data.
+        const punchDate = p.timestamp.slice(0, 10)
+        const isHistorical = punchDate < today
+        const status: 'on-time' | 'late' =
+          p.type === 'in' && !isHistorical
+            ? computeClockInStatus(db, shift, p.timestamp)
+            : 'on-time'
+
+        const now = new Date().toISOString()
+        insertStmt.run({
+          employee_id: p.employeeId,
+          type: p.type,
+          timestamp: p.timestamp,
+          device_id: deviceIp, // M3: stamp with device IP (serial available after H3)
+          shift_id: shift?.id ?? null,
+          status,
+          now,
+        })
+
+        if (newestInsertedTimestamp === null || p.timestamp > newestInsertedTimestamp) {
+          newestInsertedTimestamp = p.timestamp
         }
+        inserted++
       }
     })()
 
-    return { inserted, skipped, errors }
+    // ── g. Advance watermark (H1) ─────────────────────────────────────────────
+    // Only advance if there were no unmapped users — we must be able to re-fetch
+    // their punches on the next sync after the admin maps them.
+    if (unmappedUserIds.size === 0 && newestInsertedTimestamp !== null) {
+      db.prepare(
+        'UPDATE payroll_settings SET device_last_synced_at = ? WHERE id = 1',
+      ).run(newestInsertedTimestamp)
+    }
+
+    const logId = persistSyncLog(db, deviceIp, startedAt, inserted, skipped, errors)
+    return { inserted, skipped, errors, syncLogId: logId, completedAt: nowLocalISO() }
   } catch (err) {
     throw new Error(`Device sync failed: ${String(err)}`)
   }
 }
 
-// Phase 4 will add: getMonthlyAttendanceSummary(db, employeeId, month) —
-// aggregates work days, lateness, OT hours based on salary_structures table
-// which doesn't exist yet.
+/**
+ * Deletes all device-sourced attendance_logs in a date range and resets the
+ * sync watermark so the admin can re-sync clean data. Intended for the
+ * one-time cleanup of corrupted rows from the old position-based sync.
+ *
+ * Only removes rows with source='device'. Manual logs are never touched.
+ */
+export function purgeCorruptedDevicePunches(
+  db: Database.Database,
+  dateFrom: string,
+  dateTo: string,
+): { deleted: number } {
+  return db.transaction(() => {
+    const result = db.prepare(`
+      DELETE FROM attendance_logs
+      WHERE source = 'device'
+        AND date(timestamp) >= ? AND date(timestamp) <= ?
+    `).run(dateFrom, dateTo)
+
+    // Reset watermark so next sync will re-pull from the beginning
+    db.prepare(
+      'UPDATE payroll_settings SET device_last_synced_at = NULL WHERE id = 1',
+    ).run()
+
+    return { deleted: result.changes }
+  })()
+}
 
 // ── Phase C (C2): Shifts ─────────────────────────────────
 
@@ -1225,3 +1393,4 @@ export async function exportMonthlyAttendanceExcel(
   await workbook.xlsx.writeFile(filePath)
   return { filePath, filename }
 }
+

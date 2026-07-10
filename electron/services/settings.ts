@@ -29,6 +29,10 @@ export function updateCompanySettings(
       brn_number = COALESCE(@brn_number, brn_number),
       bank_account_name = COALESCE(@bank_account_name, bank_account_name),
       bank_account_number = COALESCE(@bank_account_number, bank_account_number),
+      email = COALESCE(@email, email),
+      phone = COALESCE(@phone, phone),
+      address = COALESCE(@address, address),
+      logo_base64 = COALESCE(@logo_base64, logo_base64),
       updated_at = @updated_at
     WHERE id = 1
   `).run({
@@ -37,6 +41,10 @@ export function updateCompanySettings(
     brn_number: input.brn_number ?? null,
     bank_account_name: input.bank_account_name ?? null,
     bank_account_number: input.bank_account_number ?? null,
+    email: input.email ?? null,
+    phone: input.phone ?? null,
+    address: input.address ?? null,
+    logo_base64: input.logo_base64 ?? null,
     updated_at: now,
   })
 

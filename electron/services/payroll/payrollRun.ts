@@ -134,6 +134,10 @@ export function createPayrollRun(
  * Calculate a payroll run: for every active employee with a salary structure,
  * compute gross → net and insert snapshotted run items.
  *
+ * D5 pre-flight gate: refuses if any 'open' attendance exceptions exist for the
+ * run month — same pattern as checkRateTables. The admin must resolve or dismiss
+ * each exception before payroll can proceed.
+ *
  * Everything runs inside a single transaction — partial writes are not acceptable (Claude.md §4).
  */
 export function calculatePayrollRun(
@@ -145,6 +149,28 @@ export function calculatePayrollRun(
   if (run.status === 'finalized') throw new Error('Cannot recalculate a finalized payroll run')
 
   const { year, month } = run
+
+  // ── D5: pre-flight gate — block on open attendance exceptions ──────────────
+  // computeAttendanceExceptions is called first so the admin sees a complete list
+  // of issues in one shot, rather than discovering them one by one.
+  const hasExceptionsTable = db.prepare(
+    `SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table' AND name='attendance_exceptions'`,
+  ).get() as { cnt: number }
+  if (hasExceptionsTable.cnt > 0) {
+    const openExceptions = db.prepare(`
+      SELECT COUNT(*) AS cnt FROM attendance_exceptions
+      WHERE year = ? AND month = ? AND status = 'open'
+    `).get(year, month) as { cnt: number }
+
+    if (openExceptions.cnt > 0) {
+      throw new Error(
+        `Cannot calculate payroll for ${year}-${String(month).padStart(2, '0')}: ` +
+        `${openExceptions.cnt} unresolved attendance exception(s) exist for this month. ` +
+        'Open Attendance → Exceptions, fix or dismiss each item, then recalculate.',
+      )
+    }
+  }
+
   const asOfDate = monthEndDate(year, month)
   const publicHolidays = getPublicHolidayDates(db, year, month)
   const workingDays = workingDaysInMonth(year, month, publicHolidays)

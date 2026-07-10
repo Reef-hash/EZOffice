@@ -1,5 +1,12 @@
 # EZOffice: Sales & Licensing Flow
 
+> **⚠️ SUPERSEDED (2026-07-08):** The license generation, key format, and activation
+> mechanics described here (Python script, `secrets/licenses.csv`, license-key-entry
+> screen) are **scrapped** — EZOffice now reuses the EZPos-Web licensing platform with
+> Supabase magic-link activation instead. See `docs/LICENSE_INTEGRATION_AUDIT.md` for the
+> current design. The pricing strategy and invoice-template content below may still be
+> useful reference for the business side.
+
 **Purpose:** How clients purchase EZOffice, get license keys, and activate the software.
 
 ---

@@ -27,6 +27,7 @@ export interface Employee {
   position: string | null
   status: EmployeeStatus
   date_joined: string
+  device_user_id: number | null // ZKTeco device user ID mapping
   shift_id: number | null // Phase C: assigned default shift
   shift_name: string | null // populated via JOIN in list queries
   created_at: string
@@ -278,6 +279,10 @@ export interface PayrollSettings {
   device_ip: string | null
   device_port: number
   grace_period_minutes: number // Phase C: late tolerance in minutes
+  // Sync overhaul (DEVICE_SYNC_AUDIT.md 2026-07-08):
+  punch_debounce_minutes: number // D3: collapse same-employee punches < N min apart
+  max_session_hours: number      // D4: pairs > N hours excluded from pay + flagged
+  device_last_synced_at: string | null // H1: watermark ISO timestamp; null = never synced
   created_at: string
   updated_at: string
 }
@@ -443,3 +448,111 @@ export interface CompanySettings {
   created_at: string
   updated_at: string
 }
+
+// ── Sync overhaul types (DEVICE_SYNC_AUDIT.md 2026-07-08) ────────────────────
+
+/** One row from device_sync_log table — persists sync results for admin review. */
+export interface DeviceSyncLog {
+  id: number
+  device_ip: string
+  started_at: string
+  inserted: number
+  skipped: number
+  errors_json: string | null // JSON array of error strings
+  created_at: string
+}
+
+/** Extended sync result returned from IPC — includes the log row id. */
+export interface DeviceSyncResult {
+  inserted: number
+  skipped: number
+  errors: string[]
+  syncLogId: number | null
+  completedAt: string
+}
+
+/** Result of a Test Connection call (H3). */
+export interface DeviceTestResult {
+  ok: boolean
+  deviceName: string | null
+  serial: string | null
+  userCount: number | null
+  logCount: number | null
+  error: string | null
+  // Clock drift (M5): null if device time could not be read
+  clockDriftSeconds: number | null
+  clockDriftWarning: string | null // human-readable warning if drift > 60s
+}
+
+/** One user enrolled on the ZKTeco device (H4 mapping panel). */
+export interface DeviceUser {
+  deviceUserId: number
+  name: string
+}
+
+// Attendance exceptions (H2/D5)
+
+export const EXCEPTION_TYPE = {
+  MISSING_PUNCH: 'missing_punch',
+  OVER_LONG_SESSION: 'over_long_session',
+  PUNCH_ON_LEAVE: 'punch_on_leave',
+} as const
+
+export type ExceptionType = (typeof EXCEPTION_TYPE)[keyof typeof EXCEPTION_TYPE]
+
+export const EXCEPTION_STATUS = {
+  OPEN: 'open',
+  RESOLVED: 'resolved',
+  DISMISSED: 'dismissed',
+} as const
+
+export type ExceptionStatus = (typeof EXCEPTION_STATUS)[keyof typeof EXCEPTION_STATUS]
+
+export interface AttendanceException {
+  id: number
+  employee_id: number
+  employee_name: string | null // populated via JOIN
+  year: number
+  month: number
+  date: string // YYYY-MM-DD
+  exception_type: ExceptionType
+  description: string
+  status: ExceptionStatus
+  note: string | null
+  related_log_ids: string | null // JSON array
+  created_at: string
+  updated_at: string
+}
+
+// ── License activation (docs/LICENSE_INTEGRATION_AUDIT.md) ──────────────────
+
+export type LicenseDecision = 'allow' | 'deny' | 'allow_temporarily'
+
+export interface LicenseState {
+  decision: LicenseDecision
+  status: string
+  reason_code: string
+  client_action: string
+  product: string
+  customer_email: string | null
+  grace_days: number
+  revalidate_after_hours: number
+  device_fingerprint: string
+  checked_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface LicenseGraceCheck {
+  /** Whether the app should proceed to normal use right now. */
+  allowed: boolean
+  /** True only when no activation has ever happened on this machine. */
+  isActivated: boolean
+  /** Present when allowed=false — the reason to show the user. */
+  reasonCode?: string
+  clientAction?: string
+  /** Whole days remaining in the offline grace window (0 if none left). */
+  daysRemaining?: number
+  customerEmail?: string | null
+}
+

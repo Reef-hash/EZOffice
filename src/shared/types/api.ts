@@ -26,6 +26,13 @@ import type {
   ClockValidationResult,
   AttendanceMonthlyCalendar,
   CompanySettings,
+  DeviceSyncResult,
+  DeviceTestResult,
+  DeviceUser,
+  AttendanceException,
+  DeviceSyncLog,
+  LicenseState,
+  LicenseGraceCheck,
 } from './entities'
 import type {
   CreateEmployeeInput,
@@ -59,6 +66,13 @@ import type {
   UpdateShiftInput,
   CreateLeaveRequestInput,
   UpdateCompanySettingsInput,
+  ExceptionListInput,
+  ResolveExceptionInput,
+  DismissExceptionInput,
+  PurgeSyncDataInput,
+  ComputeExceptionsInput,
+  SendActivationOtpInput,
+  VerifyActivationOtpInput,
 } from './inputs'
 
 export interface EmployeeApi {
@@ -122,12 +136,6 @@ export interface AuditApi {
   list: (filters?: { adminId?: number; tableName?: string; action?: string; limitDays?: number }) => Promise<AuditEntry[]>
 }
 
-export interface DeviceSyncResult {
-  inserted: number
-  skipped: number
-  errors: string[]
-}
-
 export interface AttendanceApi {
   list: (filters?: { employeeId?: number; dateFrom?: string; dateTo?: string }) => Promise<AttendanceLog[]>
   getById: (id: number) => Promise<AttendanceLog | null>
@@ -139,6 +147,19 @@ export interface AttendanceApi {
   update: (id: number, data: UpdateAttendanceLogInput) => Promise<AttendanceLog>
   delete: (id: number) => Promise<void>
   syncFromDevice: () => Promise<DeviceSyncResult>
+  purgeDevicePunches: (data: PurgeSyncDataInput) => Promise<{ deleted: number }>
+
+  // Device connection (H3 + H4)
+  testDevice: () => Promise<DeviceTestResult>
+  getDeviceUsers: () => Promise<DeviceUser[]>
+  setDeviceTime: () => Promise<{ ok: boolean; error?: string }>
+  getLastSyncLog: () => Promise<DeviceSyncLog | null>
+
+  // Attendance exceptions (H2/D5)
+  computeExceptions: (data: ComputeExceptionsInput) => Promise<{ created: number }>
+  listExceptions: (data: ExceptionListInput) => Promise<AttendanceException[]>
+  resolveException: (data: ResolveExceptionInput) => Promise<AttendanceException>
+  dismissException: (data: DismissExceptionInput) => Promise<AttendanceException>
 
   // Phase C — shifts
   listShifts: () => Promise<Shift[]>
@@ -252,6 +273,14 @@ export interface ExportApi {
   attendance: (dateFrom: string, dateTo: string) => Promise<{ filePath: string; filename: string }>
 }
 
+// docs/LICENSE_INTEGRATION_AUDIT.md
+export interface LicenseApi {
+  getState: () => Promise<LicenseState | null>
+  checkGrace: () => Promise<LicenseGraceCheck>
+  sendOtp: (data: SendActivationOtpInput) => Promise<{ sent: boolean }>
+  verifyOtp: (data: VerifyActivationOtpInput) => Promise<{ success: boolean; decision: string; clientAction: string; message?: string }>
+}
+
 export interface EzOfficeApi {
   admin: AdminApi
   audit: AuditApi
@@ -264,4 +293,5 @@ export interface EzOfficeApi {
   payroll: PayrollApi
   settings: SettingsApi
   export: ExportApi
+  license: LicenseApi
 }

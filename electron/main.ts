@@ -2,6 +2,10 @@
 // Creates the BrowserWindow, initializes the database, runs migrations,
 // registers IPC handlers, then loads the Vite renderer.
 
+// Loads .env into process.env (EZOFFICE_LICENSING_API_URL / EZOFFICE_SUPABASE_*)
+// before any module reads it. Must run before the licensing config is used.
+import 'dotenv/config'
+
 // Polyfill __filename and __dirname BEFORE any other imports.
 // native CJS modules (better-sqlite3) reference these globals at require-time.
 // Object.defineProperty is a visible side-effect — bundlers must preserve it.
@@ -29,7 +33,9 @@ import { registerPayrollHandlers } from './ipc/payroll'
 import { registerAdminHandlers } from './ipc/admin'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerExportHandlers } from './ipc/export'
+import { registerLicenseHandlers } from './ipc/license'
 import * as adminService from './services/admin'
+import * as licenseService from './services/license'
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -89,6 +95,7 @@ function initDatabase(): void {
   registerPayrollHandlers(db)
   registerSettingsHandlers(db)
   registerExportHandlers(db)
+  registerLicenseHandlers(db)
 
   // Check if this is first-time setup (no admin users yet)
   const adminCount = adminService.getAdminUserCount(db)
@@ -96,6 +103,15 @@ function initDatabase(): void {
     // eslint-disable-next-line no-console
     console.log('[DB] No admin users found. App will show signup screen on first launch.')
   }
+
+  // Fire-and-forget: opportunistically refresh the cached license decision if
+  // the revalidation interval has elapsed and we're online. Must never block
+  // window creation — a network failure here is silent by design (see
+  // revalidateIfDue's own docs). Errors are still logged for support triage.
+  licenseService.revalidateIfDue(db).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.warn('[License] Background revalidation failed (non-fatal):', err)
+  })
 }
 
 function setupAutoUpdater(): void {

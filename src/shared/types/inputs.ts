@@ -24,8 +24,10 @@ export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>
 
 // Phase C: optional shift assignment on employee create/update
+// Phase 3b: optional device_user_id for ZKTeco sync mapping
 export const createEmployeeWithShiftSchema = createEmployeeSchema.extend({
   shift_id: z.number().int().positive().nullable().optional(),
+  device_user_id: z.number().int().positive().nullable().optional(),
 })
 export const updateEmployeeWithShiftSchema = createEmployeeWithShiftSchema.partial()
 export type CreateEmployeeWithShiftInput = z.infer<typeof createEmployeeWithShiftSchema>
@@ -153,6 +155,12 @@ export const updatePayrollSettingsSchema = z.object({
   ot_rule_type: z.enum(['flat_addition', 'multiplier']).optional(),
   ot_rule_value: z.number().min(0, 'OT value must be non-negative').optional(),
   grace_period_minutes: z.number().int().min(0, 'Grace period must be non-negative').optional(),
+  // Phase 3: Device integration (ZKTeco V1000 / K40 Pro)
+  device_ip: z.string().min(1, 'Device IP is required').optional(),
+  device_port: z.number().int().min(1, 'Port must be between 1 and 65535').max(65535).optional(),
+  // Sync overhaul (DEVICE_SYNC_AUDIT.md 2026-07-08)
+  punch_debounce_minutes: z.number().int().min(0).optional(),
+  max_session_hours: z.number().min(1).optional(),
 })
 
 export type UpdatePayrollSettingsInput = z.infer<typeof updatePayrollSettingsSchema>
@@ -338,3 +346,57 @@ export const updateCompanySettingsSchema = z.object({
 })
 
 export type UpdateCompanySettingsInput = z.infer<typeof updateCompanySettingsSchema>
+
+// --- Sync overhaul: attendance exceptions (H2/D5) ---
+
+export const exceptionListSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+  employeeId: z.number().int().positive().optional(),
+  status: z.enum(['open', 'resolved', 'dismissed']).optional(),
+})
+
+export type ExceptionListInput = z.infer<typeof exceptionListSchema>
+
+export const resolveExceptionSchema = z.object({
+  id: z.number().int().positive('Exception id is required'),
+  note: z.string().optional(),
+})
+
+export type ResolveExceptionInput = z.infer<typeof resolveExceptionSchema>
+
+export const dismissExceptionSchema = z.object({
+  id: z.number().int().positive('Exception id is required'),
+  note: z.string().min(1, 'A note is required when dismissing an exception'),
+})
+
+export type DismissExceptionInput = z.infer<typeof dismissExceptionSchema>
+
+export const purgeSyncDataSchema = z.object({
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
+  dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
+})
+
+export type PurgeSyncDataInput = z.infer<typeof purgeSyncDataSchema>
+
+export const computeExceptionsSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+})
+
+export type ComputeExceptionsInput = z.infer<typeof computeExceptionsSchema>
+
+// --- License activation (docs/LICENSE_INTEGRATION_AUDIT.md) ---
+
+export const sendActivationOtpSchema = z.object({
+  email: z.string().email('A valid email is required'),
+})
+
+export type SendActivationOtpInput = z.infer<typeof sendActivationOtpSchema>
+
+export const verifyActivationOtpSchema = z.object({
+  email: z.string().email('A valid email is required'),
+  token: z.string().min(1, 'The code from your email is required'),
+})
+
+export type VerifyActivationOtpInput = z.infer<typeof verifyActivationOtpSchema>

@@ -5,6 +5,9 @@ import { Table } from '@/shared/components/Table'
 import { Button } from '@/shared/components/Button'
 import { StatusBadge } from '@/shared/components/StatusBadge'
 import { PageHeader } from '@/shared/components/PageHeader'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { useToast } from '@/shared/components/Toast'
+import { useKeyboardShortcut } from '@/shared/hooks/useKeyboardShortcut'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { EmployeeForm } from './EmployeeForm'
 import { EmployeeImportDialog } from './EmployeeImportDialog'
@@ -19,6 +22,7 @@ const columns: Column<Employee>[] = [
   { key: 'ic_number', header: 'IC Number', accessor: (r) => r.ic_number, sortable: true, sortValue: (r) => r.ic_number, width: '140px' },
   { key: 'department_name', header: 'Department', accessor: (r) => r.department_name || '—', sortable: true, sortValue: (r) => r.department_name || '' },
   { key: 'position', header: 'Position', accessor: (r) => r.position || '—', sortable: true, sortValue: (r) => r.position || '' },
+  { key: 'device_user_id', header: 'Device ID', accessor: (r) => r.device_user_id ?? '—', sortable: true, sortValue: (r) => String(r.device_user_id ?? ''), width: '90px', align: 'center' },
   {
     key: 'status',
     header: 'Status',
@@ -34,6 +38,7 @@ const columns: Column<Employee>[] = [
 ]
 
 export function EmployeeListPage() {
+  const { addToast } = useToast()
   const { data: employees = [], isLoading } = useIpcQuery<Employee[]>(
     ['employees'],
     () => window.api.employees.list(),
@@ -42,27 +47,39 @@ export function EmployeeListPage() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
   const [isImportOpen, setIsImportOpen] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Mutations
   const createMutation = useIpcMutation<Employee, CreateEmployeeInput>(
     (data) => window.api.employees.create(data),
     [['employees']],
+    { onSuccessMessage: 'Employee created successfully' },
   )
 
   const updateMutation = useIpcMutation<Employee, { id: number; data: UpdateEmployeeInput }>(
     ({ id, data }) => window.api.employees.update(id, data),
     [['employees']],
+    { onSuccessMessage: 'Employee updated successfully' },
   )
 
   const deleteMutation = useIpcMutation<void, number>(
     (id) => window.api.employees.delete(id),
     [['employees']],
+    { onSuccessMessage: 'Employee deleted successfully' },
   )
 
   const handleCreate = useCallback(() => {
     setEditingEmployee(null)
     setIsFormOpen(true)
   }, [])
+
+  useKeyboardShortcut([
+    {
+      key: 'n',
+      ctrlKey: true,
+      callback: handleCreate,
+    },
+  ])
 
   const handleEdit = useCallback((employee: Employee) => {
     setEditingEmployee(employee)
@@ -72,7 +89,7 @@ export function EmployeeListPage() {
   const handleFormSubmit = useCallback(
     async (data: CreateEmployeeInput | UpdateEmployeeInput) => {
       if (editingEmployee) {
-        await updateMutation.mutateAsync({ id: editingEmployee.id, data: data as UpdateEmployeeInput })
+        await updateMutation.mutateAsync({ id: editingEmployee.id, data })
       } else {
         await createMutation.mutateAsync(data as CreateEmployeeInput)
       }
@@ -86,20 +103,26 @@ export function EmployeeListPage() {
     try {
       await window.api.export.employees()
     } catch (err) {
-      alert(`Export failed: ${String(err)}`)
+      addToast(`Export failed: ${String(err)}`, 'error')
     }
-  }, [])
+  }, [addToast])
 
-  const handleDelete = useCallback(
-    async () => {
-      if (!editingEmployee) return
-      if (!confirm(`Delete employee "${editingEmployee.name}"? This cannot be undone.`)) return
+  const handleDelete = useCallback(async () => {
+    if (!editingEmployee) return
+    setShowDeleteConfirm(true)
+  }, [editingEmployee])
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!editingEmployee) return
+    try {
       await deleteMutation.mutateAsync(editingEmployee.id)
       setIsFormOpen(false)
       setEditingEmployee(null)
-    },
-    [editingEmployee, deleteMutation],
-  )
+      setShowDeleteConfirm(false)
+    } catch {
+      // Handled by global onError toast
+    }
+  }, [editingEmployee, deleteMutation])
 
   return (
     <div>
@@ -177,6 +200,16 @@ export function EmployeeListPage() {
         onImport={async (rows) => {
           return window.api.employees.importCsv(rows)
         }}
+      />
+
+      <ConfirmDialog
+        isOpen={showDeleteConfirm}
+        title="Delete Employee"
+        message={`Are you sure you want to delete employee "${editingEmployee?.name || ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        tone="danger"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
       />
     </div>
   )

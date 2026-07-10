@@ -6,14 +6,18 @@ import {
   ATTENDANCE_STATUS,
   LEAVE_TYPE,
   LEAVE_STATUS,
+  EXCEPTION_TYPE,
+  EXCEPTION_STATUS,
   type AttendanceType,
   type AttendanceSource,
   type AttendanceStatus,
   type LeaveType,
   type LeaveStatus,
+  type ExceptionType,
+  type ExceptionStatus,
 } from '@/shared/types/entities'
 
-export { ATTENDANCE_TYPE, ATTENDANCE_SOURCE, ATTENDANCE_STATUS, LEAVE_TYPE, LEAVE_STATUS }
+export { ATTENDANCE_TYPE, ATTENDANCE_SOURCE, ATTENDANCE_STATUS, LEAVE_TYPE, LEAVE_STATUS, EXCEPTION_TYPE, EXCEPTION_STATUS }
 
 export const ATTENDANCE_TYPE_TONE: Record<AttendanceType, BadgeTone> = {
   [ATTENDANCE_TYPE.IN]: 'success',
@@ -68,4 +72,23 @@ export const LEAVE_STATUS_LABEL: Record<LeaveStatus, string> = {
   [LEAVE_STATUS.PENDING]: 'Pending',
   [LEAVE_STATUS.APPROVED]: 'Approved',
   [LEAVE_STATUS.REJECTED]: 'Rejected',
+}
+
+// Sync overhaul — attendance exceptions (H2/D5)
+export const EXCEPTION_TYPE_LABEL: Record<ExceptionType, string> = {
+  [EXCEPTION_TYPE.MISSING_PUNCH]: 'Missing Punch',
+  [EXCEPTION_TYPE.OVER_LONG_SESSION]: 'Over-long Session',
+  [EXCEPTION_TYPE.PUNCH_ON_LEAVE]: 'Punch on Leave',
+}
+
+export const EXCEPTION_STATUS_TONE: Record<ExceptionStatus, BadgeTone> = {
+  [EXCEPTION_STATUS.OPEN]: 'error',
+  [EXCEPTION_STATUS.RESOLVED]: 'success',
+  [EXCEPTION_STATUS.DISMISSED]: 'neutral',
+}
+
+export const EXCEPTION_STATUS_LABEL: Record<ExceptionStatus, string> = {
+  [EXCEPTION_STATUS.OPEN]: 'Open',
+  [EXCEPTION_STATUS.RESOLVED]: 'Resolved',
+  [EXCEPTION_STATUS.DISMISSED]: 'Dismissed',
 }

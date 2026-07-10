@@ -59,6 +59,17 @@ const api: EzOfficeApi = {
     update: (id, data) => ipcRenderer.invoke('attendance:update', id, data),
     delete: (id) => ipcRenderer.invoke('attendance:delete', id),
     syncFromDevice: () => ipcRenderer.invoke('attendance:syncFromDevice'),
+    purgeDevicePunches: (data) => ipcRenderer.invoke('attendance:purgeDevicePunches', data),
+    // Device connection (H3 + H4)
+    testDevice: () => ipcRenderer.invoke('attendance:testDevice'),
+    getDeviceUsers: () => ipcRenderer.invoke('attendance:getDeviceUsers'),
+    setDeviceTime: () => ipcRenderer.invoke('attendance:setDeviceTime'),
+    getLastSyncLog: () => ipcRenderer.invoke('attendance:getLastSyncLog'),
+    // Attendance exceptions (H2/D5)
+    computeExceptions: (data) => ipcRenderer.invoke('attendance:computeExceptions', data),
+    listExceptions: (data) => ipcRenderer.invoke('attendance:listExceptions', data),
+    resolveException: (data) => ipcRenderer.invoke('attendance:resolveException', data),
+    dismissException: (data) => ipcRenderer.invoke('attendance:dismissException', data),
     // Phase C — shifts
     listShifts: () => ipcRenderer.invoke('attendance:listShifts'),
     getShiftById: (id) => ipcRenderer.invoke('attendance:getShiftById', id),
@@ -143,6 +154,12 @@ const api: EzOfficeApi = {
     employees: () => ipcRenderer.invoke('export:employees'),
     payroll: (runId) => ipcRenderer.invoke('export:payroll', runId),
     attendance: (dateFrom, dateTo) => ipcRenderer.invoke('export:attendance', { dateFrom, dateTo }),
+  },
+  license: {
+    getState: () => ipcRenderer.invoke('license:getState'),
+    checkGrace: () => ipcRenderer.invoke('license:checkGrace'),
+    sendOtp: (data) => ipcRenderer.invoke('license:sendOtp', data),
+    verifyOtp: (data) => ipcRenderer.invoke('license:verifyOtp', data),
   },
 }
 

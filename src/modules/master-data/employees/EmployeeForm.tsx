@@ -31,6 +31,7 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
   const [email, setEmail] = useState('')
   const [departmentId, setDepartmentId] = useState<number | null>(null)
   const [shiftId, setShiftId] = useState<number | null>(null)
+  const [deviceUserId, setDeviceUserId] = useState<number | null>(null)
   const [position, setPosition] = useState('')
   const [status, setStatus] = useState<string>(EMPLOYEE_STATUS.ACTIVE)
   const [dateJoined, setDateJoined] = useState('')
@@ -61,6 +62,7 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
       setEmail(employee.email ?? '')
       setDepartmentId(employee.department_id)
       setShiftId(employee.shift_id ?? null)
+      setDeviceUserId(employee.device_user_id ?? null)
       setPosition(employee.position ?? '')
       setStatus(employee.status)
       setDateJoined(employee.date_joined.slice(0, 10))
@@ -72,6 +74,7 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
       setEmail('')
       setDepartmentId(null)
       setShiftId(null)
+      setDeviceUserId(null)
       setPosition('')
       setStatus(EMPLOYEE_STATUS.ACTIVE)
       setDateJoined('')
@@ -105,6 +108,7 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
       // Phase C: shift assignment (optional). The shift-aware schema accepts this;
       // the base CreateEmployeeInput type doesn't declare it, so cast through.
       shift_id: shiftId,
+      device_user_id: deviceUserId,
     } as CreateEmployeeInput
 
     await onSubmit(data)
@@ -212,6 +216,15 @@ export function EmployeeForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting
           options={shiftOptions}
           value={shiftId !== null ? String(shiftId) : ''}
           onChange={(e) => setShiftId(e.target.value ? Number(e.target.value) : null)}
+        />
+
+        <Input
+          label="Device User ID (ZKTeco)"
+          type="number"
+          value={deviceUserId !== null ? String(deviceUserId) : ''}
+          onChange={(e) => setDeviceUserId(e.target.value ? Number(e.target.value) : null)}
+          placeholder="e.g. 1, 2, 3... match device enrollment ID"
+          helperText="User ID assigned on the ZKTeco device during fingerprint enrollment"
         />
 
         <div className="grid grid-cols-2 gap-4">

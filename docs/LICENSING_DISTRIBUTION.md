@@ -1,5 +1,12 @@
 # EZOffice: Distribution, Updates & Licensing
 
+> **⚠️ SUPERSEDED (2026-07-08):** The license key scheme in Section 2 below (forgeable
+> SHA256, no secret) and the standalone Python-script issuance flow are **scrapped**.
+> EZOffice now integrates with the existing EZPos-Web licensing platform instead — see
+> `docs/LICENSE_INTEGRATION_AUDIT.md` for the current design. Sections on installer
+> distribution (Section 1) and update delivery may still be useful reference; ignore
+> Sections 2–3 (License Key System / Activation) entirely.
+
 ## Overview
 
 For Phase A launch (first client), you need:
