@@ -556,3 +556,157 @@ export interface LicenseGraceCheck {
   customerEmail?: string | null
 }
 
+// ── Phase 1: Company Calendar ─────────────────────────────────
+
+export const CALENDAR_EVENT_TYPE = {
+  PUBLIC_HOLIDAY: 'public_holiday',
+  COMPANY_HOLIDAY: 'company_holiday',
+  SPECIAL_WORKING_DAY: 'special_working_day',
+  HALF_DAY: 'half_day',
+  EMERGENCY_CLOSURE: 'emergency_closure',
+  COMPANY_EVENT: 'company_event',
+} as const
+
+export type CalendarEventType = (typeof CALENDAR_EVENT_TYPE)[keyof typeof CALENDAR_EVENT_TYPE]
+
+/** Company-wide default working week (singleton, row id=1). */
+export interface CompanyCalendarProfile {
+  id: number
+  name: string
+  monday_is_working: boolean
+  tuesday_is_working: boolean
+  wednesday_is_working: boolean
+  thursday_is_working: boolean
+  friday_is_working: boolean
+  saturday_is_working: boolean
+  sunday_is_working: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** Per-employee working week override. Nullable — null means inherit company default. */
+export interface EmployeeCalendarProfile {
+  id: number
+  employee_id: number
+  monday_is_working: boolean
+  tuesday_is_working: boolean
+  wednesday_is_working: boolean
+  thursday_is_working: boolean
+  friday_is_working: boolean
+  saturday_is_working: boolean
+  sunday_is_working: boolean
+  effective_from: string
+  effective_to: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** A date-specific calendar exception (public holiday, emergency closure, etc.). */
+export interface CalendarEvent {
+  id: number
+  event_type: CalendarEventType
+  name: string
+  event_date: string  // YYYY-MM-DD
+  description: string | null
+  is_recurring: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** Resolved classification for a single employee × date. */
+export type CalendarDayType =
+  | 'working_day'
+  | 'weekly_off'
+  | 'public_holiday'
+  | 'company_holiday'
+  | 'special_working_day'
+  | 'half_day'
+  | 'emergency_closure'
+  | 'company_event'
+
+export interface ResolvedCalendarDay {
+  date: string  // YYYY-MM-DD
+  employee_id: number
+  day_type: CalendarDayType
+  is_half_day: boolean
+  event_name: string | null  // name of the calendar event that triggered this type
+  event_id: number | null     // FK to calendar_events if applicable
+  description: string | null
+}
+
+// ── Phase 2: Payroll Periods ─────────────────────────────────
+
+export const PAYROLL_PERIOD_STATUS = {
+  OPEN: 'open',
+  PROCESSING: 'processing',
+  FINALIZED: 'finalized',
+  CLOSED: 'closed',
+} as const
+
+export type PayrollPeriodStatus = (typeof PAYROLL_PERIOD_STATUS)[keyof typeof PAYROLL_PERIOD_STATUS]
+
+export interface PayrollPeriod {
+  id: number
+  name: string
+  start_date: string
+  end_date: string
+  status: PayrollPeriodStatus
+  processed_at: string | null
+  finalized_at: string | null
+  finalized_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+// ── Phase 3: Processing Engine ───────────────────────────────
+
+export const PROCESSING_RUN_STATUS = {
+  RUNNING: 'running',
+  COMPLETED: 'completed',
+  FAILED: 'failed',
+} as const
+
+export type ProcessingRunStatus = (typeof PROCESSING_RUN_STATUS)[keyof typeof PROCESSING_RUN_STATUS]
+
+export interface ProcessingRun {
+  id: number
+  payroll_period_id: number
+  status: ProcessingRunStatus
+  started_at: string
+  completed_at: string | null
+  total_employees: number
+  total_days: number
+  error_message: string | null
+  created_at: string
+}
+
+export type AttendanceDayStatus =
+  | 'present' | 'late' | 'excused_late' | 'early_out'
+  | 'absent' | 'on_leave' | 'holiday' | 'weekly_off'
+  | 'emergency_closure' | 'no_show'
+
+export interface DailyAttendanceRecord {
+  id: number
+  employee_id: number
+  date: string
+  payroll_period_id: number | null
+  processing_run_id: number | null
+  calendar_type: CalendarDayType
+  leave_type: string | null
+  leave_record_id: number | null
+  shift_id: number | null
+  attendance_status: AttendanceDayStatus
+  first_in: string | null
+  last_out: string | null
+  session_count: number
+  total_clocked_hours: number
+  break_hours: number
+  regular_hours: number
+  ot_hours: number
+  minutes_late: number
+  minutes_early_out: number
+  is_finalized: boolean
+  created_at: string
+  updated_at: string
+}
+

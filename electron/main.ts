@@ -34,6 +34,7 @@ import { registerAdminHandlers } from './ipc/admin'
 import { registerSettingsHandlers } from './ipc/settings'
 import { registerExportHandlers } from './ipc/export'
 import { registerLicenseHandlers } from './ipc/license'
+import { registerCalendarHandlers } from './ipc/calendar'
 import * as adminService from './services/admin'
 import * as licenseService from './services/license'
 
@@ -96,6 +97,7 @@ function initDatabase(): void {
   registerSettingsHandlers(db)
   registerExportHandlers(db)
   registerLicenseHandlers(db)
+  registerCalendarHandlers(db)
 
   // Check if this is first-time setup (no admin users yet)
   const adminCount = adminService.getAdminUserCount(db)

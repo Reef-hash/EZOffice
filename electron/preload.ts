@@ -5,6 +5,21 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { EzOfficeApi } from '../src/shared/types/api'
 
 const api: EzOfficeApi = {
+  calendar: {
+    getCompanyProfile: () => ipcRenderer.invoke('calendar:getCompanyProfile'),
+    updateCompanyProfile: (data) => ipcRenderer.invoke('calendar:updateCompanyProfile', data),
+    getEmployeeProfile: (employeeId) => ipcRenderer.invoke('calendar:getEmployeeProfile', employeeId),
+    setEmployeeProfile: (data) => ipcRenderer.invoke('calendar:setEmployeeProfile', data),
+    deleteEmployeeProfile: (employeeId) => ipcRenderer.invoke('calendar:deleteEmployeeProfile', employeeId),
+    listEvents: (filters) => ipcRenderer.invoke('calendar:listEvents', filters),
+    getEventById: (id) => ipcRenderer.invoke('calendar:getEventById', id),
+    createEvent: (data) => ipcRenderer.invoke('calendar:createEvent', data),
+    updateEvent: (id, data) => ipcRenderer.invoke('calendar:updateEvent', id, data),
+    deleteEvent: (id) => ipcRenderer.invoke('calendar:deleteEvent', id),
+    resolveDay: (employeeId, date) => ipcRenderer.invoke('calendar:resolveDay', employeeId, date),
+    resolveMonth: (employeeId, year, month) => ipcRenderer.invoke('calendar:resolveMonth', employeeId, year, month),
+    resolveAllEmployees: (year, month) => ipcRenderer.invoke('calendar:resolveAllEmployees', year, month),
+  },
   admin: {
     init: (username, password) => ipcRenderer.invoke('admin:init', { username, password }),
     login: (username, password) => ipcRenderer.invoke('admin:login', { username, password }),
@@ -90,6 +105,12 @@ const api: EzOfficeApi = {
     // Phase C — monthly calendar / export
     getMonthlyCalendar: (employeeId, year, month) => ipcRenderer.invoke('attendance:getMonthlyCalendar', { employee_id: employeeId, year, month }),
     exportMonthly: (year, month) => ipcRenderer.invoke('attendance:exportMonthly', { year, month }),
+    // Phase 3 — Processing Engine
+    triggerProcessing: (data) => ipcRenderer.invoke('attendance:triggerProcessing', data),
+    listProcessingRuns: (payrollPeriodId) => ipcRenderer.invoke('attendance:listProcessingRuns', payrollPeriodId),
+    getProcessingRun: (id) => ipcRenderer.invoke('attendance:getProcessingRun', id),
+    getDailyRecords: (employeeId, dateFrom, dateTo) => ipcRenderer.invoke('attendance:getDailyRecords', employeeId, dateFrom, dateTo),
+    getDailyRecordsByPeriod: (payrollPeriodId, employeeId) => ipcRenderer.invoke('attendance:getDailyRecordsByPeriod', payrollPeriodId, employeeId),
   },
   payroll: {
     salaryStructures: {
@@ -144,6 +165,14 @@ const api: EzOfficeApi = {
       checkRateTables: () => ipcRenderer.invoke('payroll:runs:checkRateTables'),
       finalize: (id) => ipcRenderer.invoke('payroll:runs:finalize', id),
       printPayslip: (runId, employeeId) => ipcRenderer.invoke('payroll:runs:printPayslip', runId, employeeId),
+    },
+    periods: {
+      list: () => ipcRenderer.invoke('payroll:periods:list'),
+      getById: (id) => ipcRenderer.invoke('payroll:periods:get', id),
+      create: (data) => ipcRenderer.invoke('payroll:periods:create', data),
+      updateStatus: (id, data) => ipcRenderer.invoke('payroll:periods:updateStatus', id, data),
+      delete: (id) => ipcRenderer.invoke('payroll:periods:delete', id),
+      reopen: (id) => ipcRenderer.invoke('payroll:periods:reopen', id),
     },
   },
   settings: {

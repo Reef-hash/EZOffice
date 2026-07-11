@@ -33,12 +33,25 @@ import type {
   DeviceSyncLog,
   LicenseState,
   LicenseGraceCheck,
+  ProcessingRun,
+  DailyAttendanceRecord,
+  CompanyCalendarProfile,
+  EmployeeCalendarProfile,
+  CalendarEvent,
+  ResolvedCalendarDay,
+  PayrollPeriod,
 } from './entities'
 import type {
   CreateEmployeeInput,
   UpdateEmployeeInput,
   CsvEmployeeRow,
   CsvImportResult,
+  UpdateCompanyCalendarProfileInput,
+  CreateCalendarEventInput,
+  UpdateCalendarEventInput,
+  CreateEmployeeCalendarProfileInput,
+  CreatePayrollPeriodInput,
+  UpdatePayrollPeriodStatusInput,
   CreateCustomerInput,
   UpdateCustomerInput,
   CreateSupplierInput,
@@ -69,6 +82,7 @@ import type {
   ExceptionListInput,
   ResolveExceptionInput,
   DismissExceptionInput,
+  TriggerProcessingInput,
   PurgeSyncDataInput,
   ComputeExceptionsInput,
   SendActivationOtpInput,
@@ -184,6 +198,13 @@ export interface AttendanceApi {
   // Phase C — monthly calendar / export
   getMonthlyCalendar: (employeeId: number, year: number, month: number) => Promise<AttendanceMonthlyCalendar>
   exportMonthly: (year: number, month: number) => Promise<{ filePath: string; filename: string }>
+
+  // Phase 3 — Processing Engine
+  triggerProcessing: (data: TriggerProcessingInput) => Promise<ProcessingRun>
+  listProcessingRuns: (payrollPeriodId: number) => Promise<ProcessingRun[]>
+  getProcessingRun: (id: number) => Promise<ProcessingRun | null>
+  getDailyRecords: (employeeId: number, dateFrom: string, dateTo: string) => Promise<DailyAttendanceRecord[]>
+  getDailyRecordsByPeriod: (payrollPeriodId: number, employeeId?: number) => Promise<DailyAttendanceRecord[]>
 }
 
 // --- Payroll ---
@@ -249,6 +270,15 @@ export interface PayrollRunApi {
   printPayslip: (runId: number, employeeId: number) => Promise<{ filePath: string; filename: string }>
 }
 
+export interface PayrollPeriodApi {
+  list: () => Promise<PayrollPeriod[]>
+  getById: (id: number) => Promise<PayrollPeriod | null>
+  create: (data: CreatePayrollPeriodInput) => Promise<PayrollPeriod>
+  updateStatus: (id: number, data: UpdatePayrollPeriodStatusInput) => Promise<PayrollPeriod>
+  delete: (id: number) => Promise<void>
+  reopen: (id: number) => Promise<PayrollPeriod>
+}
+
 export interface PayrollApi {
   salaryStructures: SalaryStructureApi
   settings: PayrollSettingsApi
@@ -258,6 +288,7 @@ export interface PayrollApi {
   pcbBrackets: PcbBracketApi
   salaryAdvances: SalaryAdvanceApi
   runs: PayrollRunApi
+  periods: PayrollPeriodApi
 }
 
 // Phase D1: Company Settings
@@ -281,9 +312,28 @@ export interface LicenseApi {
   verifyOtp: (data: VerifyActivationOtpInput) => Promise<{ success: boolean; decision: string; clientAction: string; message?: string }>
 }
 
+// ── Phase 1: Company Calendar ─────────────────────────────────
+
+export interface CalendarApi {
+  getCompanyProfile: () => Promise<CompanyCalendarProfile>
+  updateCompanyProfile: (data: UpdateCompanyCalendarProfileInput) => Promise<CompanyCalendarProfile>
+  getEmployeeProfile: (employeeId: number) => Promise<EmployeeCalendarProfile | null>
+  setEmployeeProfile: (data: CreateEmployeeCalendarProfileInput) => Promise<EmployeeCalendarProfile>
+  deleteEmployeeProfile: (employeeId: number) => Promise<void>
+  listEvents: (filters?: { year?: number; month?: number }) => Promise<CalendarEvent[]>
+  getEventById: (id: number) => Promise<CalendarEvent | null>
+  createEvent: (data: CreateCalendarEventInput) => Promise<CalendarEvent>
+  updateEvent: (id: number, data: UpdateCalendarEventInput) => Promise<CalendarEvent>
+  deleteEvent: (id: number) => Promise<void>
+  resolveDay: (employeeId: number, date: string) => Promise<ResolvedCalendarDay>
+  resolveMonth: (employeeId: number, year: number, month: number) => Promise<ResolvedCalendarDay[]>
+  resolveAllEmployees: (year: number, month: number) => Promise<ResolvedCalendarDay[]>
+}
+
 export interface EzOfficeApi {
   admin: AdminApi
   audit: AuditApi
+  calendar: CalendarApi
   employees: EmployeeApi
   customers: CustomerApi
   suppliers: SupplierApi

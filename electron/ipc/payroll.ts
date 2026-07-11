@@ -19,6 +19,8 @@ import {
   createSalaryAdvanceSchema,
   updateSalaryAdvanceSchema,
   createPayrollRunSchema,
+  createPayrollPeriodSchema,
+  updatePayrollPeriodStatusSchema,
 } from '../../src/shared/types/inputs'
 import { getMonthlyAttendanceSummary } from '../services/attendanceSummary'
 import * as salaryStructureService from '../services/payroll/salaryStructure'
@@ -28,6 +30,7 @@ import { checkRateTablesForRun } from '../services/payroll/statutoryRates'
 import * as salaryAdvancesService from '../services/payroll/salaryAdvances'
 import * as payrollRunService from '../services/payroll/payrollRun'
 import { generatePayslipPdf } from '../services/payroll/payslipPdf'
+import * as payrollPeriodService from '../services/payroll/payrollPeriod'
 
 export function registerPayrollHandlers(db: Database.Database): void {
   // ── Attendance Monthly Summary (executed by Payroll, lives in attendance namespace) ──
@@ -335,6 +338,60 @@ export function registerPayrollHandlers(db: Database.Database): void {
       return result
     } catch (err) {
       throw new Error(`Failed to print payslip: ${String(err)}`)
+    }
+  })
+
+  // ── Payroll Periods ──────────────────────────────────────
+
+  ipcMain.handle('payroll:periods:list', async () => {
+    try {
+      return payrollPeriodService.listPayrollPeriods(db)
+    } catch (err) {
+      throw new Error(`Failed to list payroll periods: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:periods:get', async (_event, id: number) => {
+    try {
+      return payrollPeriodService.getPayrollPeriodById(db, id)
+    } catch (err) {
+      throw new Error(`Failed to get payroll period ${id}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:periods:create', async (_event, data: unknown) => {
+    try {
+      const input = createPayrollPeriodSchema.parse(data)
+      return payrollPeriodService.createPayrollPeriod(db, input)
+    } catch (err) {
+      throw new Error(`Failed to create payroll period: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:periods:updateStatus', async (_event, id: number, data: unknown) => {
+    try {
+      const input = updatePayrollPeriodStatusSchema.parse(data)
+      return payrollPeriodService.updatePayrollPeriodStatus(db, id, input)
+    } catch (err) {
+      throw new Error(`Failed to update payroll period status: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:periods:delete', async (_event, id: number) => {
+    try {
+      return payrollPeriodService.deletePayrollPeriod(db, id)
+    } catch (err) {
+      throw new Error(`Failed to delete payroll period ${id}: ${String(err)}`)
+    }
+  })
+
+  // ── Phase 6: Re-open ────────────────────────────────────
+
+  ipcMain.handle('payroll:periods:reopen', async (_event, id: number) => {
+    try {
+      return payrollPeriodService.reopenPayrollPeriod(db, id)
+    } catch (err) {
+      throw new Error(`Failed to reopen payroll period ${id}: ${String(err)}`)
     }
   })
 }

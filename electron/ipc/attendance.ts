@@ -27,6 +27,10 @@ import {
 import * as attendanceService from '../services/attendance'
 import * as exceptionService from '../services/attendanceExceptions'
 import * as deviceService from '../services/attendanceDevice'
+import * as processingService from '../services/attendanceProcessor'
+import {
+  triggerProcessingSchema,
+} from '../../src/shared/types/inputs'
 
 export function registerAttendanceHandlers(db: Database.Database): void {
   ipcMain.handle('attendance:list', async (_event, filters?: unknown) => {
@@ -384,6 +388,49 @@ export function registerAttendanceHandlers(db: Database.Database): void {
       return exceptionService.dismissAttendanceException(db, input.id, input.note)
     } catch (err) {
       throw new Error(`Failed to dismiss exception: ${String(err)}`)
+    }
+  })
+
+  // ── Phase 3: Processing Engine ──────────────────────────
+
+  ipcMain.handle('attendance:triggerProcessing', async (_event, data: unknown) => {
+    try {
+      const input = triggerProcessingSchema.parse(data)
+      return processingService.triggerProcessing(db, input.payroll_period_id, input.employee_ids)
+    } catch (err) {
+      throw new Error(`Failed to trigger attendance processing: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:listProcessingRuns', async (_event, payrollPeriodId: number) => {
+    try {
+      return processingService.listProcessingRuns(db, payrollPeriodId)
+    } catch (err) {
+      throw new Error(`Failed to list processing runs: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:getProcessingRun', async (_event, id: number) => {
+    try {
+      return processingService.getProcessingRun(db, id)
+    } catch (err) {
+      throw new Error(`Failed to get processing run ${id}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:getDailyRecords', async (_event, employeeId: number, dateFrom: string, dateTo: string) => {
+    try {
+      return processingService.getDailyRecords(db, employeeId, dateFrom, dateTo)
+    } catch (err) {
+      throw new Error(`Failed to get daily records: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:getDailyRecordsByPeriod', async (_event, payrollPeriodId: number, employeeId?: number) => {
+    try {
+      return processingService.getDailyRecordsByPeriod(db, payrollPeriodId, employeeId)
+    } catch (err) {
+      throw new Error(`Failed to get daily records by period: ${String(err)}`)
     }
   })
 }

@@ -362,6 +362,90 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Not yet verified:** the app has not been launched and clicked through (Test Connection / device mapping / Exceptions compute-resolve-dismiss / payroll-blocks-then-unblocks flow) — needs the launch-confirmation step like every other phase. Real device testing is still blocked on the project owner's separate network-subnet mismatch between this PC and the physical ZKTeco unit.
 
+- **2026-07-10 — Phase 1: Company Calendar implemented.** Following `docs/hrms-architecture-proposal.md` §4. Foundation layer for the HRMS platform: defines working days, weekly offs, holidays, and other calendar classifications so the processing engine (Phase 3) can resolve what kind of day a given date is.
+
+  - **Migration (`0013_calendar.sql`):** Three tables:
+    - `company_calendar_profiles` — singleton (seeded with "Standard Malaysian", Mon–Fri working, Sat–Sun off)
+    - `employee_calendar_profiles` — per-employee override with effective date range, FK → employees with CASCADE
+    - `calendar_events` — date-specific exceptions with 6 types (`public_holiday`, `company_holiday`, `special_working_day`, `half_day`, `emergency_closure`, `company_event`), unique index on `(event_date, event_type)`
+    - Seed: 18 Malaysian public holidays for 2026–2027 (recurring and moon-sighting-dependent)
+
+  - **Day resolution (`resolveCalendarDay`):** Implemented the priority chain from the proposal: emergency_closure > special_working_day > public_holiday > company_holiday > weekly_off > working_day, with `half_day` as a floating modifier. Leave resolution is deferred to Phase 3. Employee profile falls back to company default when null.
+
+  - **Service (`electron/services/calendar.ts`):** 10 exported functions — CRUD for company profile, employee profiles, and calendar events; 3 resolution functions (`resolveCalendarDay`, `resolveCalendarMonth`, `resolveCalendarForAllEmployees`). All take `db` as first arg.
+
+  - **IPC (`electron/ipc/calendar.ts`):** 13 handlers registered as `calendar:*` channels. Follows the exact same pattern as existing handlers (Zod validate → service → return).
+
+  - **UI (`src/modules/calendar/`):** Two-tab layout (Working Week + Events). Working Week tab shows 7-day checkboxes saved to the company profile. Events tab shows a monthly calendar event list with Add/Edit/Delete modal. Sidebar link added under "Modules" between Attendance and Payroll.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (renderer + main + preload bundles).
+
+  - **Not yet verified:** the app has not been launched and clicked through (Calendar page navigation, Working Week save, event CRUD) — needs environment-ready launch confirmation. The `ELECTRON_RUN_AS_NODE=1` guard is still active.
+
+- **2026-07-10 — Phase 2: Payroll Periods implemented.** Following `docs/hrms-architecture-proposal.md` §5.
+
+  - **Migration (`0014_payroll_periods.sql`):** `payroll_periods` table with lifecycle status (`open` → `processing` → `finalized` → `closed`), non-overlapping date range validation at the DB level via `CHECK(start_date < end_date)`, indexes on dates and status.
+
+  - **Service (`electron/services/payroll/payrollPeriod.ts`):** 5 exported functions — CRUD plus lifecycle state machine. Transitions are validated: only `open` → `processing` → `finalized` → `closed` allowed. Status-dependent delete protection (only `open` periods deletable). Overlap detection on create.
+
+  - **IPC:** 5 handlers added to `electron/ipc/payroll.ts` under `payroll:periods:*` namespace, following the existing payroll IPC pattern.
+
+  - **UI:** `PayrollPeriodListPage` added as a new tab in the Payroll module (between "Payroll Runs" and "Salary Structures"). Shows status badges, lifecycle transition buttons per period, create modal with name + date range, delete confirmation for open periods.
+
+  - **Types:** `PayrollPeriod` interface, `PAYROLL_PERIOD_STATUS` const/enum, Zod schemas for create and status update, `PayrollPeriodApi` interface nested under `PayrollApi`.
+
+  - **No new sidebar link** — periods are accessed as a tab within the existing Payroll page (`/payroll`), consistent with the existing Salary Structures / Advances / Settings tabs.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles).
+
+- **2026-07-10 — Phase 3: Attendance Processing Engine built.** The 12-stage pipeline from `docs/hrms-architecture-proposal.md` §7, implemented in `electron/services/attendanceProcessor.ts`. Produces `daily_attendance_records` rows from `attendance_logs` + calendar + leave + shifts.
+
+  - **Migration (`0015_processing_engine.sql`):** Two tables — `processing_runs` (audit trail per engine execution), `daily_attendance_records` (one row per employee per day; unique on employee_id, date, processing_run_id). Calendar type CHECK constraint with 8 day types. Attendance status CHECK with 10 statuses.
+
+  - **Pipeline stages implemented:** Collect Raw Logs → Normalize → Validate (absorbs attendanceExceptions alternation logic) → Pair IN→OUT → Calculate Hours (with max_session cap) → Resolve Calendar (uses Phase 1 `resolveCalendarDay`) → Resolve Leave → Resolve Holiday (priority chain from proposal §8) → Resolve Attendance Status (decision tree from §7) → Calculate Final Hours (regular/OT split with half-day support) → Generate Daily Record → Index for Payroll.
+
+  - **Service (`attendanceProcessor.ts`):** `triggerProcessing()` orchestrates the full pipeline per payroll period, wrapped in a DB transaction. `getDailyRecords()` / `getDailyRecordsByPeriod()` for querying results. Processing run tracks total employees, total days, status (running/completed/failed), and error messages.
+
+  - **IPC:** 5 handlers added to `electron/ipc/attendance.ts` under `attendance:*` namespace: `triggerProcessing`, `listProcessingRuns`, `getProcessingRun`, `getDailyRecords`, `getDailyRecordsByPeriod`.
+
+  - **UI:** "Process Attendance" button added to each open Payroll Period card. Status transitions automatically (open → processing on process click). "View Runs" expandable section shows processing run history per period.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles).
+
+- **2026-07-10 — Phase 4: Daily Records view + Phase 5: Payroll rewiring completed.**
+
+  - **Phase 4 — Daily Records View:** `getMonthlySummaryFromDailyRecords()` added to `attendanceProcessor.ts` — aggregates regular_hours, ot_hours, days_worked from `daily_attendance_records` per employee × month. "View Records" button added to Payroll Periods page with expandable table showing date, employee, status, hours, late minutes, and calendar type.
+
+  - **Phase 5 — Payroll Rewiring:** `payrollRun.ts` now imports `getMonthlySummaryFromDailyRecords` instead of the old `getMonthlyAttendanceSummary`. Payroll reads from `daily_attendance_records` exclusively — raw `attendance_logs` are no longer touched by payroll calculations. The old `getMonthlyAttendanceSummary` is still present but unused by payroll (preserved for backward compatibility during rollback).
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles).
+
+- **2026-07-10 — Phase 6: Attendance Finalization & Locking completed.** Period lifecycle now has concrete side effects on data immutability.
+
+  - **Finalization (`processing → finalized`):** `updatePayrollPeriodStatus` now auto-sets `is_finalized = 1` on ALL `daily_attendance_records` in the period's date range (within a DB transaction — the status update and the locking cannot partially apply). Finalized daily records are immutable through the application layer.
+
+  - **Closing (`finalized → closed`):** When a period is closed, all `attendance_logs` within the period's date range get a `[LOCKED: period closed]` note appended. The service-layer guard (`guardClosedPeriod` in `attendance.ts`) prevents EDIT and DELETE of any attendance log whose date falls within a closed period. The error message tells the admin to re-open the period.
+
+  - **Re-open:** `reopenPayrollPeriod(db, id)` reverses both actions: sets `is_finalized = 0` on daily records, strips lock notes from attendance logs, resets period status to `processing`. UI shows a ConfirmDialog warning that payroll data needs re-verification after re-opening.
+
+  - **Service guards:** `updateAttendanceLog()` and `deleteAttendanceLog()` both call `guardClosedPeriod()` before performing the mutation — no IPC-level code change needed beyond the existing Zod → service pattern.
+
+  - **IPC/UI:** `payroll:periods:reopen` channel added. UI shows "Re-open" button on finalized/closed periods with a confirmation dialog explaining the consequences.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles).
+
+- **2026-07-10 — Phase 7: Reports rewired to Daily Records.** All attendance reports now read from `daily_attendance_records` instead of raw `attendance_logs`.
+
+  - **`getLateReport()` rewritten:** Now queries `daily_attendance_records` for rows with `attendance_status IN ('late', 'excused_late')`. The `minutes_late` field is pre-computed by the processing engine — no need to re-derive from raw logs and shift start times. The old 70-line JS aggregation loop replaced with a 30-line SQL GROUP BY.
+
+  - **`getMonthlyCalendar()` rewritten:** Now queries `daily_attendance_records` directly. Old version was 150+ lines parsing raw punches, grouping by calendar day, computing hours, resolving leave — all replaced by a simple read of pre-computed fields. Status mapping: `present`/`early_out` → `on-time`, `late` → `late`, `excused_late` → `excused-late`, `absent`/`no_show` → `absent`, `on_leave`/`holiday`/`weekly_off`/`emergency_closure` → `leave`.
+
+  - **`exportMonthlyAttendanceExcel()` unaffected:** Already calls `getMonthlyCalendar()` internally, so the Excel export automatically uses the new data source with zero code changes.
+
+  - **No new tables or IPC channels needed.** Pure internal service-layer refactor.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles).
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

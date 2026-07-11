@@ -10,9 +10,9 @@
 // Claude.md §4: Multi-step writes use transactions. The entire calculate() is one transaction.
 
 import type Database from 'better-sqlite3'
-import type { PayrollRun, PayrollRunItem, EmployeeMonthlySummary } from '../../../src/shared/types/entities'
+import type { PayrollRun, PayrollRunItem } from '../../../src/shared/types/entities'
 import type { CreatePayrollRunInput } from '../../../src/shared/types/inputs'
-import { getMonthlyAttendanceSummary } from '../attendanceSummary'
+import { getMonthlySummaryFromDailyRecords } from '../attendanceProcessor'
 import { getCurrentSalaryStructure } from './salaryStructure'
 import { getPayrollSettings } from './settings'
 import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
@@ -193,9 +193,9 @@ export function calculatePayrollRun(
 
   const employeeIds = employees.map((e) => e.employee_id)
 
-  // ── Get monthly attendance summaries for all employees ──
-  const summaries = getMonthlyAttendanceSummary(db, { employeeIds, year, month })
-  const summaryMap = new Map<number, EmployeeMonthlySummary>()
+  // ── Get monthly attendance summaries from Daily Records (Phase 5) ──
+  const summaries = getMonthlySummaryFromDailyRecords(db, { employeeIds, year, month })
+  const summaryMap = new Map<number, { employee_id: number; total_regular_hours: number; total_ot_hours: number; days_worked: number }>()
   for (const s of summaries) {
     summaryMap.set(s.employee_id, s)
   }

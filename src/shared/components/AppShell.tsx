@@ -16,6 +16,7 @@ import {
   PayrollIcon,
   AuditIcon,
   SettingsIcon,
+  CalendarIcon,
 } from './icons'
 
 interface NavItemProps {
@@ -118,6 +119,7 @@ export function AppShell({ onLogout, isDarkMode, onToggleDarkMode }: AppShellPro
             </p>
           )}
           <SidebarNavItem to="/attendance" label="Attendance" icon={<AttendanceIcon className="size-5" />} collapsed={isSidebarCollapsed} />
+          <SidebarNavItem to="/calendar" label="Calendar" icon={<CalendarIcon className="size-5" />} collapsed={isSidebarCollapsed} />
           <SidebarNavItem to="/payroll" label="Payroll" icon={<PayrollIcon className="size-5" />} collapsed={isSidebarCollapsed} />
           {isSidebarCollapsed ? (
             <span className="flex items-center justify-center p-2.5 text-sm font-medium text-neutral-600 cursor-not-allowed select-none" title="ERP (Unavailable)">

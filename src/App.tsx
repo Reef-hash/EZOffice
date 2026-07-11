@@ -13,6 +13,7 @@ import { CustomerListPage } from './modules/master-data/customers/CustomerListPa
 import { SupplierListPage } from './modules/master-data/suppliers/SupplierListPage'
 import { ProductListPage } from './modules/master-data/products/ProductListPage'
 import { AttendanceListPage } from './modules/attendance/AttendanceListPage'
+import { CalendarPage } from './modules/calendar/CalendarPage'
 import { PayrollListPage } from './modules/payroll/PayrollListPage'
 import { AuditLogPage } from './modules/audit/AuditLogPage'
 import { SettingsPage } from './shared/components/SettingsPage'
@@ -190,6 +191,7 @@ export function App() {
                     <Route path="/suppliers" element={<SupplierListPage />} />
                     <Route path="/products" element={<ProductListPage />} />
                     <Route path="/attendance" element={<AttendanceListPage />} />
+                    <Route path="/calendar" element={<CalendarPage />} />
                     <Route path="/payroll" element={<PayrollListPage />} />
                     <Route path="/audit" element={<AuditLogPage />} />
                     <Route path="/settings" element={<SettingsPage />} />

@@ -24,6 +24,26 @@ import type {
   CreateLeaveRequestInput,
 } from '../../src/shared/types/inputs'
 
+// ── Phase 6: Period Lock Guard ───────────────────────────
+
+/**
+ * Throws if the given date falls within a closed payroll period.
+ * Attendance logs in closed periods are immutable — admins must
+ * re-open the period to edit them.
+ */
+function guardClosedPeriod(db: Database.Database, date: string): void {
+  const closed = db.prepare(`
+    SELECT COUNT(*) AS cnt FROM payroll_periods
+    WHERE status = 'closed' AND start_date <= ? AND end_date >= ?
+  `).get(date, date) as { cnt: number }
+  if (closed.cnt > 0) {
+    throw new Error(
+      `Cannot modify attendance logs on ${date}: this date is within a closed payroll period. ` +
+      'Go to Payroll → Payroll Periods and re-open the period first.',
+    )
+  }
+}
+
 // ── Shared helpers ───────────────────────────────────────
 
 /**
@@ -356,6 +376,9 @@ export function updateAttendanceLog(
     throw new Error(`Attendance log with id ${id} not found`)
   }
 
+  // Phase 6: Block edits to logs in closed payroll periods
+  guardClosedPeriod(db, existing.timestamp.slice(0, 10))
+
   const newType = input.type ?? existing.type
   const newEmployeeId = input.employee_id ?? existing.employee_id
 
@@ -418,6 +441,11 @@ export function updateAttendanceLog(
 }
 
 export function deleteAttendanceLog(db: Database.Database, id: number): void {
+  // Phase 6: Block deletes of logs in closed payroll periods
+  const log = queryById(db, id)
+  if (!log) throw new Error(`Attendance log with id ${id} not found`)
+  guardClosedPeriod(db, log.timestamp.slice(0, 10))
+
   const result = db.prepare('DELETE FROM attendance_logs WHERE id = ?').run(id)
   if (result.changes === 0) {
     throw new Error(`Attendance log with id ${id} not found`)
@@ -1091,88 +1119,70 @@ export function excuseLateEntry(db: Database.Database, logId: number): Attendanc
 }
 
 /**
- * Builds the late report for a given month: one row per employee who has at least
- * one 'late' or 'excused-late' log in that month. Counts, total minutes late, and
- * average minutes late per late event.
+ * Phase 7: Late report from daily_attendance_records (processed data).
+ * minutes_late is pre-computed by the processing engine — no need to re-derive
+ * from raw logs and shift start times.
  */
 export function getLateReport(db: Database.Database, year: number, month: number): LateReportRow[] {
-  const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const monthStart = `${year}-${pad(month)}-01`
   const lastDay = new Date(year, month, 0).getDate()
-  const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  const monthEnd = `${year}-${pad(month)}-${pad(lastDay)}`
 
-  // Pull raw late/excused-late logs with their shift start time. Minutes late is
-  // computed in JS (reusing the same minutesBetween/computeMinutesLate logic the
-  // clock-in path uses) rather than in SQL — SQLite's MAX() is an aggregate, which
-  // makes scalar "max(0, x)" awkward inside a SUM(CASE...), and doing it in JS keeps
-  // the lateness math in one place.
   const rows = db.prepare(`
     SELECT
-      a.employee_id,
+      dar.employee_id,
       e.name AS employee_name,
-      a.status,
-      a.timestamp,
-      s.start_time
-    FROM attendance_logs a
-    LEFT JOIN employees e ON e.id = a.employee_id
-    LEFT JOIN shifts s ON s.id = a.shift_id
-    WHERE a.status IN ('late', 'excused-late')
-      AND date(a.timestamp) >= ? AND date(a.timestamp) <= ?
+      dar.attendance_status,
+      SUM(dar.minutes_late) AS total_minutes_late,
+      COUNT(*) AS event_count
+    FROM daily_attendance_records dar
+    LEFT JOIN employees e ON e.id = dar.employee_id
+    WHERE dar.date >= ? AND dar.date <= ?
+      AND dar.attendance_status IN ('late', 'excused_late')
+    GROUP BY dar.employee_id, dar.attendance_status
   `).all(monthStart, monthEnd) as Array<{
     employee_id: number
     employee_name: string
-    status: string
-    timestamp: string
-    start_time: string | null
+    attendance_status: string
+    total_minutes_late: number
+    event_count: number
   }>
 
-  const grace = getGracePeriodMinutes(db)
-
-  // Aggregate per employee
-  const byEmployee = new Map<number, LateReportRow & { _minutesSum: number }>()
+  const byEmployee = new Map<number, LateReportRow>()
   for (const row of rows) {
     const existing = byEmployee.get(row.employee_id)
-    const minutesLate = row.start_time
-      ? Math.max(0, minutesBetween(row.start_time, row.timestamp.slice(11, 16)) - grace)
-      : 0
-
     if (existing) {
-      if (row.status === 'late') existing.count_late++
-      else existing.count_excused++
-      existing.total_minutes_late += minutesLate
+      if (row.attendance_status === 'late') existing.count_late += row.event_count
+      else existing.count_excused += row.event_count
+      existing.total_minutes_late += row.total_minutes_late
     } else {
       byEmployee.set(row.employee_id, {
         employee_id: row.employee_id,
         employee_name: row.employee_name,
-        count_late: row.status === 'late' ? 1 : 0,
-        count_excused: row.status === 'excused-late' ? 1 : 0,
-        total_minutes_late: minutesLate,
+        count_late: row.attendance_status === 'late' ? row.event_count : 0,
+        count_excused: row.attendance_status === 'excused_late' ? row.event_count : 0,
+        total_minutes_late: row.total_minutes_late,
         avg_minutes_late: 0,
-        _minutesSum: 0,
       })
     }
   }
 
   const result = Array.from(byEmployee.values()).map((r) => {
     const total = r.count_late + r.count_excused
-    const avg = total > 0 ? Math.round((r.total_minutes_late / total) * 10) / 10 : 0
-    const { _minutesSum, ...rest } = r
-    void _minutesSum
-    return { ...rest, avg_minutes_late: avg }
+    return { ...r, avg_minutes_late: total > 0 ? Math.round((r.total_minutes_late / total) * 10) / 10 : 0 }
   })
 
-  result.sort(
-    (a, b) => b.total_minutes_late - a.total_minutes_late || b.count_late - a.count_late,
-  )
+  result.sort((a, b) => b.total_minutes_late - a.total_minutes_late || b.count_late - a.count_late)
   return result
 }
 
 // ── Phase C (C4): Monthly calendar + Excel export ─────────
 
 /**
- * Builds a per-day attendance calendar for one employee in one month.
- * Each day shows first IN, last OUT, hours worked, and a status derived from
- * the punch status / approved leave / absence. Approved leave days are marked
- * 'leave' with the leave type; days with no IN punch and no leave are 'absent'.
+ * Phase 7: Monthly calendar from daily_attendance_records (processed data).
+ * All attendance statuses, hours, and leave classification are pre-computed
+ * by the processing engine — the calendar is now a simple read query.
  */
 export function getMonthlyCalendar(
   db: Database.Database,
@@ -1180,63 +1190,34 @@ export function getMonthlyCalendar(
   year: number,
   month: number,
 ): AttendanceMonthlyCalendar {
-  const monthStart = `${year}-${String(month).padStart(2, '0')}-01`
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const monthStart = `${year}-${pad(month)}-01`
   const lastDay = new Date(year, month, 0).getDate()
-  const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+  const monthEnd = `${year}-${pad(month)}-${pad(lastDay)}`
 
-  // Employee name
   const emp = db.prepare('SELECT id, name FROM employees WHERE id = ?').get(employeeId) as
-    | { id: number; name: string }
-    | undefined
-  if (!emp) {
-    throw new Error(`Employee with id ${employeeId} not found`)
-  }
+    | { id: number; name: string } | undefined
+  if (!emp) throw new Error(`Employee with id ${employeeId} not found`)
 
-  // All punches for the month, ordered chronologically
-  const logs = db.prepare(`
-    SELECT type, timestamp, status FROM attendance_logs
-    WHERE employee_id = ? AND date(timestamp) >= ? AND date(timestamp) <= ?
-    ORDER BY timestamp ASC
+  const rows = db.prepare(`
+    SELECT date, attendance_status, leave_type, first_in, last_out,
+           total_clocked_hours, calendar_type
+    FROM daily_attendance_records
+    WHERE employee_id = ? AND date >= ? AND date <= ?
+    ORDER BY date ASC
   `).all(employeeId, monthStart, monthEnd) as Array<{
-    type: 'in' | 'out'
-    timestamp: string
-    status: string
+    date: string
+    attendance_status: string
+    leave_type: string | null
+    first_in: string | null
+    last_out: string | null
+    total_clocked_hours: number
+    calendar_type: string
   }>
 
-  // Approved leave days in the month (set of YYYY-MM-DD → leave_type)
-  const leaveRows = db.prepare(`
-    SELECT leave_type, date_from, date_to FROM leave_records
-    WHERE employee_id = ? AND status = 'approved'
-      AND date_to >= ? AND date_from <= ?
-  `).all(employeeId, monthStart, monthEnd) as Array<{
-    leave_type: string
-    date_from: string
-    date_to: string
-  }>
-  const leaveByDay = new Map<string, string>()
-  for (const lr of leaveRows) {
-    const from = new Date(lr.date_from + 'T00:00:00')
-    const to = new Date(lr.date_to + 'T00:00:00')
-    for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
-      const ds = d.toISOString().slice(0, 10)
-      if (ds >= monthStart && ds <= monthEnd) {
-        leaveByDay.set(ds, lr.leave_type)
-      }
-    }
-  }
-
-  // Group punches by calendar day
-  const punchesByDay = new Map<string, { ins: string[]; outs: string[]; statuses: string[] }>()
-  for (const log of logs) {
-    const day = log.timestamp.slice(0, 10)
-    const entry = punchesByDay.get(day) ?? { ins: [], outs: [], statuses: [] }
-    if (log.type === 'in') {
-      entry.ins.push(log.timestamp)
-      entry.statuses.push(log.status)
-    } else {
-      entry.outs.push(log.timestamp)
-    }
-    punchesByDay.set(day, entry)
+  const recordByDate = new Map<string, typeof rows[0]>()
+  for (const r of rows) {
+    recordByDate.set(r.date, r)
   }
 
   const days: AttendanceSummaryDay[] = []
@@ -1246,61 +1227,54 @@ export function getMonthlyCalendar(
   let daysLeave = 0
 
   for (let day = 1; day <= lastDay; day++) {
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    const punches = punchesByDay.get(dateStr)
-    const leaveType = leaveByDay.get(dateStr) ?? null
+    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+    const rec = recordByDate.get(dateStr)
 
-    if (leaveType) {
-      // Approved leave takes precedence over absence/late classification.
+    if (!rec) {
+      // No processed record — treat as absent (no data available)
+      days.push({ date: dateStr, first_in: null, last_out: null, hours_worked: 0, status: 'absent', leave_type: null })
+      continue
+    }
+
+    const status = rec.attendance_status
+
+    // Map processing-engine statuses to UI-compatible statuses
+    if (status === 'on_leave' || status === 'holiday' || status === 'weekly_off' || status === 'emergency_closure') {
       days.push({
         date: dateStr,
-        first_in: null,
-        last_out: null,
+        first_in: rec.first_in,
+        last_out: rec.last_out,
         hours_worked: 0,
         status: 'leave',
-        leave_type: leaveType as LeaveRecord['leave_type'],
+        leave_type: (rec.leave_type as LeaveRecord['leave_type']) ?? null,
       })
       daysLeave++
       continue
     }
 
-    if (!punches || punches.ins.length === 0) {
-      // No IN punch and no leave → absent
-      days.push({
-        date: dateStr,
-        first_in: null,
-        last_out: punches && punches.outs.length > 0 ? punches.outs[punches.outs.length - 1] : null,
-        hours_worked: 0,
-        status: 'absent',
-        leave_type: null,
-      })
+    if (status === 'absent' || status === 'no_show') {
+      days.push({ date: dateStr, first_in: rec.first_in, last_out: rec.last_out, hours_worked: 0, status: 'absent', leave_type: null })
       continue
     }
 
-    // Has at least one IN. Compute hours from first IN → last OUT (if any OUT exists).
-    const firstIn = punches.ins[0]
-    const lastOut = punches.outs.length > 0 ? punches.outs[punches.outs.length - 1] : null
-    let hours = 0
-    if (lastOut) {
-      hours = (new Date(lastOut).getTime() - new Date(firstIn).getTime()) / (1000 * 60 * 60)
-      hours = Math.max(0, Math.round(hours * 100) / 100)
-    }
+    // Working day statuses: present, late, excused_late, early_out
+    const hours = Math.round(rec.total_clocked_hours * 100) / 100
     totalHours += hours
     daysWorked++
 
-    // Day-level status: if any IN punch was 'late' or 'excused-late', reflect that.
     let dayStatus: AttendanceSummaryDay['status'] = 'on-time'
-    if (punches.statuses.includes('late')) {
+    if (status === 'late') {
       dayStatus = 'late'
       daysLate++
-    } else if (punches.statuses.includes('excused-late')) {
+    } else if (status === 'excused_late') {
       dayStatus = 'excused-late'
+      daysLate++
     }
 
     days.push({
       date: dateStr,
-      first_in: firstIn,
-      last_out: lastOut,
+      first_in: rec.first_in,
+      last_out: rec.last_out,
       hours_worked: hours,
       status: dayStatus,
       leave_type: null,

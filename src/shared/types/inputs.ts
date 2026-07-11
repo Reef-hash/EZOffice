@@ -400,3 +400,83 @@ export const verifyActivationOtpSchema = z.object({
 })
 
 export type VerifyActivationOtpInput = z.infer<typeof verifyActivationOtpSchema>
+
+// ── Phase 1: Company Calendar ─────────────────────────────────
+
+import { CALENDAR_EVENT_TYPE } from './entities'
+
+export const updateCompanyCalendarProfileSchema = z.object({
+  name: z.string().min(1).optional(),
+  monday_is_working: z.boolean().optional(),
+  tuesday_is_working: z.boolean().optional(),
+  wednesday_is_working: z.boolean().optional(),
+  thursday_is_working: z.boolean().optional(),
+  friday_is_working: z.boolean().optional(),
+  saturday_is_working: z.boolean().optional(),
+  sunday_is_working: z.boolean().optional(),
+})
+
+export type UpdateCompanyCalendarProfileInput = z.infer<typeof updateCompanyCalendarProfileSchema>
+
+export const createCalendarEventSchema = z.object({
+  event_type: z.enum([
+    CALENDAR_EVENT_TYPE.PUBLIC_HOLIDAY,
+    CALENDAR_EVENT_TYPE.COMPANY_HOLIDAY,
+    CALENDAR_EVENT_TYPE.SPECIAL_WORKING_DAY,
+    CALENDAR_EVENT_TYPE.HALF_DAY,
+    CALENDAR_EVENT_TYPE.EMERGENCY_CLOSURE,
+    CALENDAR_EVENT_TYPE.COMPANY_EVENT,
+  ]),
+  name: z.string().min(1, 'Event name is required'),
+  event_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+  description: z.string().nullable().optional(),
+  is_recurring: z.boolean().optional(),
+})
+
+export const updateCalendarEventSchema = createCalendarEventSchema.partial()
+
+export type CreateCalendarEventInput = z.infer<typeof createCalendarEventSchema>
+export type UpdateCalendarEventInput = z.infer<typeof updateCalendarEventSchema>
+
+export const createEmployeeCalendarProfileSchema = z.object({
+  employee_id: z.number().int().positive('Employee is required'),
+  monday_is_working: z.boolean(),
+  tuesday_is_working: z.boolean(),
+  wednesday_is_working: z.boolean(),
+  thursday_is_working: z.boolean(),
+  friday_is_working: z.boolean(),
+  saturday_is_working: z.boolean(),
+  sunday_is_working: z.boolean(),
+  effective_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD'),
+  effective_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be YYYY-MM-DD').nullable().optional(),
+})
+
+export const updateEmployeeCalendarProfileSchema = createEmployeeCalendarProfileSchema.partial()
+
+export type CreateEmployeeCalendarProfileInput = z.infer<typeof createEmployeeCalendarProfileSchema>
+export type UpdateEmployeeCalendarProfileInput = z.infer<typeof updateEmployeeCalendarProfileSchema>
+
+// ── Phase 3: Processing Engine ───────────────────────────────
+
+export const triggerProcessingSchema = z.object({
+  payroll_period_id: z.number().int().positive('Payroll period is required'),
+  employee_ids: z.array(z.number().int().positive()).optional(),
+})
+
+export type TriggerProcessingInput = z.infer<typeof triggerProcessingSchema>
+
+// ── Phase 2: Payroll Periods ─────────────────────────────────
+
+export const createPayrollPeriodSchema = z.object({
+  name: z.string().min(1, 'Period name is required'),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Start date must be YYYY-MM-DD'),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'End date must be YYYY-MM-DD'),
+})
+
+export const updatePayrollPeriodStatusSchema = z.object({
+  status: z.enum(['open', 'processing', 'finalized', 'closed']),
+  finalized_by: z.number().int().positive().nullable().optional(),
+})
+
+export type CreatePayrollPeriodInput = z.infer<typeof createPayrollPeriodSchema>
+export type UpdatePayrollPeriodStatusInput = z.infer<typeof updatePayrollPeriodStatusSchema>

@@ -17,15 +17,17 @@ import { SalaryStructureListPage } from './salaryStructures/SalaryStructureListP
 import { PayrollSettingsPage } from './settings/PayrollSettingsPage'
 import { RateTablesPage } from './rateTables/RateTablesPage'
 import { SalaryAdvanceListPage } from './salaryAdvances/SalaryAdvanceListPage'
+import { PayrollPeriodListPage } from './payrollPeriods/PayrollPeriodListPage'
 import type { Column } from '@/shared/components/Table'
 import type { PayrollRun } from '@/shared/types/entities'
 import type { CreatePayrollRunInput } from '@/shared/types/inputs'
 import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE } from './constants'
 
-type PayrollTab = 'runs' | 'salaryStructures' | 'settings' | 'rateTables' | 'advances'
+type PayrollTab = 'runs' | 'salaryStructures' | 'settings' | 'rateTables' | 'advances' | 'periods'
 
 const TABS: Array<{ key: PayrollTab; label: string }> = [
   { key: 'runs', label: 'Payroll Runs' },
+  { key: 'periods', label: 'Payroll Periods' },
   { key: 'salaryStructures', label: 'Salary Structures' },
   { key: 'advances', label: 'Salary Advances' },
   { key: 'rateTables', label: 'Statutory Rate Tables' },
@@ -236,6 +238,7 @@ export function PayrollListPage() {
         </>
       )}
 
+        {activeTab === 'periods' && <PayrollPeriodListPage />}
         {activeTab === 'salaryStructures' && <SalaryStructureListPage />}
         {activeTab === 'advances' && <SalaryAdvanceListPage />}
         {activeTab === 'rateTables' && <RateTablesPage />}
