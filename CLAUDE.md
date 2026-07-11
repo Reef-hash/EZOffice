@@ -446,6 +446,12 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles).
 
+- **2026-07-11 — Fixed: tagged CI builds were publishing as invisible GitHub drafts.** Root cause: electron-builder loads config from `package.json`'s `"build"` field *if it exists*, and never even reads `electron-builder.yml` when it does (`app-builder-lib/out/util/config/load.js` — `loadConfig` returns early on `packageMetadata["build"]`). This was already documented as intentional in the Phase 6 entry above ("electron-builder.yml kept as reference") but got forgotten: commit `5fb6397` added `releaseType: release` only to `electron-builder.yml`, which is dead config. `package.json`'s `build.publish` had no `releaseType`, so electron-builder kept defaulting to `draft` — every tag push (`v0.2.0`, `v0.2.1`) built and uploaded real installer assets successfully, but into a draft release invisible on the public Releases page and to unauthenticated API calls, which is why only the git tag's auto-generated source zip/tar.gz was visible.
+  - **Fix:** added `"releaseType": "release"` to `package.json`'s `build.publish` (the config that's actually active). Added a warning header to `electron-builder.yml` pointing back here so this mistake isn't repeated.
+  - **Not fixed by this change:** the existing hidden draft releases for `v0.2.0`/`v0.2.1` on GitHub — those need to be manually published or deleted, and the tags likely re-pushed or `workflow_dispatch` re-run, since this fix only affects builds going forward.
+  - **Lesson:** when a config file is documented as "reference only, not loaded," a header comment stating that inline in the file itself is worth the redundancy — a decision log entry three files away is easy to miss mid-edit.
+  - **Release procedure for the project owner is documented in `docs/RELEASE.md`** (Malay) — includes the `npm version patch/minor/major` → `git push origin main --follow-tags` flow and a troubleshooting entry for this exact incident.
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

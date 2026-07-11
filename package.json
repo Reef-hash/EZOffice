@@ -59,7 +59,8 @@
     "publish": {
       "provider": "github",
       "owner": "Reef-hash",
-      "repo": "EZOffice"
+      "repo": "EZOffice",
+      "releaseType": "release"
     },
     "directories": {
       "buildResources": "build/assets",

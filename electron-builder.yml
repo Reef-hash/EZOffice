@@ -1,5 +1,10 @@
-# electron-builder configuration for EZOffice
-# Windows installer and portable builds
+# electron-builder configuration for EZOffice — REFERENCE ONLY, NOT LOADED.
+# electron-builder reads config from package.json's "build" field first; if that
+# field exists (it does), this file is never read (see node_modules/app-builder-lib/
+# out/util/config/load.js). Editing this file has no effect on the actual build —
+# 2026-07-11 incident: releaseType: release was added here instead of package.json's
+# build.publish, so tagged builds kept publishing as invisible GitHub drafts. Make
+# every change to package.json's "build" field, then mirror it here for readability.
 
 appId: com.ezoffice.app
 productName: EZOffice

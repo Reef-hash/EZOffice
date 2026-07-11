@@ -95,6 +95,21 @@ Sila betulkan semua ralat TypeScript dalam kod anda sebelum menolak tag. Pembung
 ### Ralat Keizinan (Permission Denied) pada GitHub Actions
 Pastikan `GITHUB_TOKEN` mempunyai keizinan menulis (`contents: write`) dalam repository settings atau diisytiharkan dalam fail `.github/workflows/release.yml`.
 
+### Actions run "success" tapi tab Releases hanya tunjuk source code (zip/tar.gz) — tiada .exe atau .yml
+Ini bermaksud build & upload berjaya, **tetapi release tersebut tercipta sebagai Draft** — draft release disembunyikan daripada tab Releases awam dan sesiapa yang tidak log in ke GitHub dengan akses ke repo ini.
+
+**Punca (insiden 2026-07-11):** `electron-builder` hanya baca config penerbitan (`publish`) daripada **medan `"build"` dalam `package.json`** — fail `electron-builder.yml` di root repo **langsung tidak dibaca** apabila `package.json` sudah ada medan `build` (ia disimpan semata-mata sebagai rujukan/dokumentasi). Jika `releaseType: release` tiada di dalam `package.json` → `build` → `publish`, electron-builder default kepada `draft`.
+
+**Semakan:**
+1. Buka `package.json`, pastikan `build.publish` ada `"releaseType": "release"`.
+2. Log masuk ke GitHub → tab **Releases** → tengok jika ada release berstatus **Draft** yang tersembunyi daripada paparan biasa (perlu access repo untuk nampak).
+
+**Pembetulan:**
+- Kalau `releaseType: release` sudah ada di `package.json` (bukan `electron-builder.yml`) — push tag baharu, release seterusnya akan terbit terus (public), tak perlu apa-apa tindakan manual.
+- Untuk release **lama** yang sudah tersangkut sebagai draft: buka release tersebut di tab Releases → **Edit** → buang tanda "Set as a pre-release"/"This is a draft" → **Publish release**. Atau padam draft tu dan `git push origin <tag> --force` semula (atau `workflow_dispatch` di tab Actions) untuk cipta semula release.
+
+> ⚠️ **Jangan edit `electron-builder.yml` untuk ubah tetapan publish/nsis/win** — fail itu tidak dibaca oleh electron-builder selagi `package.json` ada medan `build`. Sentiasa edit `package.json` → `build`, bukan `electron-builder.yml`.
+
 ---
 
 ## 6. Pemasangan untuk Pengguna Akhir
