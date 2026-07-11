@@ -71,6 +71,12 @@
       "dist-electron/**/*",
       "node_modules/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "electron/db/migrations",
+        "to": "db/migrations"
+      }
+    ],
     "win": {
       "target": [
         {

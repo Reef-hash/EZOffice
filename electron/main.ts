@@ -22,7 +22,7 @@ Object.defineProperty(globalThis, '__dirname', {
   configurable: true,
 })
 
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import path from 'node:path'
 import { getDb, resolveDbPath, closeDb } from './db/connection'
@@ -77,10 +77,12 @@ function initDatabase(): void {
   const db = getDb(dbPath)
 
   // In dev mode, the bundled output lives in dist-electron/, but migrations
-  // are in electron/db/migrations/ (source tree). In production both live side
-  // by side as part of the packaged app.
+  // are in electron/db/migrations/ (source tree). Vite only bundles the .ts
+  // import graph, so .sql files never land inside dist-electron/ — in
+  // production they're copied to resourcesPath via electron-builder's
+  // `extraResources` (see package.json build.extraResources) instead.
   const migrationsDir = app.isPackaged
-    ? path.join(__dirname, 'db/migrations')
+    ? path.join(process.resourcesPath, 'db/migrations')
     : path.resolve(__dirname, '..', 'electron', 'db', 'migrations')
 
   const applied = runMigrations(db, migrationsDir)
@@ -179,6 +181,19 @@ app.whenReady().then(() => {
       createWindow()
     }
   })
+}).catch((err) => {
+  // Without this, a startup failure (bad migration, corrupt DB, missing
+  // packaged resource) is an unhandled rejection: no window ever opens and
+  // no error is visible anywhere — the app just silently does nothing. Show
+  // it to whoever is looking at the screen so it can be reported, instead of
+  // failing silently per CLAUDE.md §3.
+  // eslint-disable-next-line no-console
+  console.error('[Startup] Fatal error during initialization:', err)
+  dialog.showErrorBox(
+    'EZOffice failed to start',
+    `An error occurred while starting EZOffice:\n\n${err instanceof Error ? err.stack || err.message : String(err)}\n\nPlease report this to support.`
+  )
+  app.quit()
 })
 
 app.on('window-all-closed', () => {
