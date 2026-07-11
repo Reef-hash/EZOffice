@@ -8,6 +8,11 @@ publish:
   provider: github
   owner: Reef-hash
   repo: EZOffice
+  # Without this, electron-builder defaults to releaseType: draft — the release
+  # is uploaded but stays hidden from the public /releases page until someone
+  # manually publishes it on GitHub. 'release' auto-publishes immediately so
+  # tagged versions (vX.Y.Z) show up right away for clients and the auto-updater.
+  releaseType: release
 
 directories:
   buildResources: build/assets
