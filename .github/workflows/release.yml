@@ -32,6 +32,17 @@ jobs:
 
       - name: Build App
         run: npm run build
+        env:
+          # Baked into dist-electron/main.js at build time by vite.config.ts's
+          # loadEnv/define — a packaged installer never ships a .env file, so
+          # without these set here the compiled app ships with blank licensing
+          # config and every activation attempt fails with "Licensing
+          # configuration missing" (2026-07-11 incident, v0.2.0-v0.2.2 releases
+          # were all built without these set). Must be defined as repository
+          # secrets in GitHub: Settings -> Secrets and variables -> Actions.
+          EZOFFICE_LICENSING_API_URL: ${{ secrets.EZOFFICE_LICENSING_API_URL }}
+          EZOFFICE_SUPABASE_URL: ${{ secrets.EZOFFICE_SUPABASE_URL }}
+          EZOFFICE_SUPABASE_ANON_KEY: ${{ secrets.EZOFFICE_SUPABASE_ANON_KEY }}
 
       - name: Build & Publish Release
         run: npx electron-builder --win --publish always
