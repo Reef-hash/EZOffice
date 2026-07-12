@@ -24,6 +24,7 @@ Object.defineProperty(globalThis, '__dirname', {
 
 import { app, BrowserWindow, dialog } from 'electron'
 import { autoUpdater } from 'electron-updater'
+import log from 'electron-log/main'
 import path from 'node:path'
 import { getDb, resolveDbPath, closeDb } from './db/connection'
 import { runMigrations } from './db/migrate'
@@ -37,6 +38,17 @@ import { registerLicenseHandlers } from './ipc/license'
 import { registerCalendarHandlers } from './ipc/calendar'
 import * as adminService from './services/admin'
 import * as licenseService from './services/license'
+
+// Persistent crash/error logging — writes to userData/logs/main.log so a
+// crash reported after the fact (app already closed, no DevTools available)
+// still leaves a trail. `initialize({ spyRendererConsole: true })` also
+// forwards renderer console.log/warn/error into the same file, and
+// `eventLogger` captures render-process-gone/child-process-gone/
+// plugin-crashed/unresponsive by default — exactly the events a sudden,
+// unexplained crash would otherwise leave no record of.
+log.initialize({ preload: true, spyRendererConsole: true })
+log.errorHandler.startCatching({ showDialog: true })
+log.eventLogger.startLogging()
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -87,8 +99,7 @@ function initDatabase(): void {
 
   const applied = runMigrations(db, migrationsDir)
   if (applied.length > 0) {
-    // eslint-disable-next-line no-console
-    console.log(`[DB] Applied migrations: ${applied.join(', ')}`)
+    log.info(`[DB] Applied migrations: ${applied.join(', ')}`)
   }
 
   // Register all IPC handlers — must happen before the renderer loads
@@ -104,8 +115,7 @@ function initDatabase(): void {
   // Check if this is first-time setup (no admin users yet)
   const adminCount = adminService.getAdminUserCount(db)
   if (adminCount === 0) {
-    // eslint-disable-next-line no-console
-    console.log('[DB] No admin users found. App will show signup screen on first launch.')
+    log.info('[DB] No admin users found. App will show signup screen on first launch.')
   }
 
   // Fire-and-forget: opportunistically refresh the cached license decision if
@@ -113,16 +123,14 @@ function initDatabase(): void {
   // window creation — a network failure here is silent by design (see
   // revalidateIfDue's own docs). Errors are still logged for support triage.
   licenseService.revalidateIfDue(db).catch((err) => {
-    // eslint-disable-next-line no-console
-    console.warn('[License] Background revalidation failed (non-fatal):', err)
+    log.warn('[License] Background revalidation failed (non-fatal):', err)
   })
 }
 
 function setupAutoUpdater(): void {
   // Only check for updates when packaged (production)
   if (!app.isPackaged) {
-    // eslint-disable-next-line no-console
-    console.log('[Updater] Skipping update check in development mode')
+    log.info('[Updater] Skipping update check in development mode')
     return
   }
 
@@ -131,42 +139,34 @@ function setupAutoUpdater(): void {
     autoUpdater.autoInstallOnAppQuit = true
 
     autoUpdater.on('checking-for-update', () => {
-      // eslint-disable-next-line no-console
-      console.log('[Updater] Checking for update...')
+      log.info('[Updater] Checking for update...')
     })
 
     autoUpdater.on('update-available', (info) => {
-      // eslint-disable-next-line no-console
-      console.log(`[Updater] Update available: ${info.version}`)
+      log.info(`[Updater] Update available: ${info.version}`)
     })
 
     autoUpdater.on('update-not-available', () => {
-      // eslint-disable-next-line no-console
-      console.log('[Updater] Update not available')
+      log.info('[Updater] Update not available')
     })
 
     autoUpdater.on('error', (err) => {
-      // eslint-disable-next-line no-console
-      console.error('[Updater] Error in auto-updater:', err)
+      log.error('[Updater] Error in auto-updater:', err)
     })
 
     autoUpdater.on('download-progress', (progressObj) => {
-      // eslint-disable-next-line no-console
-      console.log(`[Updater] Download progress: ${progressObj.percent}%`)
+      log.info(`[Updater] Download progress: ${progressObj.percent}%`)
     })
 
     autoUpdater.on('update-downloaded', (info) => {
-      // eslint-disable-next-line no-console
-      console.log(`[Updater] Update downloaded: ${info.version}. Will install on quit.`)
+      log.info(`[Updater] Update downloaded: ${info.version}. Will install on quit.`)
     })
 
     autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error('[Updater] Failed to check for updates:', err)
+      log.error('[Updater] Failed to check for updates:', err)
     })
   } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error('[Updater] Failed to initialize auto-updater:', err)
+    log.error('[Updater] Failed to initialize auto-updater:', err)
   }
 }
 
@@ -187,8 +187,7 @@ app.whenReady().then(() => {
   // no error is visible anywhere — the app just silently does nothing. Show
   // it to whoever is looking at the screen so it can be reported, instead of
   // failing silently per CLAUDE.md §3.
-  // eslint-disable-next-line no-console
-  console.error('[Startup] Fatal error during initialization:', err)
+  log.error('[Startup] Fatal error during initialization:', err)
   dialog.showErrorBox(
     'EZOffice failed to start',
     `An error occurred while starting EZOffice:\n\n${err instanceof Error ? err.stack || err.message : String(err)}\n\nPlease report this to support.`
