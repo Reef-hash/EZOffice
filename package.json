@@ -1,6 +1,6 @@
 {
   "name": "ezoffice",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Offline-first desktop app for SME attendance, payroll, and inventory management",
   "author": "EZOffice Contributors",
   "private": true,
