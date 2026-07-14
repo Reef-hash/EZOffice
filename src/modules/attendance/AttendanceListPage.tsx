@@ -22,6 +22,7 @@ import { LeaveApprovalPanel } from './LeaveApprovalPanel'
 import { LateReportPage } from './LateReportPage'
 import { AttendanceSummaryPage } from './AttendanceSummaryPage'
 import { ExceptionsPanel } from './ExceptionsPanel'
+import { BulkPurgePanel } from './BulkPurgePanel'
 import type { Column } from '@/shared/components/Table'
 import type { Employee, AttendanceLog } from '@/shared/types/entities'
 import type { CreateAttendanceLogInput, UpdateAttendanceLogInput } from '@/shared/types/inputs'
@@ -423,6 +424,9 @@ export function AttendanceListPage() {
           className="h-9 rounded-sm border border-neutral-300 px-3 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-primary-700/40"
         />
       </div>
+
+      {/* Bulk delete / reset (manual or device logs, by date range) */}
+      <BulkPurgePanel />
 
       {/* Log table */}
       <Table

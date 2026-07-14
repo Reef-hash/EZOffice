@@ -21,7 +21,7 @@ import {
   exceptionListSchema,
   resolveExceptionSchema,
   dismissExceptionSchema,
-  purgeSyncDataSchema,
+  purgeAttendanceLogsSchema,
   computeExceptionsSchema,
 } from '../../src/shared/types/inputs'
 import * as attendanceService from '../services/attendance'
@@ -281,12 +281,21 @@ export function registerAttendanceHandlers(db: Database.Database): void {
     }
   })
 
-  ipcMain.handle('attendance:purgeDevicePunches', async (_event, data: unknown) => {
+  ipcMain.handle('attendance:countLogsForPurge', async (_event, data: unknown) => {
     try {
-      const input = purgeSyncDataSchema.parse(data)
-      return attendanceService.purgeCorruptedDevicePunches(db, input.dateFrom, input.dateTo)
+      const input = purgeAttendanceLogsSchema.parse(data)
+      return { count: attendanceService.countAttendanceLogsForPurge(db, input.dateFrom, input.dateTo, input.source) }
     } catch (err) {
-      throw new Error(`Failed to purge device punch data: ${String(err)}`)
+      throw new Error(`Failed to count attendance logs: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:purgeLogs', async (_event, data: unknown) => {
+    try {
+      const input = purgeAttendanceLogsSchema.parse(data)
+      return attendanceService.purgeAttendanceLogs(db, input.dateFrom, input.dateTo, input.source)
+    } catch (err) {
+      throw new Error(`Failed to purge attendance logs: ${String(err)}`)
     }
   })
 
