@@ -22,6 +22,7 @@ import type {
   CreateShiftInput,
   UpdateShiftInput,
   CreateLeaveRequestInput,
+  AttendanceLogPurgeSource,
 } from '../../src/shared/types/inputs'
 
 // ── Phase 6: Period Lock Guard ───────────────────────────
@@ -39,6 +40,24 @@ function guardClosedPeriod(db: Database.Database, date: string): void {
   if (closed.cnt > 0) {
     throw new Error(
       `Cannot modify attendance logs on ${date}: this date is within a closed payroll period. ` +
+      'Go to Payroll → Payroll Periods and re-open the period first.',
+    )
+  }
+}
+
+/**
+ * Range variant of guardClosedPeriod — throws if any closed payroll period
+ * overlaps [dateFrom, dateTo]. Used by the bulk purge below, which acts on a
+ * range rather than a single log's date.
+ */
+function guardClosedPeriodRange(db: Database.Database, dateFrom: string, dateTo: string): void {
+  const closed = db.prepare(`
+    SELECT COUNT(*) AS cnt FROM payroll_periods
+    WHERE status = 'closed' AND start_date <= ? AND end_date >= ?
+  `).get(dateTo, dateFrom) as { cnt: number }
+  if (closed.cnt > 0) {
+    throw new Error(
+      `Cannot delete attendance logs between ${dateFrom} and ${dateTo}: this range overlaps a closed payroll period. ` +
       'Go to Payroll → Payroll Periods and re-open the period first.',
     )
   }
@@ -732,28 +751,64 @@ export async function syncFromDeviceEthernet(
 }
 
 /**
- * Deletes all device-sourced attendance_logs in a date range and resets the
- * sync watermark so the admin can re-sync clean data. Intended for the
- * one-time cleanup of corrupted rows from the old position-based sync.
- *
- * Only removes rows with source='device'. Manual logs are never touched.
+ * Counts attendance_logs matching a date range + source filter, without
+ * deleting anything. Used by the UI to show the admin what a bulk purge
+ * would affect before they confirm it.
  */
-export function purgeCorruptedDevicePunches(
+export function countAttendanceLogsForPurge(
   db: Database.Database,
   dateFrom: string,
   dateTo: string,
+  source: AttendanceLogPurgeSource,
+): number {
+  const sourceClause = source === 'all' ? '' : 'AND source = @source'
+  const row = db.prepare(`
+    SELECT COUNT(*) AS cnt FROM attendance_logs
+    WHERE date(timestamp) >= @dateFrom AND date(timestamp) <= @dateTo
+    ${sourceClause}
+  `).get({ dateFrom, dateTo, source }) as { cnt: number }
+  return row.cnt
+}
+
+/**
+ * Permanently deletes attendance_logs in a date range, optionally scoped to
+ * a single source ('manual' or 'device') or both ('all'). Generalizes the
+ * original device-only sync cleanup tool into a general admin escape hatch
+ * for correcting test data or bad batches, on either source.
+ *
+ * Blocked for any date range overlapping a closed payroll period — same
+ * immutability rule as single-row edit/delete (guardClosedPeriod). Bulk
+ * purge is not an exception to period locking; the admin must re-open the
+ * period first, same as they would to fix a single log.
+ *
+ * When source is 'device' or 'all', the device sync watermark is reset so
+ * the next sync re-pulls the purged range instead of treating it as
+ * already-synced.
+ */
+export function purgeAttendanceLogs(
+  db: Database.Database,
+  dateFrom: string,
+  dateTo: string,
+  source: AttendanceLogPurgeSource,
 ): { deleted: number } {
+  if (dateFrom > dateTo) {
+    throw new Error('dateFrom must not be after dateTo')
+  }
+  guardClosedPeriodRange(db, dateFrom, dateTo)
+
   return db.transaction(() => {
+    const sourceClause = source === 'all' ? '' : 'AND source = @source'
     const result = db.prepare(`
       DELETE FROM attendance_logs
-      WHERE source = 'device'
-        AND date(timestamp) >= ? AND date(timestamp) <= ?
-    `).run(dateFrom, dateTo)
+      WHERE date(timestamp) >= @dateFrom AND date(timestamp) <= @dateTo
+      ${sourceClause}
+    `).run({ dateFrom, dateTo, source })
 
-    // Reset watermark so next sync will re-pull from the beginning
-    db.prepare(
-      'UPDATE payroll_settings SET device_last_synced_at = NULL WHERE id = 1',
-    ).run()
+    if (source !== 'manual') {
+      db.prepare(
+        'UPDATE payroll_settings SET device_last_synced_at = NULL WHERE id = 1',
+      ).run()
+    }
 
     return { deleted: result.changes }
   })()

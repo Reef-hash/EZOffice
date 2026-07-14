@@ -372,12 +372,14 @@ export const dismissExceptionSchema = z.object({
 
 export type DismissExceptionInput = z.infer<typeof dismissExceptionSchema>
 
-export const purgeSyncDataSchema = z.object({
+export const purgeAttendanceLogsSchema = z.object({
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
+  source: z.enum(['all', 'manual', 'device']),
 })
 
-export type PurgeSyncDataInput = z.infer<typeof purgeSyncDataSchema>
+export type PurgeAttendanceLogsInput = z.infer<typeof purgeAttendanceLogsSchema>
+export type AttendanceLogPurgeSource = PurgeAttendanceLogsInput['source']
 
 export const computeExceptionsSchema = z.object({
   year: z.number().int().min(2000).max(2100),

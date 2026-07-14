@@ -211,7 +211,7 @@ Library: zkteco-js v1.7.2 (npm)
 | List enrolled users | Yes | `getDeviceUsers()` |
 | Set device time (drift fix) | Yes | `setDeviceTime()` |
 | Last sync log | Yes | `getLastSyncLog()` |
-| Purge & re-sync | Yes | `purgeCorruptedDevicePunches()` |
+| Purge & re-sync | Yes | `purgeAttendanceLogs()` (device/manual/all scope, UI: Logs tab "Advanced: Bulk delete / reset logs") |
 | Real-time listener | **No** | — |
 | Enrollment from app | **No** (manual on device) | — |
 
@@ -718,7 +718,7 @@ The hub uses **local React state** for tab switching (no nested routes). All 7 p
 | **Query** | `listAttendanceLogs()`, `getAttendanceLogById()`, `getLastLogForEmployee()` | Read logs with optional filters. All join employees + shifts. |
 | **Clock** | `clockIn()`, `clockOut()` | Create manual punch. Validates alternation. Snapshots shift. Computes lateness. |
 | **CRUD** | `createManualLog()`, `updateAttendanceLog()`, `deleteAttendanceLog()` | Admin backfill/edit/delete. Full alternation re-check on edit. |
-| **Device Sync** | `syncFromDeviceEthernet()`, `purgeCorruptedDevicePunches()` | Full device sync pipeline (see §4.2). Purge for cleanup. |
+| **Device Sync** | `syncFromDeviceEthernet()`, `countAttendanceLogsForPurge()`, `purgeAttendanceLogs()` | Full device sync pipeline (see §4.2). Purge for cleanup (device/manual/all scope, respects closed-period lock). |
 | **Shifts** | `listShifts()`, `getShiftById()`, `createShift()`, `updateShift()`, `deleteShift()`, `assignShiftToEmployee()` | CRUD for shift definitions. Assign default shift to employee. |
 | **Leave** | `getEmployeeLeaveBalance()`, `createLeaveRequest()`, `approveLeave()`, `rejectLeave()`, `listLeaveRecords()` | Leave lifecycle: request → approve (decrement balance) or reject. |
 | **Late** | `excuseLateEntry()`, `getLateReport()` | Excuse individual late punches. Aggregate late report. |
@@ -797,12 +797,13 @@ Every endpoint is registered via `ipcMain.handle()` in `electron/ipc/attendance.
 | `attendance:update` | `(id, UpdateAttendanceLogInput) → AttendanceLog` | Edit existing punch |
 | `attendance:delete` | `(id) → void` | Delete a punch |
 
-#### Device Sync (7 endpoints)
+#### Device Sync (8 endpoints)
 
 | Channel | Handler Pattern | Purpose |
 |---------|----------------|---------|
 | `attendance:syncFromDevice` | `() → DeviceSyncResult` | Full sync pipeline (reads device IP from settings) |
-| `attendance:purgeDevicePunches` | `({dateFrom, dateTo}) → {deleted}` | Delete device-sourced logs in range + reset watermark |
+| `attendance:countLogsForPurge` | `({dateFrom, dateTo, source}) → {count}` | Preview how many logs a bulk purge would delete |
+| `attendance:purgeLogs` | `({dateFrom, dateTo, source}) → {deleted}` | Permanently delete logs in range, scoped to `'manual'`/`'device'`/`'all'`; resets sync watermark unless `source === 'manual'`; blocked if the range overlaps a closed payroll period |
 | `attendance:testDevice` | `() → DeviceTestResult` | Real connection test with clock drift check |
 | `attendance:getDeviceUsers` | `() → DeviceUser[]` | Live list of enrolled users on device |
 | `attendance:setDeviceTime` | `() → {ok, error?}` | Sync device clock to PC time |
