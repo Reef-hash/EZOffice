@@ -339,6 +339,8 @@ payroll_settings         (device config, grace period, session cap)
 | `year` | INTEGER | NOT NULL, CHECK(2000–2100) | Calendar year |
 | | | UNIQUE(employee_id, leave_type, year) | One balance row per type per year |
 
+**How balances get set (2026-07-15):** originally there was no way to populate this table at all except a manual SQL insert. `payroll_settings.default_annual_leave_days`/`default_sick_leave_days` (added in `0016_leave_entitlement_defaults.sql`) hold the company-wide default; `initializeYearlyLeaveEntitlements(db, year)` bulk-applies them to every active employee for a year (skipping any row that already exists), and `upsertLeaveEntitlement(db, input)` sets/adjusts a single employee's balance directly. UI: Attendance → Leave Entitlements tab.
+
 ### 3.8 Employee Columns (Attendance-Related)
 
 The `employees` table gained two attendance columns:

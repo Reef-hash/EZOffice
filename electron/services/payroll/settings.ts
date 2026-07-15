@@ -29,6 +29,8 @@ export function updatePayrollSettings(
         device_port = @device_port,
         punch_debounce_minutes = @punch_debounce_minutes,
         max_session_hours = @max_session_hours,
+        default_annual_leave_days = @default_annual_leave_days,
+        default_sick_leave_days = @default_sick_leave_days,
         updated_at = @updated_at
     WHERE id = 1
   `).run({
@@ -39,6 +41,8 @@ export function updatePayrollSettings(
     device_port: input.device_port ?? existing.device_port,
     punch_debounce_minutes: input.punch_debounce_minutes ?? existing.punch_debounce_minutes,
     max_session_hours: input.max_session_hours ?? existing.max_session_hours,
+    default_annual_leave_days: input.default_annual_leave_days ?? existing.default_annual_leave_days,
+    default_sick_leave_days: input.default_sick_leave_days ?? existing.default_sick_leave_days,
     updated_at: now,
   })
 

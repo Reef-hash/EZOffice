@@ -21,6 +21,8 @@ import type {
   Shift,
   LeaveRecord,
   LeaveBalance,
+  LeaveEntitlement,
+  LeaveEntitlementRow,
   LeaveStatus,
   LateReportRow,
   ClockValidationResult,
@@ -61,6 +63,7 @@ import type {
   CreateDepartmentInput,
   CreateAttendanceLogInput,
   UpdateAttendanceLogInput,
+  UpsertLeaveEntitlementInput,
   CreateSalaryStructureInput,
   UpdateSalaryStructureInput,
   UpdatePayrollSettingsInput,
@@ -192,6 +195,11 @@ export interface AttendanceApi {
   approveLeave: (id: number) => Promise<LeaveRecord>
   rejectLeave: (id: number) => Promise<LeaveRecord>
   listLeave: (filters?: { employeeId?: number; status?: LeaveStatus; dateFrom?: string; dateTo?: string }) => Promise<LeaveRecord[]>
+
+  // Leave entitlements (2026-07-15) — company defaults + per-employee overrides
+  listLeaveEntitlements: (year: number) => Promise<LeaveEntitlementRow[]>
+  upsertLeaveEntitlement: (data: UpsertLeaveEntitlementInput) => Promise<LeaveEntitlement>
+  initializeYearlyLeaveEntitlements: (year: number) => Promise<{ created: number; skipped: number }>
 
   // Phase C — late detection
   excuseLate: (logId: number) => Promise<AttendanceLog>

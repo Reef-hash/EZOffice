@@ -100,6 +100,10 @@ const api: EzOfficeApi = {
     approveLeave: (id) => ipcRenderer.invoke('attendance:approveLeave', id),
     rejectLeave: (id) => ipcRenderer.invoke('attendance:rejectLeave', id),
     listLeave: (filters) => ipcRenderer.invoke('attendance:listLeave', filters),
+    // Leave entitlements (2026-07-15) — company defaults + per-employee overrides
+    listLeaveEntitlements: (year) => ipcRenderer.invoke('attendance:listLeaveEntitlements', { year }),
+    upsertLeaveEntitlement: (data) => ipcRenderer.invoke('attendance:upsertLeaveEntitlement', data),
+    initializeYearlyLeaveEntitlements: (year) => ipcRenderer.invoke('attendance:initializeYearlyLeaveEntitlements', { year }),
     // Phase C — late detection
     excuseLate: (logId) => ipcRenderer.invoke('attendance:excuseLate', { log_id: logId }),
     getLateReport: (year, month) => ipcRenderer.invoke('attendance:getLateReport', { year, month }),

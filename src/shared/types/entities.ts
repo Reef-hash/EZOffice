@@ -283,8 +283,19 @@ export interface PayrollSettings {
   punch_debounce_minutes: number // D3: collapse same-employee punches < N min apart
   max_session_hours: number      // D4: pairs > N hours excluded from pay + flagged
   device_last_synced_at: string | null // H1: watermark ISO timestamp; null = never synced
+  default_annual_leave_days: number // company-wide default, applied via initializeYearlyLeaveEntitlements()
+  default_sick_leave_days: number
   created_at: string
   updated_at: string
+}
+
+/** A single employee's leave entitlement row, joined with employee name for display. */
+export interface LeaveEntitlementRow {
+  employee_id: number
+  employee_name: string
+  year: number
+  annual_balance: number | null // null = no entitlement row exists yet for this employee/year
+  sick_balance: number | null
 }
 
 export interface EpfRate {
