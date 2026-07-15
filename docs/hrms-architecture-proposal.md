@@ -48,7 +48,7 @@ PROBLEMS:
 |--------|--------|----------|
 | `attendance_logs` table | Perfect as-is | **NEVER modify** — this is the immutable event source |
 | Device sync pipeline (`syncFromDeviceEthernet`) | Battle-tested | **NEVER modify** — the processing engine sits downstream |
-| Alternation validation (`assertAlternation`) | Correct | **NEVER modify** — it protects data integrity at the source |
+| Alternation validation (`assertAlternation`) | Fixed 2026-07-15 | The **invariant** (strict IN→OUT→IN alternation) must never be relaxed — the processing engine still assumes it holds. But the original implementation checked new punches against `getLastLogForEmployee()` (globally most recent punch) instead of the punch actually adjacent to the new entry's own timestamp, which made backfilling earlier dates impossible once later data existed (device sync or prior manual entries). Fixed to check timestamp-relative neighbors instead — see CLAUDE.md decision log. Do not revert to global-last-punch comparison. |
 | `shifts` table | Complete | Keep as-is; extend with `break_duration` and `break_start_time` later |
 | `leave_records` / `employee_leave_entitlements` | Complete | Keep as-is; extend with `half_day` flag and `paid` flag later |
 | `clockIn()` / `clockOut()` | Stable | Keep as-is; the processing engine reads their output, not replaces it |
@@ -778,7 +778,7 @@ This full chain is auditable without running any query — it's in the foreign k
 |--------|--------|
 | `attendance_logs` table | Immutable event source. Any change risks data integrity. |
 | `syncFromDeviceEthernet()` | Battle-tested. The processing engine reads its output; does not replace it. |
-| `assertAlternation()` | Protects data quality at the source. The processing engine assumes alternation is already validated. |
+| `assertAlternation()` | Protects data quality at the source — the processing engine assumes alternation is already validated. The invariant must not be weakened. The *implementation* was corrected 2026-07-15 (timestamp-relative neighbor check instead of global-last-punch) — see CLAUDE.md decision log; that fix does not violate this "must not modify" intent, it's what made the intent actually correct for backfill. |
 | `clockIn()` / `clockOut()` | Interface to raw logs. These functions produce the data the processing engine consumes. |
 | `employees` table (existing columns) | Backward compatibility. Add new columns; never alter existing ones. |
 | `shifts` table (existing columns) | Backward compatibility. Extend with new columns (break_duration), never remove. |
