@@ -15,6 +15,9 @@ import {
   createLeaveRequestSchema,
   leaveBalanceSchema,
   leaveListSchema,
+  listLeaveEntitlementsSchema,
+  upsertLeaveEntitlementSchema,
+  initializeYearlyEntitlementsSchema,
   excuseLateSchema,
   lateReportSchema,
   monthlySummarySchema,
@@ -209,6 +212,35 @@ export function registerAttendanceHandlers(db: Database.Database): void {
       return attendanceService.listLeaveRecords(db, f)
     } catch (err) {
       throw new Error(`Failed to list leave records: ${String(err)}`)
+    }
+  })
+
+  // ── Leave Entitlements (2026-07-15): company defaults + per-employee overrides ──
+
+  ipcMain.handle('attendance:listLeaveEntitlements', async (_event, data: unknown) => {
+    try {
+      const input = listLeaveEntitlementsSchema.parse(data)
+      return attendanceService.listLeaveEntitlements(db, input.year)
+    } catch (err) {
+      throw new Error(`Failed to list leave entitlements: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:upsertLeaveEntitlement', async (_event, data: unknown) => {
+    try {
+      const input = upsertLeaveEntitlementSchema.parse(data)
+      return attendanceService.upsertLeaveEntitlement(db, input)
+    } catch (err) {
+      throw new Error(`Failed to set leave entitlement: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:initializeYearlyLeaveEntitlements', async (_event, data: unknown) => {
+    try {
+      const input = initializeYearlyEntitlementsSchema.parse(data)
+      return attendanceService.initializeYearlyLeaveEntitlements(db, input.year)
+    } catch (err) {
+      throw new Error(`Failed to initialize leave entitlements: ${String(err)}`)
     }
   })
 

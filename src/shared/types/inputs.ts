@@ -161,6 +161,9 @@ export const updatePayrollSettingsSchema = z.object({
   // Sync overhaul (DEVICE_SYNC_AUDIT.md 2026-07-08)
   punch_debounce_minutes: z.number().int().min(0).optional(),
   max_session_hours: z.number().min(1).optional(),
+  // Leave entitlement defaults (2026-07-15)
+  default_annual_leave_days: z.number().min(0, 'Must be non-negative').optional(),
+  default_sick_leave_days: z.number().min(0, 'Must be non-negative').optional(),
 })
 
 export type UpdatePayrollSettingsInput = z.infer<typeof updatePayrollSettingsSchema>
@@ -305,6 +308,29 @@ export const leaveListSchema = z.object({
 })
 
 export type LeaveListInput = z.infer<typeof leaveListSchema>
+
+// --- Leave Entitlements (2026-07-15): company-wide defaults + per-employee overrides ---
+
+export const upsertLeaveEntitlementSchema = z.object({
+  employee_id: z.number().int().positive(),
+  leave_type: z.enum(['annual', 'sick']),
+  year: z.number().int().min(2000).max(2100),
+  balance: z.number().min(0, 'Balance must be non-negative'),
+})
+
+export type UpsertLeaveEntitlementInput = z.infer<typeof upsertLeaveEntitlementSchema>
+
+export const initializeYearlyEntitlementsSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+})
+
+export type InitializeYearlyEntitlementsInput = z.infer<typeof initializeYearlyEntitlementsSchema>
+
+export const listLeaveEntitlementsSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+})
+
+export type ListLeaveEntitlementsInput = z.infer<typeof listLeaveEntitlementsSchema>
 
 // --- Phase C: Late detection ---
 

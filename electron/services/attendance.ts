@@ -10,6 +10,7 @@ import type {
   LeaveRecord,
   LeaveBalance,
   LeaveEntitlement,
+  LeaveEntitlementRow,
   LateReportRow,
   ClockValidationResult,
   AttendanceMonthlyCalendar,
@@ -22,6 +23,7 @@ import type {
   CreateShiftInput,
   UpdateShiftInput,
   CreateLeaveRequestInput,
+  UpsertLeaveEntitlementInput,
   AttendanceLogPurgeSource,
 } from '../../src/shared/types/inputs'
 
@@ -1083,6 +1085,96 @@ function getLeaveEntitlement(
     WHERE employee_id = ? AND leave_type = ? AND year = ?
   `).get(employeeId, leaveType, year) as LeaveEntitlement | undefined
   return row ?? null
+}
+
+/**
+ * Lists every active employee's annual/sick leave entitlement balance for a given
+ * year. Employees with no entitlement row yet are still listed (null balances) so
+ * the admin can see who still needs initializeYearlyLeaveEntitlements() or a manual
+ * upsertLeaveEntitlement() override — the alternative (omitting them) would make an
+ * employee simply disappear from the list, which is worse for spotting a gap.
+ */
+export function listLeaveEntitlements(db: Database.Database, year: number): LeaveEntitlementRow[] {
+  return db.prepare(`
+    SELECT
+      e.id AS employee_id,
+      e.name AS employee_name,
+      ? AS year,
+      (SELECT balance FROM employee_leave_entitlements WHERE employee_id = e.id AND leave_type = 'annual' AND year = ?) AS annual_balance,
+      (SELECT balance FROM employee_leave_entitlements WHERE employee_id = e.id AND leave_type = 'sick' AND year = ?) AS sick_balance
+    FROM employees e
+    WHERE e.status = 'active'
+    ORDER BY e.name ASC
+  `).all(year, year, year) as LeaveEntitlementRow[]
+}
+
+/**
+ * Creates or updates a single employee's leave entitlement balance for a
+ * leave type × year — the per-employee override path (e.g. a mid-year hire's
+ * prorated allocation, or a manual top-up). Only 'annual'/'sick' are settable
+ * here; 'unpaid' has no cap by design (see getEmployeeLeaveBalance).
+ */
+export function upsertLeaveEntitlement(
+  db: Database.Database,
+  input: UpsertLeaveEntitlementInput,
+): LeaveEntitlement {
+  const now = new Date().toISOString()
+  db.prepare(`
+    INSERT INTO employee_leave_entitlements (employee_id, leave_type, balance, year, created_at, updated_at)
+    VALUES (@employee_id, @leave_type, @balance, @year, @now, @now)
+    ON CONFLICT(employee_id, leave_type, year) DO UPDATE SET
+      balance = excluded.balance,
+      updated_at = @now
+  `).run({ ...input, now })
+
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  return getLeaveEntitlement(db, input.employee_id, input.leave_type, input.year)!
+}
+
+/**
+ * Bulk-applies the company-wide default annual/sick leave days (payroll_settings)
+ * to every active employee for the given year — the "new year rollover" action the
+ * admin triggers manually (see 2026-07-15 decision log entry). Only fills in rows
+ * that don't already exist; an employee with an existing row for that year (from a
+ * prior initialize run or a manual upsertLeaveEntitlement override) is left
+ * untouched, so re-running this is always safe and never clobbers an adjustment.
+ */
+export function initializeYearlyLeaveEntitlements(
+  db: Database.Database,
+  year: number,
+): { created: number; skipped: number } {
+  const settings = db.prepare(`
+    SELECT default_annual_leave_days, default_sick_leave_days FROM payroll_settings WHERE id = 1
+  `).get() as { default_annual_leave_days: number; default_sick_leave_days: number } | undefined
+  if (!settings) {
+    throw new Error('Payroll settings row not found — migration should have seeded id=1')
+  }
+
+  const employees = db.prepare(`SELECT id FROM employees WHERE status = 'active'`).all() as Array<{ id: number }>
+  const now = new Date().toISOString()
+
+  const insertIfMissing = db.prepare(`
+    INSERT OR IGNORE INTO employee_leave_entitlements (employee_id, leave_type, balance, year, created_at, updated_at)
+    VALUES (@employee_id, @leave_type, @balance, @year, @now, @now)
+  `)
+
+  let created = 0
+  let skipped = 0
+  const applyAll = db.transaction(() => {
+    for (const emp of employees) {
+      for (const [leaveType, balance] of [
+        ['annual', settings.default_annual_leave_days],
+        ['sick', settings.default_sick_leave_days],
+      ] as const) {
+        const result = insertIfMissing.run({ employee_id: emp.id, leave_type: leaveType, balance, year, now })
+        if (result.changes > 0) created++
+        else skipped++
+      }
+    }
+  })
+  applyAll()
+
+  return { created, skipped }
 }
 
 /** Counts inclusive days between two YYYY-MM-DD dates. */

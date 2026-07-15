@@ -19,6 +19,7 @@ import { DeviceSettingsPage } from './DeviceSettingsPage'
 import { ShiftManagementPanel } from './ShiftManagementPanel'
 import { LeaveRequestForm } from './LeaveRequestForm'
 import { LeaveApprovalPanel } from './LeaveApprovalPanel'
+import { LeaveEntitlementPanel } from './LeaveEntitlementPanel'
 import { LateReportPage } from './LateReportPage'
 import { AttendanceSummaryPage } from './AttendanceSummaryPage'
 import { ExceptionsPanel } from './ExceptionsPanel'
@@ -37,12 +38,13 @@ import {
   ATTENDANCE_STATUS_LABEL,
 } from './constants'
 
-type AttendanceTab = 'logs' | 'deviceSettings' | 'shifts' | 'leave' | 'lateReport' | 'summary' | 'exceptions'
+type AttendanceTab = 'logs' | 'deviceSettings' | 'shifts' | 'leave' | 'leaveEntitlements' | 'lateReport' | 'summary' | 'exceptions'
 
 const TABS: Array<{ key: AttendanceTab; label: string }> = [
   { key: 'logs', label: 'Logs' },
   { key: 'shifts', label: 'Shifts' },
   { key: 'leave', label: 'Leave' },
+  { key: 'leaveEntitlements', label: 'Leave Entitlements' },
   { key: 'lateReport', label: 'Late Report' },
   { key: 'summary', label: 'Monthly Summary' },
   { key: 'exceptions', label: 'Exceptions' },
@@ -331,6 +333,10 @@ export function AttendanceListPage() {
         <LeaveApprovalPanel />
       )}
 
+      {activeTab === 'leaveEntitlements' && (
+        <LeaveEntitlementPanel />
+      )}
+
       {activeTab === 'lateReport' && (
         <LateReportPage />
       )}
@@ -501,6 +507,8 @@ function subtitleForTab(tab: AttendanceTab, logCount: number): React.ReactNode {
       return 'Define work shifts and standard hours'
     case 'leave':
       return 'Review and approve leave requests'
+    case 'leaveEntitlements':
+      return 'Configure annual/sick leave days per employee'
     case 'lateReport':
       return 'Lateness summary by employee'
     case 'summary':
