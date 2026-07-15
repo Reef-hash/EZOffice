@@ -728,7 +728,7 @@ The hub uses **local React state** for tab switching (no nested routes). All 7 p
 **Internal helpers (not exported):**
 - `nowLocalISO()` — naive local ISO 8601 (no timezone suffix, matches SQLite)
 - `queryById()` — shared JOIN query for single log
-- `assertAlternation()` — shared alternation validation for all write paths
+- `assertAlternation()` — shared alternation validation for all write paths. Checks against the punch chronologically adjacent to the new entry's own timestamp (`getPrecedingLog()`/`getFollowingLog()`), not the globally most recent punch — see the 2026-07-15 CLAUDE.md decision log entry for why this distinction matters for backfill.
 - `getEmployeeShift()`, `getGracePeriodMinutes()`, `computeMinutesLate()`, `computeClockInStatus()`, `minutesBetween()` — shift/late math
 - `getDeviceSyncSettings()`, `parseDeviceTimestamp()`, `persistSyncLog()` — sync internals
 - `getLeaveRecordById()`, `getLeaveEntitlement()`, `countDaysInclusive()` — leave helpers

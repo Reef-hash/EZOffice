@@ -94,38 +94,128 @@ function queryById(db: Database.Database, id: number): AttendanceLog | null {
 }
 
 /**
- * Shared alternation check: an employee's punches must strictly alternate.
- * Throws if the new type would break the IN → OUT → IN chain.
+ * Returns the punch immediately BEFORE the given timestamp for an employee
+ * (strictly earlier), or null if none exists. `excludeId` omits a specific row —
+ * used when re-validating an existing log against its neighbors during an edit.
+ *
+ * This is deliberately distinct from getLastLogForEmployee(), which always returns
+ * the globally most recent punch — correct for "what's the employee's current
+ * status right now" (Quick Clock panel), but wrong for validating a punch being
+ * inserted at an arbitrary point in the past (manual backfill). Alternation must be
+ * checked against the neighbor at the INSERTION POINT, not the global latest row.
+ */
+function getPrecedingLog(
+  db: Database.Database,
+  employeeId: number,
+  timestamp: string,
+  excludeId?: number,
+): AttendanceLog | null {
+  const row = db.prepare(`
+    SELECT
+      a.id, a.employee_id, e.name AS employee_name,
+      a.type, a.timestamp, a.source, a.device_id, a.note,
+      a.shift_id, s.name AS shift_name, a.status,
+      a.created_at, a.updated_at
+    FROM attendance_logs a
+    LEFT JOIN employees e ON e.id = a.employee_id
+    LEFT JOIN shifts s ON s.id = a.shift_id
+    WHERE a.employee_id = ? AND a.timestamp < ? AND (@excludeId IS NULL OR a.id != @excludeId)
+    ORDER BY a.timestamp DESC
+    LIMIT 1
+  `).get(employeeId, timestamp, { excludeId: excludeId ?? null }) as AttendanceLog | undefined
+  return row ?? null
+}
+
+/**
+ * Returns the punch immediately AFTER the given timestamp for an employee
+ * (strictly later), or null if none exists. See getPrecedingLog() for why this
+ * point-in-time lookup exists separately from getLastLogForEmployee().
+ */
+function getFollowingLog(
+  db: Database.Database,
+  employeeId: number,
+  timestamp: string,
+  excludeId?: number,
+): AttendanceLog | null {
+  const row = db.prepare(`
+    SELECT
+      a.id, a.employee_id, e.name AS employee_name,
+      a.type, a.timestamp, a.source, a.device_id, a.note,
+      a.shift_id, s.name AS shift_name, a.status,
+      a.created_at, a.updated_at
+    FROM attendance_logs a
+    LEFT JOIN employees e ON e.id = a.employee_id
+    LEFT JOIN shifts s ON s.id = a.shift_id
+    WHERE a.employee_id = ? AND a.timestamp > ? AND (@excludeId IS NULL OR a.id != @excludeId)
+    ORDER BY a.timestamp ASC
+    LIMIT 1
+  `).get(employeeId, timestamp, { excludeId: excludeId ?? null }) as AttendanceLog | undefined
+  return row ?? null
+}
+
+/**
+ * Shared alternation check: an employee's punches must strictly alternate
+ * (IN → OUT → IN → ...). Checked against the neighbors of `timestamp` — the
+ * preceding punch and (optionally) the following punch — so that inserting a
+ * punch anywhere in the past (manual backfill, e.g. filling in days 1-13 of a
+ * month after device sync already populated days 14 onward) is validated
+ * against what actually comes immediately before/after it, not against
+ * whatever happens to be the globally most recent row.
+ *
+ * `checkFollowing` (default true) guards the far side too — inserting into the
+ * middle of an existing timeline must not silently create two consecutive
+ * punches of the same type on the other side. This is safe and desirable for
+ * clockIn/clockOut (a future-dated log already existing would itself be an
+ * anomaly) and updateAttendanceLog (editing one row of an otherwise-settled
+ * timeline). It must be turned OFF for createManualLog: a multi-day backfill is
+ * filled in one punch at a time, so a "following" row that hasn't been bridged
+ * yet (e.g. day 14's device-synced IN, while still filling day 1-13) is an
+ * expected transient state, not an error — see the 2026-07-15 decision log
+ * entry. Any real gap left after backfill (e.g. an admin who never adds day
+ * 13's OUT) is still caught by computeAttendanceExceptions()'s missing_punch
+ * check (odd punch count per day), which gates payroll before it can run.
+ *
+ * `excludeId` lets updateAttendanceLog re-validate a log against its neighbors
+ * without matching against itself.
  */
 function assertAlternation(
   db: Database.Database,
   employeeId: number,
   newType: 'in' | 'out',
+  timestamp: string,
+  options?: { excludeId?: number; checkFollowing?: boolean },
 ): void {
-  const lastLog = getLastLogForEmployee(db, employeeId)
+  const excludeId = options?.excludeId
+  const checkFollowing = options?.checkFollowing ?? true
 
-  if (newType === 'in') {
-    if (lastLog && lastLog.type === 'in') {
-      throw new Error(
-        `Employee ${employeeId} is already clocked in (last punch at ${lastLog.timestamp}). ` +
-        'Clock out before clocking in again.',
-      )
-    }
-    // No last log → first punch can be IN (valid, employee just joined)
+  const preceding = getPrecedingLog(db, employeeId, timestamp, excludeId)
+
+  if (newType === 'in' && preceding && preceding.type === 'in') {
+    throw new Error(
+      `Employee ${employeeId} already has an IN punch at ${preceding.timestamp} with no OUT ` +
+      `logged before ${timestamp}. Insert or fix the OUT punch in between first.`,
+    )
   }
 
-  if (newType === 'out') {
-    if (!lastLog) {
-      throw new Error(
-        `Employee ${employeeId} has no prior attendance log. Clock in before clocking out.`,
-      )
-    }
-    if (lastLog.type === 'out') {
-      throw new Error(
-        `Employee ${employeeId} is already clocked out (last punch at ${lastLog.timestamp}). ` +
-        'Clock in before clocking out again.',
-      )
-    }
+  if (newType === 'out' && (!preceding || preceding.type === 'out')) {
+    const reason = preceding
+      ? `the preceding punch at ${preceding.timestamp} is also OUT`
+      : `there is no prior IN punch before ${timestamp}`
+    throw new Error(
+      `Cannot record OUT at ${timestamp} for employee ${employeeId}: ${reason}. ` +
+      'Clock in before clocking out.',
+    )
+  }
+
+  if (!checkFollowing) return
+
+  const following = getFollowingLog(db, employeeId, timestamp, excludeId)
+  if (following && following.type === newType) {
+    throw new Error(
+      `Cannot record ${newType.toUpperCase()} at ${timestamp} for employee ${employeeId}: ` +
+      `the next existing punch at ${following.timestamp} is also ${newType.toUpperCase()}. ` +
+      'Inserting here would break alternation going forward — fix or remove that punch first.',
+    )
   }
 }
 
@@ -297,9 +387,9 @@ export function clockIn(
   employeeId: number,
   timestamp?: string,
 ): AttendanceLog {
-  assertAlternation(db, employeeId, 'in')
-
   const ts = timestamp ?? nowLocalISO()
+  assertAlternation(db, employeeId, 'in', ts)
+
   const now = new Date().toISOString()
 
   // Phase C: snapshot the employee's assigned shift and compute lateness at clock-in.
@@ -327,9 +417,9 @@ export function clockOut(
   employeeId: number,
   timestamp?: string,
 ): AttendanceLog {
-  assertAlternation(db, employeeId, 'out')
-
   const ts = timestamp ?? nowLocalISO()
+  assertAlternation(db, employeeId, 'out', ts)
+
   const now = new Date().toISOString()
 
   // Phase C: snapshot the shift_id on clock-out too (for audit parity with clock-in).
@@ -357,8 +447,15 @@ export function createManualLog(
   db: Database.Database,
   input: CreateAttendanceLogInput,
 ): AttendanceLog {
-  // Alternation check applies to manual inserts too — same invariant
-  assertAlternation(db, input.employee_id, input.type)
+  // Phase 6: block backfilling into a closed payroll period — same rule as
+  // update/delete. Without this, manual backfill could silently bypass the lock.
+  guardClosedPeriod(db, input.timestamp.slice(0, 10))
+
+  // Alternation check applies to manual inserts too — same invariant, but checked
+  // against the neighbors of input.timestamp, not the globally latest punch (see
+  // assertAlternation's docstring — this is what makes backfilling earlier dates
+  // after device-synced/later data already exists work correctly).
+  assertAlternation(db, input.employee_id, input.type, input.timestamp, { checkFollowing: false })
 
   const now = new Date().toISOString()
 
@@ -400,29 +497,24 @@ export function updateAttendanceLog(
 
   const newType = input.type ?? existing.type
   const newEmployeeId = input.employee_id ?? existing.employee_id
+  const newTimestamp = input.timestamp ?? existing.timestamp
 
-  // If the employee or type changed, re-check alternation against the latest log
-  // (excluding this row so it doesn't check against itself)
-  if (input.type !== undefined || input.employee_id !== undefined) {
-    const lastBeforeThis = db.prepare(`
-      SELECT type FROM attendance_logs
-      WHERE employee_id = ? AND id != ? AND timestamp < (SELECT timestamp FROM attendance_logs WHERE id = ?)
-      ORDER BY timestamp DESC LIMIT 1
-    `).get(newEmployeeId, id, id) as { type: 'in' | 'out' } | undefined
+  // If the edit moves the timestamp to a different date, the destination date
+  // must also not fall inside a closed period — otherwise a closed period could
+  // be bypassed by editing a log's date into it instead of creating a new one.
+  if (input.timestamp !== undefined && newTimestamp.slice(0, 10) !== existing.timestamp.slice(0, 10)) {
+    guardClosedPeriod(db, newTimestamp.slice(0, 10))
+  }
 
-    // Check against the log that immediately precedes this one chronologically
-    // (since we're editing, the log after this one might need its own alternation fix,
-    // but that's not part of this operation — admins must fix cascading issues manually)
-    if (lastBeforeThis && lastBeforeThis.type === newType) {
-      throw new Error(
-        `Cannot set type to '${newType}': the preceding log is also '${lastBeforeThis.type}'. ` +
-        'Punches must strictly alternate.',
-      )
-    }
+  // Re-check alternation whenever type, employee, or timestamp changed — any of
+  // these can move this log relative to its neighbors. Shares the same
+  // preceding+following check as createManualLog/clockIn/clockOut (excluding this
+  // row's own id so it doesn't compare against itself).
+  if (input.type !== undefined || input.employee_id !== undefined || input.timestamp !== undefined) {
+    assertAlternation(db, newEmployeeId, newType, newTimestamp, { excludeId: id })
   }
 
   const now = new Date().toISOString()
-  const newTimestamp = input.timestamp ?? existing.timestamp
 
   // Phase C: re-snapshot shift_id and recompute status if the employee or timestamp
   // changed. If only the note is being edited, leave shift_id/status untouched.
