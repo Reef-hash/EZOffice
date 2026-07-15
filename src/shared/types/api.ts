@@ -84,6 +84,7 @@ import type {
   DismissExceptionInput,
   TriggerProcessingInput,
   PurgeAttendanceLogsInput,
+  SyncFromDeviceInput,
   ComputeExceptionsInput,
   SendActivationOtpInput,
   VerifyActivationOtpInput,
@@ -160,7 +161,7 @@ export interface AttendanceApi {
   create: (data: CreateAttendanceLogInput) => Promise<AttendanceLog>
   update: (id: number, data: UpdateAttendanceLogInput) => Promise<AttendanceLog>
   delete: (id: number) => Promise<void>
-  syncFromDevice: () => Promise<DeviceSyncResult>
+  syncFromDevice: (data?: SyncFromDeviceInput) => Promise<DeviceSyncResult>
   countLogsForPurge: (data: PurgeAttendanceLogsInput) => Promise<{ count: number }>
   purgeLogs: (data: PurgeAttendanceLogsInput) => Promise<{ deleted: number }>
 

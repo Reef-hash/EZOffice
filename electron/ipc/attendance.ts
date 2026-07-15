@@ -23,6 +23,7 @@ import {
   dismissExceptionSchema,
   purgeAttendanceLogsSchema,
   computeExceptionsSchema,
+  syncFromDeviceSchema,
 } from '../../src/shared/types/inputs'
 import * as attendanceService from '../services/attendance'
 import * as exceptionService from '../services/attendanceExceptions'
@@ -264,8 +265,9 @@ export function registerAttendanceHandlers(db: Database.Database): void {
 
   // ── Sync overhaul — device info + exceptions (H2/H3/H4) ──
 
-  ipcMain.handle('attendance:syncFromDevice', async (_event) => {
+  ipcMain.handle('attendance:syncFromDevice', async (_event, data?: unknown) => {
     try {
+      const input = syncFromDeviceSchema.parse(data ?? {})
       const settings = db.prepare(`
         SELECT device_ip, device_port FROM payroll_settings WHERE id = 1
       `).get() as { device_ip: string | null; device_port: number } | undefined
@@ -275,7 +277,8 @@ export function registerAttendanceHandlers(db: Database.Database): void {
       }
 
       const port = settings.device_port || 4370
-      return await attendanceService.syncFromDeviceEthernet(db, settings.device_ip, port)
+      const syncFromOverride = input.syncFrom ? `${input.syncFrom}T00:00:00` : null
+      return await attendanceService.syncFromDeviceEthernet(db, settings.device_ip, port, syncFromOverride)
     } catch (err) {
       throw new Error(`Device sync failed: ${String(err)}`)
     }
@@ -293,7 +296,7 @@ export function registerAttendanceHandlers(db: Database.Database): void {
   ipcMain.handle('attendance:purgeLogs', async (_event, data: unknown) => {
     try {
       const input = purgeAttendanceLogsSchema.parse(data)
-      return attendanceService.purgeAttendanceLogs(db, input.dateFrom, input.dateTo, input.source)
+      return attendanceService.purgeAttendanceLogs(db, input.dateFrom, input.dateTo, input.source, input.resyncMode)
     } catch (err) {
       throw new Error(`Failed to purge attendance logs: ${String(err)}`)
     }

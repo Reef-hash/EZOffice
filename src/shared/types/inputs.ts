@@ -376,10 +376,17 @@ export const purgeAttendanceLogsSchema = z.object({
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD'),
   source: z.enum(['all', 'manual', 'device']),
+  resyncMode: z.enum(['skip-range', 'full']).default('skip-range'),
 })
 
 export type PurgeAttendanceLogsInput = z.infer<typeof purgeAttendanceLogsSchema>
 export type AttendanceLogPurgeSource = PurgeAttendanceLogsInput['source']
+
+export const syncFromDeviceSchema = z.object({
+  syncFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD').optional(),
+})
+
+export type SyncFromDeviceInput = z.infer<typeof syncFromDeviceSchema>
 
 export const computeExceptionsSchema = z.object({
   year: z.number().int().min(2000).max(2100),

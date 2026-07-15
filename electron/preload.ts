@@ -73,7 +73,7 @@ const api: EzOfficeApi = {
     create: (data) => ipcRenderer.invoke('attendance:create', data),
     update: (id, data) => ipcRenderer.invoke('attendance:update', id, data),
     delete: (id) => ipcRenderer.invoke('attendance:delete', id),
-    syncFromDevice: () => ipcRenderer.invoke('attendance:syncFromDevice'),
+    syncFromDevice: (data) => ipcRenderer.invoke('attendance:syncFromDevice', data),
     countLogsForPurge: (data) => ipcRenderer.invoke('attendance:countLogsForPurge', data),
     purgeLogs: (data) => ipcRenderer.invoke('attendance:purgeLogs', data),
     // Device connection (H3 + H4)

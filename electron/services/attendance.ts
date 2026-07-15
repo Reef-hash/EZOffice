@@ -551,11 +551,17 @@ function persistSyncLog(
  *  e. Dedup: skip if a punch exists for (employee, timestamp ±60 s) — type-independent.
  *  f. Insert with source='device', device_id=deviceIp; snapshot shift + status.
  *  g. Update watermark; persist sync log.
+ *
+ * `syncFromOverride` (optional): admin-supplied "sync from" cutoff for this run
+ * only (e.g. re-pulling a range after fixing an employee mapping or resolving a
+ * conflicting log). Does not persist — the watermark still advances afterward
+ * based on whatever this run actually inserts, same as an unoverridden sync.
  */
 export async function syncFromDeviceEthernet(
   db: Database.Database,
   deviceIp: string,
   devicePort: number,
+  syncFromOverride?: string | null,
 ): Promise<DeviceSyncResult> {
   const startedAt = nowLocalISO()
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -564,7 +570,11 @@ export async function syncFromDeviceEthernet(
   let inserted = 0
   let skipped = 0
 
-  const { debounceMinutes, lastSyncedAt } = getDeviceSyncSettings(db)
+  const { debounceMinutes, lastSyncedAt: storedWatermark } = getDeviceSyncSettings(db)
+  // One-off admin override (e.g. "resync from this date") — used for this run only.
+  // The stored watermark is untouched here; it advances normally below based on
+  // whatever actually gets inserted, same as an unoverridden run.
+  const lastSyncedAt = syncFromOverride ?? storedWatermark
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -781,15 +791,29 @@ export function countAttendanceLogsForPurge(
  * purge is not an exception to period locking; the admin must re-open the
  * period first, same as they would to fix a single log.
  *
- * When source is 'device' or 'all', the device sync watermark is reset so
- * the next sync re-pulls the purged range instead of treating it as
- * already-synced.
+ * When source is 'device' or 'all', the device sync watermark is adjusted so
+ * the purged range isn't silently re-pulled on the next sync. The device
+ * itself has no way to selectively delete a log or a date range — the ZK
+ * protocol only exposes "wipe all attendance logs" or "delete a whole user"
+ * — so a purged range's raw punches still physically exist on the device.
+ * `resyncMode` controls how the watermark is adjusted:
+ *
+ *  - 'skip-range' (default): advance the watermark to the end of `dateTo`
+ *    (never rewinding it if it's already later) so the purged range is never
+ *    re-pulled. Use this for genuinely bad/conflicting punches the admin has
+ *    replaced with correct manual logs.
+ *  - 'full': reset the watermark entirely so the *next* sync re-pulls all
+ *    device history from the beginning. Use this after fixing something that
+ *    affects re-derivation of the purged range (e.g. an employee's
+ *    device_user_id mapping), where the device data itself is still wanted
+ *    back.
  */
 export function purgeAttendanceLogs(
   db: Database.Database,
   dateFrom: string,
   dateTo: string,
   source: AttendanceLogPurgeSource,
+  resyncMode: 'skip-range' | 'full' = 'skip-range',
 ): { deleted: number } {
   if (dateFrom > dateTo) {
     throw new Error('dateFrom must not be after dateTo')
@@ -805,9 +829,22 @@ export function purgeAttendanceLogs(
     `).run({ dateFrom, dateTo, source })
 
     if (source !== 'manual') {
-      db.prepare(
-        'UPDATE payroll_settings SET device_last_synced_at = NULL WHERE id = 1',
-      ).run()
+      if (resyncMode === 'full') {
+        db.prepare(
+          'UPDATE payroll_settings SET device_last_synced_at = NULL WHERE id = 1',
+        ).run()
+      } else {
+        const skipUntil = `${dateTo}T23:59:59`
+        db.prepare(`
+          UPDATE payroll_settings
+          SET device_last_synced_at = CASE
+            WHEN device_last_synced_at IS NULL OR device_last_synced_at < @skipUntil
+              THEN @skipUntil
+            ELSE device_last_synced_at
+          END
+          WHERE id = 1
+        `).run({ skipUntil })
+      }
     }
 
     return { deleted: result.changes }

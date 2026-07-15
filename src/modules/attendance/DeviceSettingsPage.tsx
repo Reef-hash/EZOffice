@@ -16,6 +16,7 @@ import { useIpcMutation, useIpcQuery } from '@/shared/hooks/useIpcQuery'
 import { useToast } from '@/shared/components/Toast'
 import { DeviceUserMappingPanel } from './DeviceUserMappingPanel'
 import type { PayrollSettings, DeviceTestResult, DeviceSyncLog } from '@/shared/types/entities'
+import type { SyncFromDeviceInput } from '@/shared/types/inputs'
 
 interface SyncResult {
   inserted: number
@@ -35,6 +36,7 @@ export function DeviceSettingsPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [syncErrors, setSyncErrors] = useState<string[] | null>(null)
   const [testResult, setTestResult] = useState<DeviceTestResult | null>(null)
+  const [syncFromDate, setSyncFromDate] = useState('')
 
   // Fetch current settings on load
   const { data: settings } = useIpcQuery<PayrollSettings>(
@@ -56,8 +58,8 @@ export function DeviceSettingsPage() {
     }
   }, [settings])
 
-  const syncMutation = useIpcMutation<SyncResult, void>(
-    () => window.api.attendance.syncFromDevice(),
+  const syncMutation = useIpcMutation<SyncResult, SyncFromDeviceInput>(
+    (data) => window.api.attendance.syncFromDevice(data),
     [],
   )
 
@@ -79,7 +81,9 @@ export function DeviceSettingsPage() {
   const handleSync = useCallback(async () => {
     try {
       setSyncErrors(null)
-      const result = await syncMutation.mutateAsync()
+      const result = await syncMutation.mutateAsync(
+        syncFromDate ? { syncFrom: syncFromDate } : {},
+      )
       await refetchLastSyncLog()
       if (result.errors.length > 0) {
         setSyncErrors(result.errors)
@@ -96,7 +100,7 @@ export function DeviceSettingsPage() {
     } catch (err) {
       addToast(`Sync failed: ${String(err)}`, 'error')
     }
-  }, [syncMutation, addToast, refetchLastSyncLog])
+  }, [syncMutation, addToast, refetchLastSyncLog, syncFromDate])
 
   const handleSaveSettings = useCallback(async () => {
     if (!deviceIp) {
@@ -260,6 +264,16 @@ export function DeviceSettingsPage() {
             </p>
           )}
 
+          <div className="max-w-xs">
+            <Input
+              label="Sync from (optional)"
+              type="date"
+              value={syncFromDate}
+              onChange={(e: ChangeEvent<HTMLInputElement>) => setSyncFromDate(e.target.value)}
+              helperText="Leave blank to continue from the last sync. Set a date to pull logs from that date forward for this run only."
+            />
+          </div>
+
           <Button
             variant="dark"
             disabled={!deviceIp || syncMutation.isPending}
@@ -285,7 +299,6 @@ export function DeviceSettingsPage() {
           )}
         </div>
       </Card>
-
     </div>
   )
 }

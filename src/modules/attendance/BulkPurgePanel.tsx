@@ -19,6 +19,11 @@ const SOURCE_OPTIONS: Array<{ value: AttendanceLogPurgeSource; label: string }> 
   { value: 'device', label: 'Device only' },
 ]
 
+const RESYNC_MODE_OPTIONS: Array<{ value: 'skip-range' | 'full'; label: string }> = [
+  { value: 'skip-range', label: "Don't re-pull these logs on next sync (recommended)" },
+  { value: 'full', label: 'Re-pull all device history on next sync' },
+]
+
 export function BulkPurgePanel() {
   const { addToast } = useToast()
   const queryClient = useQueryClient()
@@ -28,6 +33,7 @@ export function BulkPurgePanel() {
   const [dateFrom, setDateFrom] = useState(today)
   const [dateTo, setDateTo] = useState(today)
   const [source, setSource] = useState<AttendanceLogPurgeSource>('all')
+  const [resyncMode, setResyncMode] = useState<'skip-range' | 'full'>('skip-range')
   const [previewCount, setPreviewCount] = useState<number | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
 
@@ -49,19 +55,19 @@ export function BulkPurgePanel() {
       return
     }
     try {
-      const result = await countMutation.mutateAsync({ dateFrom, dateTo, source })
+      const result = await countMutation.mutateAsync({ dateFrom, dateTo, source, resyncMode })
       setPreviewCount(result.count)
     } catch {
       // Handled by useIpcMutation's global onError toast
     }
-  }, [dateFrom, dateTo, source, countMutation, addToast])
+  }, [dateFrom, dateTo, source, resyncMode, countMutation, addToast])
 
   const handleConfirmPurge = useCallback(async () => {
     try {
-      const result = await purgeMutation.mutateAsync({ dateFrom, dateTo, source })
+      const result = await purgeMutation.mutateAsync({ dateFrom, dateTo, source, resyncMode })
       setShowConfirm(false)
       setPreviewCount(null)
-      // Watermark may have been reset (source !== 'manual') — device settings
+      // Watermark may have been adjusted (source !== 'manual') — device settings
       // reads it via a separate query key, refresh it too.
       await queryClient.invalidateQueries({ queryKey: ['payroll', 'settings'] })
       addToast(`${result.deleted} log(s) permanently deleted`, 'success')
@@ -69,7 +75,7 @@ export function BulkPurgePanel() {
       setShowConfirm(false)
       // Handled by useIpcMutation's global onError toast
     }
-  }, [dateFrom, dateTo, source, purgeMutation, queryClient, addToast])
+  }, [dateFrom, dateTo, source, resyncMode, purgeMutation, queryClient, addToast])
 
   return (
     <div className="mb-6">
@@ -87,7 +93,9 @@ export function BulkPurgePanel() {
           <p className="mb-3 text-sm text-error-700">
             Permanently deletes logs in the selected range. This cannot be undone. Logs within a
             closed payroll period are protected — re-open the period first if you need to touch those.
-            Deleting device logs resets the sync watermark so the next sync re-pulls the range.
+            Deleting device logs adjusts the sync watermark so the range isn't silently re-pulled
+            (the device itself has no way to selectively delete a log or date range — only "wipe
+            everything" — so the raw punches still exist there).
           </p>
 
           <div className="flex flex-wrap items-end gap-3">
@@ -136,6 +144,22 @@ export function BulkPurgePanel() {
               Delete Permanently
             </Button>
           </div>
+
+          {source !== 'manual' && (
+            <div className="mt-3 max-w-sm">
+              <Select
+                label="After deleting"
+                value={resyncMode}
+                onChange={(e) => setResyncMode(e.target.value as 'skip-range' | 'full')}
+                options={RESYNC_MODE_OPTIONS}
+                helperText={
+                  resyncMode === 'skip-range'
+                    ? 'The raw punches still exist on the device but will be skipped going forward.'
+                    : 'Use this if the underlying fix (e.g. an employee device mapping) means the device data should come back in.'
+                }
+              />
+            </div>
+          )}
 
           {previewCount !== null && (
             <p className="mt-3 text-sm font-medium text-error-800">
