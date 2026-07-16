@@ -56,7 +56,14 @@ export interface CalculationInput {
  * All side-effect data (rate lookups, advance balance) is passed in.
  */
 export function calculatePay(input: CalculationInput): PayCheckResult {
-  const { summary, structure, otRule, advanceDeduction, workingDaysInMonth } = input
+  const { summary, structure, otRule, workingDaysInMonth } = input
+
+  // ── Monthly salary branch ──
+  // Gross pay = fixed monthly salary. No hours-based math, no OT.
+  if (structure.rate_type === 'monthly') {
+    const grossPay = Math.round(structure.rate_amount * 100) / 100
+    return buildResult(summary.employee_id, 0, 0, grossPay, grossPay, input)
+  }
 
   // ── 1. Compute hourly rate ──
   let hourlyRate: number
@@ -85,7 +92,25 @@ export function calculatePay(input: CalculationInput): PayCheckResult {
   // ── 4. Gross pay ──
   const grossPay = Math.round((grossRegularPay + grossOtPay) * 100) / 100
 
-  // ── 5. Statutory deductions (only if subject + rate available) ──
+  return buildResult(summary.employee_id, summary.total_regular_hours, summary.total_ot_hours, grossRegularPay, grossPay, input)
+}
+
+/**
+ * Build the final PayCheckResult from gross pay + statutory deductions.
+ * Shared between the monthly-salary branch and the hourly/daily calculation path.
+ */
+function buildResult(
+  employeeId: number,
+  totalRegularHours: number,
+  totalOtHours: number,
+  grossRegularPay: number,
+  grossPay: number,
+  input: CalculationInput,
+): PayCheckResult {
+  const { structure, advanceDeduction } = input
+  const grossOtPay = grossPay - grossRegularPay
+
+  // Statutory deductions (only if subject + rate available)
   const statutory: StatutoryBreakdown = {
     epf_employee: 0,
     epf_employer: 0,
@@ -115,18 +140,18 @@ export function calculatePay(input: CalculationInput): PayCheckResult {
   // against an estimated chargeable income (gross - EPF employee). See CLAUDE.md §7.
   statutory.pcb = calcPcb(input.pcbBracket)
 
-  // ── 6. Net pay ──
+  // Net pay
   const totalDeductions = statutory.epf_employee + statutory.socso_employee + statutory.eis_employee + statutory.pcb + advanceDeduction
   const netPay = Math.round((grossPay - totalDeductions) * 100) / 100
 
   return {
-    employee_id: summary.employee_id,
+    employee_id: employeeId,
     salary_structure_id: 0, // filled in by caller from the actual structure row
-    total_regular_hours: summary.total_regular_hours,
-    total_ot_hours: summary.total_ot_hours,
+    total_regular_hours: totalRegularHours,
+    total_ot_hours: totalOtHours,
     gross_regular_pay: Math.round(grossRegularPay * 100) / 100,
     gross_ot_pay: Math.round(grossOtPay * 100) / 100,
-    gross_pay: grossPay,
+    gross_pay: Math.round(grossPay * 100) / 100,
     statutory,
     advance_deduction: advanceDeduction,
     net_pay: netPay,

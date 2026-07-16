@@ -39,11 +39,40 @@ export function triggerProcessing(
 
   try {
     // Determine which employees to process
+    // Exclude employees whose most recent salary structure has rate_type = 'monthly'
+    // (monthly employees don't track attendance — their pay is fixed)
     let employees: Array<{ id: number }>
     if (employeeIds && employeeIds.length > 0) {
-      employees = employeeIds.map((id) => ({ id }))
+      // Filter out monthly employees from the explicit list
+      const monthlyIds = db.prepare(`
+        SELECT ss.employee_id FROM salary_structures ss
+        INNER JOIN (
+          SELECT employee_id, MAX(effective_from) AS max_ef
+          FROM salary_structures
+          WHERE effective_from <= ?
+          GROUP BY employee_id
+        ) latest ON latest.employee_id = ss.employee_id AND latest.max_ef = ss.effective_from
+        WHERE ss.rate_type = 'monthly'
+      `).all(period.end_date) as Array<{ employee_id: number }>
+      const monthlyIdSet = new Set(monthlyIds.map((m) => m.employee_id))
+      employees = employeeIds.filter((id) => !monthlyIdSet.has(id)).map((id) => ({ id }))
     } else {
-      employees = db.prepare("SELECT id FROM employees WHERE status = 'active'").all() as Array<{ id: number }>
+      employees = db.prepare(`
+        SELECT e.id FROM employees e
+        WHERE e.status = 'active'
+          AND (
+            -- Employee has no salary structure at all → include (not yet configured)
+            NOT EXISTS (SELECT 1 FROM salary_structures ss WHERE ss.employee_id = e.id AND ss.effective_from <= ?)
+            OR
+            -- Employee's most recent salary structure as of period end is NOT monthly
+            (
+              SELECT ss2.rate_type FROM salary_structures ss2
+              WHERE ss2.employee_id = e.id AND ss2.effective_from <= ?
+              ORDER BY ss2.effective_from DESC
+              LIMIT 1
+            ) != 'monthly'
+          )
+      `).all(period.end_date, period.end_date) as Array<{ id: number }>
     }
 
     let totalDays = 0

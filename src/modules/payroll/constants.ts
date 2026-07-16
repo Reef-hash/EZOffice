@@ -6,6 +6,7 @@ import type { StatusBadgeProps } from '@/shared/components/StatusBadge'
 export const RATE_TYPE_LABEL: Record<string, string> = {
   daily: 'Daily Rate',
   hourly: 'Hourly Rate',
+  monthly: 'Monthly Salary',
 }
 
 export const OT_RULE_TYPE_LABEL: Record<string, string> = {
@@ -49,6 +50,7 @@ export const PCB_CATEGORY_LABEL: Record<string, string> = {
 export const RATE_TYPE_OPTIONS = [
   { value: 'daily', label: 'Daily Rate' },
   { value: 'hourly', label: 'Hourly Rate' },
+  { value: 'monthly', label: 'Monthly Salary' },
 ]
 
 export const OT_RULE_TYPE_OPTIONS = [

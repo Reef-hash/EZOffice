@@ -536,6 +536,17 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Not yet verified:** the app has not been launched and clicked through (Save Defaults, Initialize button, inline balance edit) — needs the launch-confirmation step like every other phase.
 
+- **2026-07-17 — Fixed monthly salary for non-attendance employees.** Added `rate_type = 'monthly'` support to salary_structures. When rate_type is monthly, the existing `rate_amount` column holds the fixed monthly salary (e.g. RM 1,700). Payroll uses this directly as gross pay (no hours-based calculation, no OT, no attendance dependency). EPF/SOCSO/EIS/PCB still apply from the fixed monthly amount.
+  - **Migration 0017** — recreated salary_structures table via CREATE/INSERT/DROP/RENAME to widen the CHECK constraint to `('daily', 'hourly', 'monthly')`. No new columns.
+  - **Types/Zod** — added `MONTHLY: 'monthly'` to `SALARY_RATE_TYPE`, and `'monthly'` to the Zod enum in `createSalaryStructureSchema`.
+  - **Calculation engine** (`calculationEngine.ts`) — new monthly branch that returns early with `grossPay = rate_amount`, zero hours, zero OT. Refactored statutory deduction + net pay logic into a shared `buildResult()` helper so the monthly branch reuses it without duplicating code.
+  - **Payroll run** (`payrollRun.ts`) — monthlyWage for bracket lookup now uses `structure.rate_amount` directly for monthly employees (not multiplied by working days). This prevents a real correctness issue: a RM 1,700 monthly employee would otherwise get `1,700 * 26 = 44,200` passed to EPF bracket lookup.
+  - **Processing engine** (`attendanceProcessor.ts`) — `triggerProcessing()` now excludes employees whose current salary structure is `rate_type = 'monthly'`, for both the default (SQL query) and explicit-employeeIds cases. Without this, the engine would create `daily_attendance_records` with `absent` status for every day, since monthly employees don't clock in.
+  - **UI** — Salary Structure form shows "Monthly Salary (RM)" label when monthly selected, hides `standard_hours_per_day` (not relevant for monthly). Quick Clock employee dropdown now calls `window.api.attendance.listEligibleEmployees()` which filters out monthly employees via a new IPC channel. Salary Structure list shows `/month` suffix.
+  - **New IPC channel:** `attendance:listEligibleEmployees` returns employees whose most recent salary structure is NOT monthly.
+  - **Unit tests:** 7 tests in `monthlySalary.test.ts` covering gross pay, EPF, SOCSO+EIS, PCB, opt-out flags, advance deduction, and hours-ignored behaviour. All pass.
+  - **Verified:** `npm run typecheck` 0 errors (both tsconfigs), `npm run build` clean (all 3 bundles), 7/7 new tests pass.
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

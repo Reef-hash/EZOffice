@@ -156,6 +156,7 @@ export interface AuditApi {
 
 export interface AttendanceApi {
   list: (filters?: { employeeId?: number; dateFrom?: string; dateTo?: string }) => Promise<AttendanceLog[]>
+  listEligibleEmployees: () => Promise<Array<{ id: number; name: string; employee_code: string }>>
   getById: (id: number) => Promise<AttendanceLog | null>
   getLastForEmployee: (employeeId: number) => Promise<AttendanceLog | null>
   getMonthlySummary: (filters: { employeeIds?: number[]; year: number; month: number }) => Promise<EmployeeMonthlySummary[]>

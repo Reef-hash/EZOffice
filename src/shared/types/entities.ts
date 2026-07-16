@@ -214,6 +214,7 @@ export interface AttendanceMonthlyCalendar {
 export const SALARY_RATE_TYPE = {
   DAILY: 'daily',
   HOURLY: 'hourly',
+  MONTHLY: 'monthly',
 } as const
 
 export type SalaryRateType = (typeof SALARY_RATE_TYPE)[keyof typeof SALARY_RATE_TYPE]

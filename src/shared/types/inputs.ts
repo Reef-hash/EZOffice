@@ -134,7 +134,7 @@ export type UpdateAttendanceLogInput = z.infer<typeof updateAttendanceLogSchema>
 export const createSalaryStructureSchema = z.object({
   employee_id: z.number().int().positive('Employee is required'),
   effective_from: z.string().min(1, 'Effective date is required'),
-  rate_type: z.enum(['daily', 'hourly']),
+  rate_type: z.enum(['daily', 'hourly', 'monthly']),
   rate_amount: z.number().positive('Rate must be positive'),
   standard_hours_per_day: z.number().positive('Hours must be positive').default(8),
   subject_to_epf: z.number().int().min(0).max(1).default(1),

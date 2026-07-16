@@ -28,7 +28,7 @@ export function SalaryStructureForm({
 
   const [employeeId, setEmployeeId] = useState('')
   const [effectiveFrom, setEffectiveFrom] = useState('')
-  const [rateType, setRateType] = useState<'daily' | 'hourly'>('daily')
+  const [rateType, setRateType] = useState<'daily' | 'hourly' | 'monthly'>('daily')
   const [rateAmount, setRateAmount] = useState('')
   const [standardHoursPerDay, setStandardHoursPerDay] = useState('8')
   const [subjectToEpf, setSubjectToEpf] = useState(true)
@@ -70,7 +70,7 @@ export function SalaryStructureForm({
     if (!employeeId) { setValidationError('Employee is required'); return false }
     if (!effectiveFrom) { setValidationError('Effective date is required'); return false }
     if (!rateAmount || Number(rateAmount) <= 0) { setValidationError('Rate must be a positive number'); return false }
-    if (!standardHoursPerDay || Number(standardHoursPerDay) <= 0) { setValidationError('Standard hours must be a positive number'); return false }
+    if (rateType !== 'monthly' && (!standardHoursPerDay || Number(standardHoursPerDay) <= 0)) { setValidationError('Standard hours must be a positive number'); return false }
     return true
   }
 
@@ -145,11 +145,11 @@ export function SalaryStructureForm({
             label="Rate Type"
             required
             value={rateType}
-            onChange={(e) => setRateType(e.target.value as 'daily' | 'hourly')}
+            onChange={(e) => setRateType(e.target.value as 'daily' | 'hourly' | 'monthly')}
             options={RATE_TYPE_OPTIONS}
           />
           <Input
-            label={rateType === 'daily' ? 'Daily Rate (RM)' : 'Hourly Rate (RM)'}
+            label={rateType === 'monthly' ? 'Monthly Salary (RM)' : rateType === 'daily' ? 'Daily Rate (RM)' : 'Hourly Rate (RM)'}
             type="number"
             step="0.01"
             required
@@ -159,6 +159,7 @@ export function SalaryStructureForm({
           />
         </div>
 
+        {rateType !== 'monthly' && (
         <Input
           label="Standard Hours Per Day"
           type="number"
@@ -168,6 +169,7 @@ export function SalaryStructureForm({
           onChange={(e) => setStandardHoursPerDay(e.target.value)}
           helperText="Hours worked beyond this per day count as OT, per the Payroll Settings OT rule."
         />
+        )}
 
         <div>
           <p className="mb-2 text-sm font-medium text-neutral-700">Statutory Contributions</p>

@@ -17,7 +17,7 @@ const columns: Column<SalaryStructure>[] = [
   { key: 'employee_name', header: 'Employee', accessor: (r) => r.employee_name || `ID ${r.employee_id}`, sortable: true, sortValue: (r) => r.employee_name || '' },
   { key: 'effective_from', header: 'Effective From', accessor: (r) => r.effective_from, sortable: true, sortValue: (r) => r.effective_from },
   { key: 'rate_type', header: 'Rate Type', accessor: (r) => RATE_TYPE_LABEL[r.rate_type], sortable: true, sortValue: (r) => r.rate_type, align: 'center' },
-  { key: 'rate_amount', header: 'Rate', accessor: (r) => `RM ${r.rate_amount.toFixed(2)}`, sortable: true, sortValue: (r) => r.rate_amount, align: 'right' },
+  { key: 'rate_amount', header: 'Rate', accessor: (r) => `RM ${r.rate_amount.toFixed(2)} ${r.rate_type === 'monthly' ? '/month' : r.rate_type === 'daily' ? '/day' : '/hour'}`, sortable: true, sortValue: (r) => r.rate_amount, align: 'right' },
   { key: 'standard_hours', header: 'Std Hrs/Day', accessor: (r) => r.standard_hours_per_day, sortable: true, sortValue: (r) => r.standard_hours_per_day, align: 'right', width: '100px' },
   {
     key: 'statutory',

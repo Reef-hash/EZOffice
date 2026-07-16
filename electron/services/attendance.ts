@@ -358,6 +358,32 @@ export function listAttendanceLogs(
   `).all(params) as AttendanceLog[]
 }
 
+/**
+ * Returns active employees whose current salary structure is NOT monthly —
+ * i.e., employees who are expected to clock in/out (attendance-tracked).
+ * Used by the Quick Clock panel to filter out monthly-salaried employees
+ * who do not need attendance.
+ */
+export function listAttendanceEligibleEmployees(
+  db: Database.Database,
+): Array<{ id: number; name: string; employee_code: string }> {
+  return db.prepare(`
+    SELECT e.id, e.name, e.employee_code FROM employees e
+    WHERE e.status = 'active'
+      AND (
+        NOT EXISTS (SELECT 1 FROM salary_structures ss WHERE ss.employee_id = e.id)
+        OR
+        (
+          SELECT ss2.rate_type FROM salary_structures ss2
+          WHERE ss2.employee_id = e.id
+          ORDER BY ss2.effective_from DESC
+          LIMIT 1
+        ) != 'monthly'
+      )
+    ORDER BY e.name ASC
+  `).all() as Array<{ id: number; name: string; employee_code: string }>
+}
+
 export function getAttendanceLogById(db: Database.Database, id: number): AttendanceLog | null {
   return queryById(db, id)
 }

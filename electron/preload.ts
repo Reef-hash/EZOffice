@@ -65,6 +65,7 @@ const api: EzOfficeApi = {
   },
   attendance: {
     list: (filters) => ipcRenderer.invoke('attendance:list', filters),
+    listEligibleEmployees: () => ipcRenderer.invoke('attendance:listEligibleEmployees'),
     getById: (id) => ipcRenderer.invoke('attendance:get', id),
     getLastForEmployee: (employeeId) => ipcRenderer.invoke('attendance:getLastForEmployee', employeeId),
     getMonthlySummary: (filters) => ipcRenderer.invoke('attendance:getMonthlySummary', filters),

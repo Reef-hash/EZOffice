@@ -25,7 +25,7 @@ import { AttendanceSummaryPage } from './AttendanceSummaryPage'
 import { ExceptionsPanel } from './ExceptionsPanel'
 import { BulkPurgePanel } from './BulkPurgePanel'
 import type { Column } from '@/shared/components/Table'
-import type { Employee, AttendanceLog } from '@/shared/types/entities'
+import type { AttendanceLog } from '@/shared/types/entities'
 import type { CreateAttendanceLogInput, UpdateAttendanceLogInput } from '@/shared/types/inputs'
 import {
   ATTENDANCE_TYPE,
@@ -97,14 +97,15 @@ export function AttendanceListPage() {
     () => window.api.attendance.list(filters),
   )
 
-  const { data: employees = [] } = useIpcQuery<Employee[]>(
-    ['employees'],
-    () => window.api.employees.list(),
+  // Quick Clock dropdown filters out monthly-salaried employees (no attendance needed)
+  const { data: clockEmployees = [] } = useIpcQuery<Array<{ id: number; name: string; employee_code: string }>>(
+    ['attendance', 'eligibleEmployees'],
+    () => window.api.attendance.listEligibleEmployees(),
   )
 
-  const employeeOptions = useMemo(
-    () => employees.map((e) => ({ value: String(e.id), label: `${e.name} (${e.employee_code})` })),
-    [employees],
+  const clockEmployeeOptions = useMemo(
+    () => clockEmployees.map((e) => ({ value: String(e.id), label: `${e.name} (${e.employee_code})` })),
+    [clockEmployees],
   )
 
   // Quick Clock: get last log for selected employee to show current status
@@ -365,7 +366,7 @@ export function AttendanceListPage() {
                 clockInMutation.reset()
                 clockOutMutation.reset()
               }}
-              options={employeeOptions}
+              options={clockEmployeeOptions}
               placeholder="Select an employee"
             />
           </div>

@@ -48,6 +48,14 @@ export function registerAttendanceHandlers(db: Database.Database): void {
     }
   })
 
+  ipcMain.handle('attendance:listEligibleEmployees', async () => {
+    try {
+      return attendanceService.listAttendanceEligibleEmployees(db)
+    } catch (err) {
+      throw new Error(`Failed to list attendance-eligible employees: ${String(err)}`)
+    }
+  })
+
   ipcMain.handle('attendance:get', async (_event, id: number) => {
     try {
       return attendanceService.getAttendanceLogById(db, id)

@@ -226,12 +226,15 @@ export function calculatePayrollRun(
       }
 
       // Monthly wage estimate (for statutory bracket lookup)
+      // For monthly-rate employees: the fixed monthly salary itself
       // For daily-rate employees: daily_rate × working_days_in_month
       // For hourly-rate employees: hourly_rate × standard_hours × working_days
-      const monthlyWage =
-        structure.rate_type === 'daily'
-          ? structure.rate_amount * workingDays
-          : structure.rate_amount * structure.standard_hours_per_day * workingDays
+      const monthlyWage: number =
+        structure.rate_type === 'monthly'
+          ? structure.rate_amount
+          : structure.rate_type === 'daily'
+            ? structure.rate_amount * workingDays
+            : structure.rate_amount * structure.standard_hours_per_day * workingDays
 
       // Look up statutory rates
       const epfRate = structure.subject_to_epf ? lookupEpfRate(db, monthlyWage, asOfDate) : null
