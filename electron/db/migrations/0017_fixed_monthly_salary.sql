@@ -29,8 +29,23 @@ CREATE TABLE IF NOT EXISTS salary_structures_new (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-INSERT INTO salary_structures_new
-  SELECT * FROM salary_structures;
+-- Column lists are explicit (not SELECT *) because the source table's actual
+-- physical column order has pcb_category/pcb_children_count appended at the END
+-- (they were added via ALTER TABLE ADD COLUMN in 0005_pcb_profile.sql, which always
+-- appends), while salary_structures_new declares them in the middle. A positional
+-- `SELECT *` silently shifted created_at/updated_at values into the pcb_category/
+-- pcb_children_count columns, tripping the pcb_category CHECK constraint on any
+-- upgrade where salary_structures already had rows.
+INSERT INTO salary_structures_new (
+  id, employee_id, effective_from, rate_type, rate_amount, standard_hours_per_day,
+  subject_to_epf, subject_to_socso, subject_to_eis, pcb_category, pcb_children_count,
+  created_at, updated_at
+)
+SELECT
+  id, employee_id, effective_from, rate_type, rate_amount, standard_hours_per_day,
+  subject_to_epf, subject_to_socso, subject_to_eis, pcb_category, pcb_children_count,
+  created_at, updated_at
+FROM salary_structures;
 
 DROP TABLE salary_structures;
 
