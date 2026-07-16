@@ -22,7 +22,7 @@ Object.defineProperty(globalThis, '__dirname', {
   configurable: true,
 })
 
-import { app, BrowserWindow, dialog } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain } from 'electron'
 import { autoUpdater } from 'electron-updater'
 import log from 'electron-log/main'
 import path from 'node:path'
@@ -128,15 +128,16 @@ function initDatabase(): void {
 }
 
 function setupAutoUpdater(): void {
-  // Only check for updates when packaged (production)
   if (!app.isPackaged) {
     log.info('[Updater] Skipping update check in development mode')
     return
   }
 
   try {
-    autoUpdater.autoDownload = true
-    autoUpdater.autoInstallOnAppQuit = true
+    autoUpdater.autoDownload = false
+    autoUpdater.autoInstallOnAppQuit = false
+
+    const mainWindow = BrowserWindow.getAllWindows()[0]
 
     autoUpdater.on('checking-for-update', () => {
       log.info('[Updater] Checking for update...')
@@ -144,6 +145,7 @@ function setupAutoUpdater(): void {
 
     autoUpdater.on('update-available', (info) => {
       log.info(`[Updater] Update available: ${info.version}`)
+      mainWindow?.webContents.send('updater:status', { status: 'available', version: info.version })
     })
 
     autoUpdater.on('update-not-available', () => {
@@ -155,14 +157,25 @@ function setupAutoUpdater(): void {
     })
 
     autoUpdater.on('download-progress', (progressObj) => {
-      log.info(`[Updater] Download progress: ${progressObj.percent}%`)
+      mainWindow?.webContents.send('updater:progress', { percent: Math.round(progressObj.percent * 100) / 100 })
     })
 
     autoUpdater.on('update-downloaded', (info) => {
-      log.info(`[Updater] Update downloaded: ${info.version}. Will install on quit.`)
+      log.info(`[Updater] Update downloaded: ${info.version}`)
+      mainWindow?.webContents.send('updater:status', { status: 'downloaded', version: info.version })
     })
 
-    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+    // Listen for renderer requesting a download to start
+    ipcMain.handle('updater:download', async () => {
+      autoUpdater.downloadUpdate()
+    })
+
+    // Listen for renderer requesting install and restart
+    ipcMain.handle('updater:install', () => {
+      autoUpdater.quitAndInstall()
+    })
+
+    autoUpdater.checkForUpdates().catch((err) => {
       log.error('[Updater] Failed to check for updates:', err)
     })
   } catch (err) {

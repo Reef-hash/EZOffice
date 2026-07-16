@@ -190,6 +190,20 @@ const api: EzOfficeApi = {
     payroll: (runId) => ipcRenderer.invoke('export:payroll', runId),
     attendance: (dateFrom, dateTo) => ipcRenderer.invoke('export:attendance', { dateFrom, dateTo }),
   },
+  updater: {
+    onStatusChange: (callback: (data: { status: string; version?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { status: string; version?: string }) => callback(data)
+      ipcRenderer.on('updater:status', handler)
+      return () => ipcRenderer.removeListener('updater:status', handler)
+    },
+    onDownloadProgress: (callback: (progress: number) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: { percent: number }) => callback(data.percent)
+      ipcRenderer.on('updater:progress', handler)
+      return () => ipcRenderer.removeListener('updater:progress', handler)
+    },
+    startDownload: () => ipcRenderer.invoke('updater:download'),
+    installNow: () => ipcRenderer.invoke('updater:install'),
+  },
   license: {
     getState: () => ipcRenderer.invoke('license:getState'),
     checkGrace: () => ipcRenderer.invoke('license:checkGrace'),

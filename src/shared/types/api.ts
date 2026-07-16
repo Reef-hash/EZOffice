@@ -341,6 +341,19 @@ export interface CalendarApi {
   resolveAllEmployees: (year: number, month: number) => Promise<ResolvedCalendarDay[]>
 }
 
+// ── Updater ─────────────────────────────────────────────────
+
+export interface UpdaterApi {
+  /** Listen for status changes ('available' → 'downloaded'). Returns a cleanup function. */
+  onStatusChange: (callback: (data: { status: string; version?: string }) => void) => () => void
+  /** Listen for download progress (0–100). Returns a cleanup function. */
+  onDownloadProgress: (callback: (progress: number) => void) => () => void
+  /** Start downloading an available update. */
+  startDownload: () => Promise<void>
+  /** Install the downloaded update and restart the app. */
+  installNow: () => Promise<void>
+}
+
 export interface EzOfficeApi {
   admin: AdminApi
   audit: AuditApi
@@ -355,4 +368,5 @@ export interface EzOfficeApi {
   settings: SettingsApi
   export: ExportApi
   license: LicenseApi
+  updater: UpdaterApi
 }

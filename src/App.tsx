@@ -19,6 +19,7 @@ import { AuditLogPage } from './modules/audit/AuditLogPage'
 import { SettingsPage } from './shared/components/SettingsPage'
 import { ErrorBoundary } from './shared/components/ErrorBoundary'
 import { Spinner } from './shared/components/Spinner/Spinner'
+import { UpdateDialog } from './shared/components/UpdateDialog'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -172,9 +173,10 @@ export function App() {
   return (
     <ErrorBoundary>
       <div className={isDarkMode ? 'dark' : ''}>
-        <QueryClientProvider client={queryClient}>
-          <ToastProvider>
-            {!licenseCheck.allowed ? (
+          <QueryClientProvider client={queryClient}>
+            <ToastProvider>
+              <UpdateDialog />
+              {!licenseCheck.allowed ? (
               <ActivateLicensePage onActivated={handleLicenseActivated} reasonMessage={licenseCheck.reasonMessage} />
             ) : auth.isFirstLaunch || !auth.isAuthenticated ? (
               <LoginPage

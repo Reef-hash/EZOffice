@@ -547,6 +547,17 @@ These are common failure modes for AI coding agents specifically. Watch for them
   - **Unit tests:** 7 tests in `monthlySalary.test.ts` covering gross pay, EPF, SOCSO+EIS, PCB, opt-out flags, advance deduction, and hours-ignored behaviour. All pass.
   - **Verified:** `npm run typecheck` 0 errors (both tsconfigs), `npm run build` clean (all 3 bundles), 7/7 new tests pass.
 
+- **2026-07-17 — Auto-update UX overhaul: in-app modal instead of silent background download + Windows notification.**
+  - **Problem:** `autoUpdater.autoDownload = true` + `autoInstallOnAppQuit = true` meant updates downloaded silently in the background with no user-facing UI except a native OS notification. Install happened on quit but was unreliable (`autoInstallOnAppQuit` sometimes didn't fire). Log showed repeated update checks re-downloading the same update over and over.
+  - **Fix (`electron/main.ts`):** Changed to `autoDownload = false`, `autoInstallOnAppQuit = false`. Update events now push to the renderer via `webContents.send()`:
+    - `updater:status` — `available` (new version detected) → `downloaded` (download complete)
+    - `updater:progress` — download progress percentage
+  - **New IPC handlers:** `updater:download` (renderer triggers download), `updater:install` (renderer triggers `quitAndInstall`).
+  - **New preload API (`electron/preload.ts`):** `onStatusChange()`/`onDownloadProgress()` for push events with cleanup-return unsubscribe pattern; `startDownload()`/`installNow()` as invoke commands.
+  - **New component (`src/shared/components/UpdateDialog/`):** modal that shows "Update Available" → "Downloading..." (progress bar) → "Ready to Install" phases. User clicks to trigger download, then clicks again to install & restart.
+  - **Wiring (`src/App.tsx`):** `<UpdateDialog />` rendered at the root level, always mounted regardless of auth/license state.
+  - **Verified:** `npm run typecheck` 0 errors (both tsconfigs), `npm run build` clean (all 3 bundles).
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written
