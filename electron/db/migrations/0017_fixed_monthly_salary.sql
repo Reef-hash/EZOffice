@@ -12,6 +12,11 @@
 
 -- SQLite does not support ALTER TABLE ... ALTER CHECK. Recreate the table with the
 -- new constraint. Schema includes all columns (including pcb_* from 0005_pcb_profile.sql).
+--
+-- DROP TABLE salary_structures fails under PRAGMA foreign_keys=ON whenever
+-- payroll_run_items rows still reference it (0.2.10 crash). The migration runner
+-- (electron/db/migrate.ts) temporarily disables FKs around each migration file
+-- and re-checks with PRAGMA foreign_key_check before marking the file applied.
 
 CREATE TABLE IF NOT EXISTS salary_structures_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

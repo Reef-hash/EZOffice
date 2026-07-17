@@ -45,13 +45,45 @@ export function runMigrations(db: Database.Database, migrationsDir: string): str
     const filePath = path.join(migrationsDir, file)
     const sql = fs.readFileSync(filePath, 'utf-8')
 
-    // Wrap each migration in a transaction so partial application is impossible
-    const applyMigration = db.transaction(() => {
-      db.exec(sql)
-      db.prepare('INSERT INTO schema_migrations (filename) VALUES (?)').run(file)
-    })
+    // SQLite forbids changing PRAGMA foreign_keys *inside* a transaction, and also
+    // forbids DROP TABLE on a parent that still has child rows when foreign_keys=ON
+    // (error: "FOREIGN KEY constraint failed"). Table-recreate migrations (CREATE new
+    // → INSERT…SELECT → DROP old → RENAME) therefore need FKs off for the whole file.
+    // Toggle outside the transaction; re-enable after. foreign_key_check runs inside
+    // the same transaction (works even with FKs off) so a bad migration rolls back
+    // entirely — including the schema_migrations insert — rather than leaving orphans
+    // marked as applied.
+    const foreignKeysWereOn = Boolean(db.pragma('foreign_keys', { simple: true }))
+    db.pragma('foreign_keys = OFF')
+    try {
+      const applyMigration = db.transaction(() => {
+        db.exec(sql)
 
-    applyMigration()
+        const violations = db.prepare('PRAGMA foreign_key_check').all() as Array<{
+          table: string
+          rowid: number
+          parent: string
+          fkid: number
+        }>
+        if (violations.length > 0) {
+          const summary = violations
+            .slice(0, 5)
+            .map((v) => `${v.table}.rowid=${v.rowid} → ${v.parent}`)
+            .join('; ')
+          throw new Error(
+            `Migration ${file} left ${violations.length} foreign-key violation(s): ${summary}`,
+          )
+        }
+
+        db.prepare('INSERT INTO schema_migrations (filename) VALUES (?)').run(file)
+      })
+      applyMigration()
+    } finally {
+      if (foreignKeysWereOn) {
+        db.pragma('foreign_keys = ON')
+      }
+    }
+
     appliedNow.push(file)
   }
 
