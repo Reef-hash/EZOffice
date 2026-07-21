@@ -66,14 +66,38 @@ export function App() {
   // Check on app start if any admin exists in the database (determines if first launch).
   // Uses the IPC call admin:hasAny so the check survives Vite dev server restarts
   // and rebuilds — it queries the actual database, not volatile localStorage.
+  //
+  // "Remember me" restore: a rememberMe login stores adminId in localStorage
+  // (survives app restart); a non-remembered login stores it in sessionStorage
+  // only (cleared when the Electron process quits, so the next launch asks
+  // again). Either way, the remembered ID is re-validated against the DB via
+  // admin:validateSession before auto-login — never trust localStorage alone,
+  // the admin could have been deleted/disabled since it was stored.
   useEffect(() => {
     const checkFirstLaunch = async () => {
       try {
         const result = await window.api.admin.hasAny()
-        setAuth((prev) => ({
-          ...prev,
-          isFirstLaunch: !result.hasAdmin,
-        }))
+        if (!result.hasAdmin) {
+          setAuth((prev) => ({ ...prev, isFirstLaunch: true }))
+          return
+        }
+
+        const rememberedId = sessionStorage.getItem('adminId')
+          ?? (localStorage.getItem('rememberMe') === '1' ? localStorage.getItem('adminId') : null)
+
+        if (rememberedId) {
+          const session = await window.api.admin.validateSession(Number(rememberedId))
+          if (session.valid) {
+            setAuth({ isAuthenticated: true, adminId: Number(rememberedId), isFirstLaunch: false })
+            return
+          }
+          // Stale/invalid — clear so it's not retried on every launch.
+          localStorage.removeItem('adminId')
+          localStorage.removeItem('rememberMe')
+          sessionStorage.removeItem('adminId')
+        }
+
+        setAuth((prev) => ({ ...prev, isFirstLaunch: false }))
       } catch {
         // If the IPC call fails (e.g. app not fully initialized yet), fall back to
         // localStorage — but this is the rare path; normally the DB check works.
@@ -131,8 +155,18 @@ export function App() {
     })
   }
 
-  const handleLoginSuccess = (adminId: number) => {
-    localStorage.setItem('adminId', String(adminId))
+  const handleLoginSuccess = (adminId: number, rememberMe: boolean) => {
+    if (rememberMe) {
+      localStorage.setItem('adminId', String(adminId))
+      localStorage.setItem('rememberMe', '1')
+    } else {
+      // Not remembered: keep it in sessionStorage only, so a restart of the
+      // app (not just the window) requires login again. Also clear any
+      // earlier "remembered" state so unchecking the box actually forgets.
+      sessionStorage.setItem('adminId', String(adminId))
+      localStorage.removeItem('adminId')
+      localStorage.removeItem('rememberMe')
+    }
     setAuth({
       isAuthenticated: true,
       adminId,
@@ -142,6 +176,8 @@ export function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('adminId')
+    localStorage.removeItem('rememberMe')
+    sessionStorage.removeItem('adminId')
     setAuth({
       isAuthenticated: false,
       adminId: null,

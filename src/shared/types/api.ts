@@ -138,6 +138,8 @@ export interface AdminApi {
   validatePassword: (password: string) => Promise<{ valid: boolean; errors: string[] }>
   /** Check if any admin user exists in the database — used to decide login vs signup screen on startup. */
   hasAny: () => Promise<{ hasAdmin: boolean }>
+  /** Re-check a remembered adminId against the DB (still exists, still active) before "Remember me" auto-restores a session. */
+  validateSession: (adminId: number) => Promise<{ valid: boolean }>
 }
 
 export interface AuditEntry {

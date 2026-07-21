@@ -106,4 +106,22 @@ export function registerAdminHandlers(db: Database.Database): void {
       throw new Error(`Failed to check admin users: ${String(err)}`)
     }
   })
+
+  /**
+   * admin:validateSession — re-check a remembered adminId against the DB
+   * (still exists, still active) before letting "Remember me" auto-restore
+   * a session. Never trust localStorage alone — an admin could have been
+   * deleted/disabled since the value was stored.
+   */
+  ipcMain.handle('admin:validateSession', async (_event, adminId: unknown) => {
+    try {
+      if (typeof adminId !== 'number') {
+        return { valid: false }
+      }
+      const admin = adminService.getAdminUserById(db, adminId)
+      return { valid: !!admin && admin.active === 1 }
+    } catch (err) {
+      throw new Error(`Failed to validate session: ${String(err)}`)
+    }
+  })
 }

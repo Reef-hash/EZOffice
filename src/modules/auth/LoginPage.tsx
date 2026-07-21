@@ -8,7 +8,7 @@ import { Input } from '@/shared/components/Input'
 import { useIpcMutation } from '@/shared/hooks/useIpcQuery'
 
 interface LoginPageProps {
-  onLoginSuccess: (adminId: number) => void
+  onLoginSuccess: (adminId: number, rememberMe: boolean) => void
   isFirstLaunch: boolean
 }
 
@@ -19,6 +19,7 @@ export function LoginPage({ onLoginSuccess, isFirstLaunch }: LoginPageProps) {
   const [error, setError] = useState<string | null>(null)
   const [passwordErrors, setPasswordErrors] = useState<string[]>([])
   const [showPassword, setShowPassword] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
 
   const loginMutation = useIpcMutation<{ success: boolean; adminId?: number }, { username: string; password: string }>(
     ({ username: u, password: p }) => window.api.admin.login(u, p),
@@ -59,7 +60,7 @@ export function LoginPage({ onLoginSuccess, isFirstLaunch }: LoginPageProps) {
     try {
       const result = await loginMutation.mutateAsync({ username, password })
       if (result.success && result.adminId) {
-        onLoginSuccess(result.adminId)
+        onLoginSuccess(result.adminId, rememberMe)
       }
     } catch (err) {
       setError(String(err))
@@ -83,7 +84,7 @@ export function LoginPage({ onLoginSuccess, isFirstLaunch }: LoginPageProps) {
     try {
       const result = await signupMutation.mutateAsync({ username, password })
       if (result.success && result.admin?.id) {
-        onLoginSuccess(result.admin.id)
+        onLoginSuccess(result.admin.id, false)
       }
     } catch (err) {
       setError(String(err))
@@ -177,16 +178,30 @@ export function LoginPage({ onLoginSuccess, isFirstLaunch }: LoginPageProps) {
             </div>
           )}
 
-          {/* Show Password Toggle */}
-          <label className="flex items-center gap-2 text-sm text-neutral-600">
-            <input
-              type="checkbox"
-              checked={showPassword}
-              onChange={(e) => setShowPassword(e.target.checked)}
-              className="h-4 w-4 rounded border-neutral-300"
-            />
-            Show password
-          </label>
+          {/* Show Password Toggle + Remember Me */}
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm text-neutral-600">
+              <input
+                type="checkbox"
+                checked={showPassword}
+                onChange={(e) => setShowPassword(e.target.checked)}
+                className="h-4 w-4 rounded border-neutral-300"
+              />
+              Show password
+            </label>
+
+            {!isFirstLaunch && (
+              <label className="flex items-center gap-2 text-sm text-neutral-600">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  className="h-4 w-4 rounded border-neutral-300"
+                />
+                Remember me
+              </label>
+            )}
+          </div>
 
           {/* Submit Button */}
           <Button
