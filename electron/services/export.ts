@@ -79,6 +79,7 @@ export async function exportPayrollToExcel(
       e.employee_code,
       i.gross_regular_pay,
       i.gross_ot_pay,
+      i.commission,
       i.gross_pay,
       i.epf_employee,
       i.socso_employee,
@@ -95,6 +96,7 @@ export async function exportPayrollToExcel(
     employee_code: string
     gross_regular_pay: number
     gross_ot_pay: number
+    commission: number
     gross_pay: number
     epf_employee: number
     socso_employee: number
@@ -115,7 +117,7 @@ export async function exportPayrollToExcel(
 
   // Title
   const monthName = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][run?.month ?? 0] || ''
-  worksheet.mergeCells('A1:K1')
+  worksheet.mergeCells('A1:L1')
   const titleCell = worksheet.getCell('A1')
   titleCell.value = `Payroll Run — ${monthName} ${run?.year}`
   titleCell.font = { bold: true, size: 14 }
@@ -129,6 +131,7 @@ export async function exportPayrollToExcel(
     { header: 'Name', key: 'employee_name', width: 20 },
     { header: 'Regular Pay', key: 'gross_regular_pay', width: 12 },
     { header: 'OT Pay', key: 'gross_ot_pay', width: 12 },
+    { header: 'Commission', key: 'commission', width: 12 },
     { header: 'Gross', key: 'gross_pay', width: 12 },
     { header: 'EPF', key: 'epf_employee', width: 10 },
     { header: 'SOCSO', key: 'socso_employee', width: 10 },
@@ -149,7 +152,7 @@ export async function exportPayrollToExcel(
   })
 
   // Format currency columns
-  const currencyColumns = [3, 4, 5, 6, 7, 8, 9, 10, 11]
+  const currencyColumns = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
   worksheet.eachRow((row) => {
     currencyColumns.forEach((col) => {
       const cell = row.getCell(col)

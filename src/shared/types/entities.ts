@@ -388,6 +388,7 @@ export interface PayrollRunItem {
   total_ot_hours: number
   gross_regular_pay: number
   gross_ot_pay: number
+  commission: number // ad-hoc per-run commission, snapshotted at calculation time
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -398,6 +399,18 @@ export interface PayrollRunItem {
   pcb: number
   advance_deduction: number
   net_pay: number
+  created_at: string
+  updated_at: string
+}
+
+/** Admin-entered commission input for one employee on one payroll run (mutable while draft). */
+export interface PayrollRunCommission {
+  id: number
+  payroll_run_id: number
+  employee_id: number
+  employee_name?: string // populated via JOIN
+  amount: number
+  note: string | null
   created_at: string
   updated_at: string
 }
@@ -425,6 +438,7 @@ export interface PayCheckResult {
   // Gross
   gross_regular_pay: number
   gross_ot_pay: number
+  commission: number
   gross_pay: number
 
   // Statutory

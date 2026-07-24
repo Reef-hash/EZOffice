@@ -172,6 +172,11 @@ const api: EzOfficeApi = {
       checkRateTables: () => ipcRenderer.invoke('payroll:runs:checkRateTables'),
       finalize: (id) => ipcRenderer.invoke('payroll:runs:finalize', id),
       printPayslip: (runId, employeeId) => ipcRenderer.invoke('payroll:runs:printPayslip', runId, employeeId),
+      commissions: {
+        list: (runId) => ipcRenderer.invoke('payroll:runs:commissions:list', runId),
+        upsert: (runId, data) => ipcRenderer.invoke('payroll:runs:commissions:upsert', runId, data),
+        delete: (runId, employeeId) => ipcRenderer.invoke('payroll:runs:commissions:delete', runId, employeeId),
+      },
     },
     periods: {
       list: () => ipcRenderer.invoke('payroll:periods:list'),
