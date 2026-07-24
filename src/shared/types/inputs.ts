@@ -253,6 +253,16 @@ export const createPayrollRunSchema = z.object({
 
 export type CreatePayrollRunInput = z.infer<typeof createPayrollRunSchema>
 
+// --- Payroll: Run Commission (ad-hoc, per employee, per run) ---
+
+export const upsertPayrollRunCommissionSchema = z.object({
+  employee_id: z.number().int().positive('Employee is required'),
+  amount: z.number().min(0, 'Amount must be non-negative'),
+  note: z.string().trim().min(1).nullable().optional(),
+})
+
+export type UpsertPayrollRunCommissionInput = z.infer<typeof upsertPayrollRunCommissionSchema>
+
 // --- Phase C: Shifts ---
 
 export const createShiftSchema = z.object({

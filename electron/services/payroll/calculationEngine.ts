@@ -47,6 +47,14 @@ export interface CalculationInput {
   eisRate: { employee_contribution: number; employer_contribution: number } | null
   pcbBracket: PcbBracket | null
   advanceDeduction: number
+  /**
+   * Ad-hoc sales commission for this employee on this run (entered per run, not
+   * recurring — see electron/services/payroll/commissions.ts). Subject to
+   * EPF/SOCSO/EIS/PCB same as basic wages (EPF Act 1991 Third Schedule lists
+   * commission as wages; only OT, service charge, gratuity, traveling allowance,
+   * director's fee, and retrenchment/termination benefits are excluded).
+   */
+  commission?: number
   /** Number of working days in the month (for daily rate → monthly conversion) */
   workingDaysInMonth?: number
 }
@@ -57,12 +65,13 @@ export interface CalculationInput {
  */
 export function calculatePay(input: CalculationInput): PayCheckResult {
   const { summary, structure, otRule, workingDaysInMonth } = input
+  const commission = input.commission ?? 0
 
   // ── Monthly salary branch ──
-  // Gross pay = fixed monthly salary. No hours-based math, no OT.
+  // Gross pay = fixed monthly salary + commission. No hours-based math, no OT.
   if (structure.rate_type === 'monthly') {
-    const grossPay = Math.round(structure.rate_amount * 100) / 100
-    return buildResult(summary.employee_id, 0, 0, grossPay, grossPay, input)
+    const grossRegularPay = Math.round(structure.rate_amount * 100) / 100
+    return buildResult(summary.employee_id, 0, 0, grossRegularPay, 0, commission, input)
   }
 
   // ── 1. Compute hourly rate ──
@@ -80,7 +89,7 @@ export function calculatePay(input: CalculationInput): PayCheckResult {
     grossRegularPay = summary.total_regular_hours * hourlyRate
   } else {
     // daily rate: rate × days worked (or rate × working days in month if summary.days_worked > working days)
-    const days = workingDaysInMonth 
+    const days = workingDaysInMonth
       ? Math.min(summary.days_worked, workingDaysInMonth)
       : summary.days_worked
     grossRegularPay = days * structure.rate_amount
@@ -89,26 +98,27 @@ export function calculatePay(input: CalculationInput): PayCheckResult {
   // ── 3. Gross OT pay ──
   const grossOtPay = calcOtPay(hourlyRate, summary.total_ot_hours, otRule)
 
-  // ── 4. Gross pay ──
-  const grossPay = Math.round((grossRegularPay + grossOtPay) * 100) / 100
-
-  return buildResult(summary.employee_id, summary.total_regular_hours, summary.total_ot_hours, grossRegularPay, grossPay, input)
+  return buildResult(summary.employee_id, summary.total_regular_hours, summary.total_ot_hours, grossRegularPay, grossOtPay, commission, input)
 }
 
 /**
  * Build the final PayCheckResult from gross pay + statutory deductions.
  * Shared between the monthly-salary branch and the hourly/daily calculation path.
+ * grossPay = grossRegularPay + grossOtPay + commission — computed here (not derived
+ * by subtraction from a caller-supplied total) so commission never gets folded into
+ * the wrong bucket.
  */
 function buildResult(
   employeeId: number,
   totalRegularHours: number,
   totalOtHours: number,
   grossRegularPay: number,
-  grossPay: number,
+  grossOtPay: number,
+  commission: number,
   input: CalculationInput,
 ): PayCheckResult {
   const { structure, advanceDeduction } = input
-  const grossOtPay = grossPay - grossRegularPay
+  const grossPay = Math.round((grossRegularPay + grossOtPay + commission) * 100) / 100
 
   // Statutory deductions (only if subject + rate available)
   const statutory: StatutoryBreakdown = {
@@ -151,6 +161,7 @@ function buildResult(
     total_ot_hours: totalOtHours,
     gross_regular_pay: Math.round(grossRegularPay * 100) / 100,
     gross_ot_pay: Math.round(grossOtPay * 100) / 100,
+    commission: Math.round(commission * 100) / 100,
     gross_pay: Math.round(grossPay * 100) / 100,
     statutory,
     advance_deduction: advanceDeduction,

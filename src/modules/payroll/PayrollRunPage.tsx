@@ -13,6 +13,7 @@ import { useToast } from '@/shared/components/Toast'
 import type { Column } from '@/shared/components/Table'
 import type { PayrollRun, PayrollRunItem } from '@/shared/types/entities'
 import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE } from './constants'
+import { CommissionPanel } from './CommissionPanel'
 
 interface PayrollRunPageProps {
   runId: number
@@ -27,6 +28,7 @@ const itemColumns: Column<PayrollRunItem>[] = [
   { key: 'employee_name', header: 'Employee', accessor: (r) => r.employee_name || `ID ${r.employee_id}`, sortable: true, sortValue: (r) => r.employee_name || '' },
   { key: 'regular_hours', header: 'Reg Hrs', accessor: (r) => r.total_regular_hours.toFixed(1), sortable: true, sortValue: (r) => r.total_regular_hours, align: 'right', width: '80px' },
   { key: 'ot_hours', header: 'OT Hrs', accessor: (r) => r.total_ot_hours.toFixed(1), sortable: true, sortValue: (r) => r.total_ot_hours, align: 'right', width: '80px' },
+  { key: 'commission', header: 'Commission', accessor: (r) => r.commission > 0 ? formatCurrency(r.commission) : '—', sortable: true, sortValue: (r) => r.commission, align: 'right' },
   { key: 'gross_pay', header: 'Gross Pay', accessor: (r) => formatCurrency(r.gross_pay), sortable: true, sortValue: (r) => r.gross_pay, align: 'right' },
   { key: 'net_pay', header: 'Net Pay', accessor: (r) => formatCurrency(r.net_pay), sortable: true, sortValue: (r) => r.net_pay, align: 'right' },
   { key: 'advance', header: 'Adv Ded', accessor: (r) => r.advance_deduction > 0 ? formatCurrency(r.advance_deduction) : '—', sortable: true, sortValue: (r) => r.advance_deduction, align: 'right' },
@@ -141,6 +143,8 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
           <span className="font-medium">Statutory Rate Tables</span>. Finalizing is blocked until this is resolved.
         </div>
       )}
+
+      <CommissionPanel runId={runId} disabled={!isDraft} />
 
       {/* Actions bar */}
       <div className="flex items-center gap-3">

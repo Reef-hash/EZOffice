@@ -17,6 +17,7 @@ import { getCurrentSalaryStructure } from './salaryStructure'
 import { getPayrollSettings } from './settings'
 import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
 import { getActiveAdvancesForEmployee, applyAdvanceDeduction } from './salaryAdvances'
+import { getCommissionMapForRun } from './commissions'
 import { calculatePay, type OtRule } from './calculationEngine'
 
 // ── Helpers ──────────────────────────────────────────────
@@ -200,6 +201,10 @@ export function calculatePayrollRun(
     summaryMap.set(s.employee_id, s)
   }
 
+  // Ad-hoc per-run commission entries (see commissions.ts) — admin-entered before
+  // calculating, folded into gross pay + statutory base below.
+  const commissionMap = getCommissionMapForRun(db, runId)
+
   const now = new Date().toISOString()
 
   // ── Begin TRANSACTION ──────────────────────────────────
@@ -225,16 +230,20 @@ export function calculatePayrollRun(
         days_worked: 0,
       }
 
+      const commission = commissionMap.get(employeeId) ?? 0
+
       // Monthly wage estimate (for statutory bracket lookup)
       // For monthly-rate employees: the fixed monthly salary itself
       // For daily-rate employees: daily_rate × working_days_in_month
       // For hourly-rate employees: hourly_rate × standard_hours × working_days
+      // Commission is added in all cases — it's part of "wages" for EPF/SOCSO/EIS/PCB
+      // bracket lookup purposes (EPF Act 1991 Third Schedule), same as in calculationEngine.
       const monthlyWage: number =
-        structure.rate_type === 'monthly'
+        (structure.rate_type === 'monthly'
           ? structure.rate_amount
           : structure.rate_type === 'daily'
             ? structure.rate_amount * workingDays
-            : structure.rate_amount * structure.standard_hours_per_day * workingDays
+            : structure.rate_amount * structure.standard_hours_per_day * workingDays) + commission
 
       // Look up statutory rates
       const epfRate = structure.subject_to_epf ? lookupEpfRate(db, monthlyWage, asOfDate) : null
@@ -265,6 +274,7 @@ export function calculatePayrollRun(
         eisRate,
         pcbBracket,
         advanceDeduction,
+        commission,
         workingDaysInMonth: workingDays,
       })
 
@@ -275,7 +285,7 @@ export function calculatePayrollRun(
           snapshot_rate_type, snapshot_rate_amount, snapshot_standard_hours_per_day,
           snapshot_subject_to_epf, snapshot_subject_to_socso, snapshot_subject_to_eis,
           total_regular_hours, total_ot_hours,
-          gross_regular_pay, gross_ot_pay, gross_pay,
+          gross_regular_pay, gross_ot_pay, commission, gross_pay,
           epf_employee, epf_employer,
           socso_employee, socso_employer,
           eis_employee, eis_employer,
@@ -286,7 +296,7 @@ export function calculatePayrollRun(
           @snapshot_rate_type, @snapshot_rate_amount, @snapshot_standard_hours_per_day,
           @snapshot_subject_to_epf, @snapshot_subject_to_socso, @snapshot_subject_to_eis,
           @total_regular_hours, @total_ot_hours,
-          @gross_regular_pay, @gross_ot_pay, @gross_pay,
+          @gross_regular_pay, @gross_ot_pay, @commission, @gross_pay,
           @epf_employee, @epf_employer,
           @socso_employee, @socso_employer,
           @eis_employee, @eis_employer,
@@ -307,6 +317,7 @@ export function calculatePayrollRun(
         total_ot_hours: payResult.total_ot_hours,
         gross_regular_pay: payResult.gross_regular_pay,
         gross_ot_pay: payResult.gross_ot_pay,
+        commission: payResult.commission,
         gross_pay: payResult.gross_pay,
         epf_employee: payResult.statutory.epf_employee,
         epf_employer: payResult.statutory.epf_employer,

@@ -19,6 +19,7 @@ import {
   createSalaryAdvanceSchema,
   updateSalaryAdvanceSchema,
   createPayrollRunSchema,
+  upsertPayrollRunCommissionSchema,
   createPayrollPeriodSchema,
   updatePayrollPeriodStatusSchema,
 } from '../../src/shared/types/inputs'
@@ -29,6 +30,7 @@ import * as statutoryRatesService from '../services/payroll/statutoryRates'
 import { checkRateTablesForRun } from '../services/payroll/statutoryRates'
 import * as salaryAdvancesService from '../services/payroll/salaryAdvances'
 import * as payrollRunService from '../services/payroll/payrollRun'
+import * as commissionsService from '../services/payroll/commissions'
 import { generatePayslipPdf } from '../services/payroll/payslipPdf'
 import * as payrollPeriodService from '../services/payroll/payrollPeriod'
 
@@ -327,6 +329,29 @@ export function registerPayrollHandlers(db: Database.Database): void {
   ipcMain.handle('payroll:runs:finalize', async (_event, id: number) => {
     try { return payrollRunService.finalizePayrollRun(db, id) } catch (err) {
       throw new Error(`Failed to finalize payroll run ${id}: ${String(err)}`)
+    }
+  })
+
+  // ── Payroll Run Commissions (ad-hoc, per employee, per run) ──────────
+
+  ipcMain.handle('payroll:runs:commissions:list', async (_event, runId: number) => {
+    try { return commissionsService.listCommissionsForRun(db, runId) } catch (err) {
+      throw new Error(`Failed to list commissions for payroll run ${runId}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:runs:commissions:upsert', async (_event, runId: number, data: unknown) => {
+    try {
+      const input = upsertPayrollRunCommissionSchema.parse(data)
+      return commissionsService.upsertCommission(db, runId, input)
+    } catch (err) {
+      throw new Error(`Failed to save commission for payroll run ${runId}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:runs:commissions:delete', async (_event, runId: number, employeeId: number) => {
+    try { return commissionsService.deleteCommission(db, runId, employeeId) } catch (err) {
+      throw new Error(`Failed to delete commission for payroll run ${runId}: ${String(err)}`)
     }
   })
 

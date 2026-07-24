@@ -42,6 +42,7 @@ import type {
   CalendarEvent,
   ResolvedCalendarDay,
   PayrollPeriod,
+  PayrollRunCommission,
 } from './entities'
 import type {
   CreateEmployeeInput,
@@ -78,6 +79,7 @@ import type {
   CreateSalaryAdvanceInput,
   UpdateSalaryAdvanceInput,
   CreatePayrollRunInput,
+  UpsertPayrollRunCommissionInput,
   CreateShiftInput,
   UpdateShiftInput,
   CreateLeaveRequestInput,
@@ -272,6 +274,12 @@ export interface SalaryAdvanceApi {
   delete: (id: number) => Promise<void>
 }
 
+export interface PayrollRunCommissionApi {
+  list: (runId: number) => Promise<PayrollRunCommission[]>
+  upsert: (runId: number, data: UpsertPayrollRunCommissionInput) => Promise<PayrollRunCommission>
+  delete: (runId: number, employeeId: number) => Promise<void>
+}
+
 export interface PayrollRunApi {
   list: () => Promise<PayrollRun[]>
   getById: (id: number) => Promise<PayrollRun | null>
@@ -281,6 +289,7 @@ export interface PayrollRunApi {
   checkRateTables: () => Promise<{ missing: string[] }>
   finalize: (id: number) => Promise<PayrollRun>
   printPayslip: (runId: number, employeeId: number) => Promise<{ filePath: string; filename: string }>
+  commissions: PayrollRunCommissionApi
 }
 
 export interface PayrollPeriodApi {
