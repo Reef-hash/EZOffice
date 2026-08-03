@@ -101,11 +101,20 @@ export function App() {
       } catch {
         // If the IPC call fails (e.g. app not fully initialized yet), fall back to
         // localStorage — but this is the rare path; normally the DB check works.
+        // Note: admin:validateSession is skipped here since the IPC bridge itself
+        // just failed, so it can't be trusted to succeed either — this fallback
+        // trusts localStorage alone for this one retry, same as a normal restore
+        // would after a successful validateSession call.
         const storedAdminId = localStorage.getItem('adminId')
-        setAuth((prev) => ({
-          ...prev,
-          isFirstLaunch: !storedAdminId,
-        }))
+        const rememberedInFallback = localStorage.getItem('rememberMe') === '1' ? storedAdminId : null
+        if (rememberedInFallback) {
+          setAuth({ isAuthenticated: true, adminId: Number(rememberedInFallback), isFirstLaunch: false })
+        } else {
+          setAuth((prev) => ({
+            ...prev,
+            isFirstLaunch: !storedAdminId,
+          }))
+        }
       } finally {
         setIsInitializing(false)
       }
