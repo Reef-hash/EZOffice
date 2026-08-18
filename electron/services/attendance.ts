@@ -821,7 +821,6 @@ export async function syncFromDeviceEthernet(
         (@employee_id, @type, @timestamp, 'device', @device_id, @shift_id, @status, @now, @now)
     `)
 
-    const today = new Date().toISOString().slice(0, 10)
     let newestInsertedTimestamp: string | null = null
 
     db.transaction(() => {
@@ -836,13 +835,22 @@ export async function syncFromDeviceEthernet(
 
         const shift = getEmployeeShift(db, p.employeeId)
 
-        // M2: don't evaluate lateness for historical punches (> 1 day before today)
-        // — synced old data was stamped with the drifted/old device clock; marking it
-        // 'late' retroactively would silently corrupt the late report with stale data.
-        const punchDate = p.timestamp.slice(0, 10)
-        const isHistorical = punchDate < today
+        // Status is always computed from the punch's own timestamp vs. the employee's
+        // shift + grace period — same rule clockIn()/createManualLog() use, regardless
+        // of how many days ago the sync catches up on. There used to be a blanket
+        // "punch date < today → force on-time" exemption here (M2), reasoned as
+        // protection against a drifted device clock corrupting the late report. In
+        // practice this was strictly worse: a same-day sync computed the real status,
+        // but any sync delayed by even one calendar day (routine — device syncs are
+        // manual/on-interval, not real-time, see the 2026-07-08 device sync entries)
+        // silently downgraded every genuinely-late historical punch to 'on-time',
+        // systematically under-reporting lateness. Real device-clock drift is a rare,
+        // detectable condition — it already has a dedicated check (Test Connection's
+        // clock-drift warning, M5, attendanceDevice.ts) that surfaces it to the admin
+        // directly; it should not be papered over here by assuming every backlog sync
+        // implies a bad clock.
         const status: 'on-time' | 'late' =
-          p.type === 'in' && !isHistorical
+          p.type === 'in'
             ? computeClockInStatus(db, shift, p.timestamp)
             : 'on-time'
 
@@ -878,6 +886,64 @@ export async function syncFromDeviceEthernet(
   } catch (err) {
     throw new Error(`Device sync failed: ${String(err)}`)
   }
+}
+
+/**
+ * One-time correction for device-synced IN punches whose `status` was baked in
+ * wrong by the old M2 blanket "historical → on-time" rule removed above (see the
+ * comment on the insert loop in syncFromDeviceEthernet). Recomputes `status` from
+ * the row's own already-snapshotted `shift_id` + timestamp against the current
+ * grace period — the same rule the fixed sync path uses — and updates only rows
+ * whose status actually changes. Does not touch the device, the watermark, or
+ * manual-source logs (createManualLog never had this bug). Rows inside a closed
+ * payroll period are skipped, not overwritten (same immutability rule as every
+ * other attendance_logs mutation) and counted separately so the admin can see
+ * they need the period re-opened to be corrected.
+ */
+export function recomputeDeviceLogStatuses(
+  db: Database.Database,
+  dateFrom?: string,
+  dateTo?: string,
+): { updated: number; unchanged: number; skippedClosedPeriod: number } {
+  const rangeClause = dateFrom && dateTo ? 'AND date(timestamp) >= @dateFrom AND date(timestamp) <= @dateTo' : ''
+  const rows = db.prepare(`
+    SELECT id, timestamp, shift_id, status
+    FROM attendance_logs
+    WHERE source = 'device' AND type = 'in'
+    ${rangeClause}
+  `).all({ dateFrom: dateFrom ?? '', dateTo: dateTo ?? '' }) as
+    { id: number; timestamp: string; shift_id: number | null; status: string }[]
+
+  const shiftStmt = db.prepare('SELECT * FROM shifts WHERE id = ?')
+  const updateStmt = db.prepare('UPDATE attendance_logs SET status = ?, updated_at = ? WHERE id = ?')
+  const now = new Date().toISOString()
+
+  let updated = 0
+  let unchanged = 0
+  let skippedClosedPeriod = 0
+
+  db.transaction(() => {
+    for (const row of rows) {
+      const date = row.timestamp.slice(0, 10)
+      const closed = db.prepare(`
+        SELECT COUNT(*) AS cnt FROM payroll_periods
+        WHERE status = 'closed' AND start_date <= ? AND end_date >= ?
+      `).get(date, date) as { cnt: number }
+      if (closed.cnt > 0) { skippedClosedPeriod++; continue }
+
+      // Never override an admin's manual excuseLate() decision — that's a deliberate
+      // human judgment call, not a value this mechanical recompute should touch.
+      if (row.status === 'excused-late') { unchanged++; continue }
+
+      const shift = row.shift_id ? (shiftStmt.get(row.shift_id) as Shift | undefined) ?? null : null
+      const correctStatus = computeClockInStatus(db, shift, row.timestamp)
+      if (correctStatus === row.status) { unchanged++; continue }
+      updateStmt.run(correctStatus, now, row.id)
+      updated++
+    }
+  })()
+
+  return { updated, unchanged, skippedClosedPeriod }
 }
 
 /**

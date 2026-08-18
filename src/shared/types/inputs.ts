@@ -424,6 +424,16 @@ export const syncFromDeviceSchema = z.object({
 
 export type SyncFromDeviceInput = z.infer<typeof syncFromDeviceSchema>
 
+export const recomputeDeviceStatusesSchema = z.object({
+  dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD').optional(),
+  dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be YYYY-MM-DD').optional(),
+}).refine(
+  (v) => (v.dateFrom == null) === (v.dateTo == null),
+  { message: 'dateFrom and dateTo must be provided together' },
+)
+
+export type RecomputeDeviceStatusesInput = z.infer<typeof recomputeDeviceStatusesSchema>
+
 export const computeExceptionsSchema = z.object({
   year: z.number().int().min(2000).max(2100),
   month: z.number().int().min(1).max(12),

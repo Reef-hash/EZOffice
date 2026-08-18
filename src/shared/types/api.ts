@@ -43,6 +43,7 @@ import type {
   ResolvedCalendarDay,
   PayrollPeriod,
   PayrollRunCommission,
+  RecomputeStatusResult,
 } from './entities'
 import type {
   CreateEmployeeInput,
@@ -90,6 +91,7 @@ import type {
   TriggerProcessingInput,
   PurgeAttendanceLogsInput,
   SyncFromDeviceInput,
+  RecomputeDeviceStatusesInput,
   ComputeExceptionsInput,
   SendActivationOtpInput,
   VerifyActivationOtpInput,
@@ -170,6 +172,7 @@ export interface AttendanceApi {
   update: (id: number, data: UpdateAttendanceLogInput) => Promise<AttendanceLog>
   delete: (id: number) => Promise<void>
   syncFromDevice: (data?: SyncFromDeviceInput) => Promise<DeviceSyncResult>
+  recomputeDeviceStatuses: (data?: RecomputeDeviceStatusesInput) => Promise<RecomputeStatusResult>
   countLogsForPurge: (data: PurgeAttendanceLogsInput) => Promise<{ count: number }>
   purgeLogs: (data: PurgeAttendanceLogsInput) => Promise<{ deleted: number }>
 

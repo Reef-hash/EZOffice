@@ -497,6 +497,13 @@ export interface DeviceSyncResult {
   completedAt: string
 }
 
+/** Result of recomputeDeviceLogStatuses — the M2 late-status backfill correction. */
+export interface RecomputeStatusResult {
+  updated: number
+  unchanged: number
+  skippedClosedPeriod: number
+}
+
 /** Result of a Test Connection call (H3). */
 export interface DeviceTestResult {
   ok: boolean

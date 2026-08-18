@@ -15,8 +15,8 @@ import { StatusBadge } from '@/shared/components/StatusBadge'
 import { useIpcMutation, useIpcQuery } from '@/shared/hooks/useIpcQuery'
 import { useToast } from '@/shared/components/Toast'
 import { DeviceUserMappingPanel } from './DeviceUserMappingPanel'
-import type { PayrollSettings, DeviceTestResult, DeviceSyncLog } from '@/shared/types/entities'
-import type { SyncFromDeviceInput } from '@/shared/types/inputs'
+import type { PayrollSettings, DeviceTestResult, DeviceSyncLog, RecomputeStatusResult } from '@/shared/types/entities'
+import type { SyncFromDeviceInput, RecomputeDeviceStatusesInput } from '@/shared/types/inputs'
 
 interface SyncResult {
   inserted: number
@@ -37,6 +37,9 @@ export function DeviceSettingsPage() {
   const [syncErrors, setSyncErrors] = useState<string[] | null>(null)
   const [testResult, setTestResult] = useState<DeviceTestResult | null>(null)
   const [syncFromDate, setSyncFromDate] = useState('')
+  const [recomputeDateFrom, setRecomputeDateFrom] = useState('')
+  const [recomputeDateTo, setRecomputeDateTo] = useState('')
+  const [recomputeResult, setRecomputeResult] = useState<RecomputeStatusResult | null>(null)
 
   // Fetch current settings on load
   const { data: settings } = useIpcQuery<PayrollSettings>(
@@ -76,6 +79,11 @@ export function DeviceSettingsPage() {
   const setDeviceTimeMutation = useIpcMutation<{ ok: boolean; error?: string }, void>(
     () => window.api.attendance.setDeviceTime(),
     [],
+  )
+
+  const recomputeStatusesMutation = useIpcMutation<RecomputeStatusResult, RecomputeDeviceStatusesInput>(
+    (data) => window.api.attendance.recomputeDeviceStatuses(data),
+    [['attendance']],
   )
 
   const handleSync = useCallback(async () => {
@@ -134,6 +142,29 @@ export function DeviceSettingsPage() {
       addToast(`Test connection failed: ${String(err)}`, 'error')
     }
   }, [deviceIp, testConnectionMutation, addToast])
+
+  const handleRecomputeStatuses = useCallback(async () => {
+    if ((recomputeDateFrom && !recomputeDateTo) || (!recomputeDateFrom && recomputeDateTo)) {
+      addToast('Provide both a from and to date, or leave both blank to cover all history.', 'error')
+      return
+    }
+    try {
+      setRecomputeResult(null)
+      const result = await recomputeStatusesMutation.mutateAsync(
+        recomputeDateFrom && recomputeDateTo
+          ? { dateFrom: recomputeDateFrom, dateTo: recomputeDateTo }
+          : {},
+      )
+      setRecomputeResult(result)
+      addToast(
+        `${result.updated} log(s) corrected, ${result.unchanged} already correct` +
+          (result.skippedClosedPeriod > 0 ? `, ${result.skippedClosedPeriod} skipped (closed payroll period)` : ''),
+        result.updated > 0 ? 'success' : 'info',
+      )
+    } catch (err) {
+      addToast(`Recompute failed: ${String(err)}`, 'error')
+    }
+  }, [recomputeDateFrom, recomputeDateTo, recomputeStatusesMutation, addToast])
 
   const handleSetDeviceTime = useCallback(async () => {
     if (!confirm('This will set the device clock to match this PC\'s current time. Continue?')) return
@@ -295,6 +326,63 @@ export function DeviceSettingsPage() {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card className="mt-6">
+        <div className="mb-4">
+          <h3 className="text-base font-semibold text-neutral-900">Fix Historical Late/On-Time Status</h3>
+          <p className="mt-1 text-sm text-neutral-600">
+            One-time correction for device-synced check-ins whose Late/On Time status was
+            computed wrong because the sync ran a day or more after the punch (a fixed bug —
+            see the app's release notes). This recalculates each check-in's status from its
+            actual punch time against the employee's shift, without touching the device or
+            re-syncing. Logs already marked "Excused" by an admin are left as-is.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-3">
+            <div className="max-w-xs">
+              <Input
+                label="From date (optional)"
+                type="date"
+                value={recomputeDateFrom}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setRecomputeDateFrom(e.target.value)}
+              />
+            </div>
+            <div className="max-w-xs">
+              <Input
+                label="To date (optional)"
+                type="date"
+                value={recomputeDateTo}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setRecomputeDateTo(e.target.value)}
+                helperText="Leave both blank to check all device-synced history."
+              />
+            </div>
+          </div>
+
+          <Button
+            variant="secondary"
+            disabled={recomputeStatusesMutation.isPending}
+            isLoading={recomputeStatusesMutation.isPending}
+            onClick={handleRecomputeStatuses}
+          >
+            {recomputeStatusesMutation.isPending ? 'Recomputing...' : 'Recompute Late Status'}
+          </Button>
+
+          {recomputeResult && (
+            <div className="rounded-sm border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700">
+              <p>
+                <span className="font-semibold">{recomputeResult.updated}</span> log(s) corrected,{' '}
+                {recomputeResult.unchanged} already correct
+                {recomputeResult.skippedClosedPeriod > 0 && (
+                  <>, {recomputeResult.skippedClosedPeriod} skipped (inside a closed payroll period — re-open it to correct these)</>
+                )}
+                .
+              </p>
             </div>
           )}
         </div>

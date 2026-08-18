@@ -27,6 +27,7 @@ import {
   purgeAttendanceLogsSchema,
   computeExceptionsSchema,
   syncFromDeviceSchema,
+  recomputeDeviceStatusesSchema,
 } from '../../src/shared/types/inputs'
 import * as attendanceService from '../services/attendance'
 import * as exceptionService from '../services/attendanceExceptions'
@@ -321,6 +322,15 @@ export function registerAttendanceHandlers(db: Database.Database): void {
       return await attendanceService.syncFromDeviceEthernet(db, settings.device_ip, port, syncFromOverride)
     } catch (err) {
       throw new Error(`Device sync failed: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:recomputeDeviceStatuses', async (_event, data?: unknown) => {
+    try {
+      const input = recomputeDeviceStatusesSchema.parse(data ?? {})
+      return attendanceService.recomputeDeviceLogStatuses(db, input.dateFrom, input.dateTo)
+    } catch (err) {
+      throw new Error(`Failed to recompute attendance statuses: ${String(err)}`)
     }
   })
 
