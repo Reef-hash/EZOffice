@@ -21,6 +21,7 @@ import { LeaveRequestForm } from './LeaveRequestForm'
 import { LeaveApprovalPanel } from './LeaveApprovalPanel'
 import { LeaveEntitlementPanel } from './LeaveEntitlementPanel'
 import { LateReportPage } from './LateReportPage'
+import { BreakReportPage } from './BreakReportPage'
 import { AttendanceSummaryPage } from './AttendanceSummaryPage'
 import { ExceptionsPanel } from './ExceptionsPanel'
 import { BulkPurgePanel } from './BulkPurgePanel'
@@ -38,7 +39,7 @@ import {
   ATTENDANCE_STATUS_LABEL,
 } from './constants'
 
-type AttendanceTab = 'logs' | 'deviceSettings' | 'shifts' | 'leave' | 'leaveEntitlements' | 'lateReport' | 'summary' | 'exceptions'
+type AttendanceTab = 'logs' | 'deviceSettings' | 'shifts' | 'leave' | 'leaveEntitlements' | 'lateReport' | 'breakReport' | 'summary' | 'exceptions'
 
 const TABS: Array<{ key: AttendanceTab; label: string }> = [
   { key: 'logs', label: 'Logs' },
@@ -46,6 +47,7 @@ const TABS: Array<{ key: AttendanceTab; label: string }> = [
   { key: 'leave', label: 'Leave' },
   { key: 'leaveEntitlements', label: 'Leave Entitlements' },
   { key: 'lateReport', label: 'Late Report' },
+  { key: 'breakReport', label: 'Break Report' },
   { key: 'summary', label: 'Monthly Summary' },
   { key: 'exceptions', label: 'Exceptions' },
   { key: 'deviceSettings', label: 'Device Settings' },
@@ -342,6 +344,10 @@ export function AttendanceListPage() {
         <LateReportPage />
       )}
 
+      {activeTab === 'breakReport' && (
+        <BreakReportPage />
+      )}
+
       {activeTab === 'summary' && (
         <AttendanceSummaryPage />
       )}
@@ -512,6 +518,8 @@ function subtitleForTab(tab: AttendanceTab, logCount: number): React.ReactNode {
       return 'Configure annual/sick leave days per employee'
     case 'lateReport':
       return 'Lateness summary by employee'
+    case 'breakReport':
+      return 'Rest/lunch break overage summary by employee'
     case 'summary':
       return 'Per-employee monthly attendance calendar'
     case 'exceptions':

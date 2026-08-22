@@ -106,6 +106,7 @@ export interface Shift {
   start_time: string // "HH:MM" 24h, naive local time
   end_time: string // "HH:MM" 24h, naive local time
   standard_hours: number
+  break_minutes: number // allowed/scheduled rest-break duration, in minutes
   created_at: string
   updated_at: string
 }
@@ -184,6 +185,15 @@ export interface LateReportRow {
   count_excused: number
   total_minutes_late: number
   avg_minutes_late: number
+}
+
+/** One row of the break report — who exceeds their shift's allowed rest/lunch break. */
+export interface BreakReportRow {
+  employee_id: number
+  employee_name: string
+  days_over_limit: number
+  total_minutes_over: number
+  avg_minutes_over: number
 }
 
 /** One day's entry in the monthly attendance summary calendar. */
@@ -734,6 +744,7 @@ export interface DailyAttendanceRecord {
   session_count: number
   total_clocked_hours: number
   break_hours: number
+  break_minutes_over: number
   regular_hours: number
   ot_hours: number
   minutes_late: number

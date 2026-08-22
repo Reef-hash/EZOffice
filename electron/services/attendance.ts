@@ -12,6 +12,7 @@ import type {
   LeaveEntitlement,
   LeaveEntitlementRow,
   LateReportRow,
+  BreakReportRow,
   ClockValidationResult,
   AttendanceMonthlyCalendar,
   AttendanceSummaryDay,
@@ -1052,13 +1053,14 @@ export function createShift(db: Database.Database, input: CreateShiftInput): Shi
   const now = new Date().toISOString()
   try {
     const result = db.prepare(`
-      INSERT INTO shifts (name, start_time, end_time, standard_hours, created_at, updated_at)
-      VALUES (@name, @start_time, @end_time, @standard_hours, @created_at, @updated_at)
+      INSERT INTO shifts (name, start_time, end_time, standard_hours, break_minutes, created_at, updated_at)
+      VALUES (@name, @start_time, @end_time, @standard_hours, @break_minutes, @created_at, @updated_at)
     `).run({
       name: input.name,
       start_time: input.start_time,
       end_time: input.end_time,
       standard_hours: input.standard_hours,
+      break_minutes: input.break_minutes,
       created_at: now,
       updated_at: now,
     })
@@ -1081,6 +1083,7 @@ export function updateShift(db: Database.Database, id: number, input: UpdateShif
         start_time = @start_time,
         end_time = @end_time,
         standard_hours = @standard_hours,
+        break_minutes = @break_minutes,
         updated_at = @updated_at
     WHERE id = @id
   `).run({
@@ -1088,6 +1091,7 @@ export function updateShift(db: Database.Database, id: number, input: UpdateShif
     start_time: input.start_time ?? existing.start_time,
     end_time: input.end_time ?? existing.end_time,
     standard_hours: input.standard_hours ?? existing.standard_hours,
+    break_minutes: input.break_minutes ?? existing.break_minutes,
     updated_at: now,
     id,
   })
@@ -1542,6 +1546,46 @@ export function getLateReport(db: Database.Database, year: number, month: number
   })
 
   result.sort((a, b) => b.total_minutes_late - a.total_minutes_late || b.count_late - a.count_late)
+  return result
+}
+
+/**
+ * Break report: per-employee count of days their rest/lunch break exceeded the
+ * shift's allowed break_minutes, for a given month. Reads break_minutes_over,
+ * pre-computed by the processing engine from actual IN/OUT session gaps —
+ * see attendanceProcessor.ts Stage 10. Only days with an actual overage
+ * (break_minutes_over > 0) are counted; days within the allowance don't appear.
+ */
+export function getBreakReport(db: Database.Database, year: number, month: number): BreakReportRow[] {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const monthStart = `${year}-${pad(month)}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const monthEnd = `${year}-${pad(month)}-${pad(lastDay)}`
+
+  const rows = db.prepare(`
+    SELECT
+      dar.employee_id,
+      e.name AS employee_name,
+      COUNT(*) AS days_over_limit,
+      SUM(dar.break_minutes_over) AS total_minutes_over
+    FROM daily_attendance_records dar
+    LEFT JOIN employees e ON e.id = dar.employee_id
+    WHERE dar.date >= ? AND dar.date <= ?
+      AND dar.break_minutes_over > 0
+    GROUP BY dar.employee_id
+  `).all(monthStart, monthEnd) as Array<{
+    employee_id: number
+    employee_name: string
+    days_over_limit: number
+    total_minutes_over: number
+  }>
+
+  const result: BreakReportRow[] = rows.map((r) => ({
+    ...r,
+    avg_minutes_over: r.days_over_limit > 0 ? Math.round((r.total_minutes_over / r.days_over_limit) * 10) / 10 : 0,
+  }))
+
+  result.sort((a, b) => b.total_minutes_over - a.total_minutes_over || b.days_over_limit - a.days_over_limit)
   return result
 }
 
