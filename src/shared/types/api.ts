@@ -25,6 +25,7 @@ import type {
   LeaveEntitlementRow,
   LeaveStatus,
   LateReportRow,
+  BreakReportRow,
   ClockValidationResult,
   AttendanceMonthlyCalendar,
   CompanySettings,
@@ -212,6 +213,7 @@ export interface AttendanceApi {
   // Phase C — late detection
   excuseLate: (logId: number) => Promise<AttendanceLog>
   getLateReport: (year: number, month: number) => Promise<LateReportRow[]>
+  getBreakReport: (year: number, month: number) => Promise<BreakReportRow[]>
 
   // Phase C — monthly calendar / export
   getMonthlyCalendar: (employeeId: number, year: number, month: number) => Promise<AttendanceMonthlyCalendar>

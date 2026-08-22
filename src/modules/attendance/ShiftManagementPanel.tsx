@@ -19,6 +19,7 @@ const columns: Column<Shift>[] = [
   { key: 'start_time', header: 'Start', accessor: (s) => s.start_time, sortable: true, sortValue: (s) => s.start_time, align: 'center', width: '100px' },
   { key: 'end_time', header: 'End', accessor: (s) => s.end_time, sortable: true, sortValue: (s) => s.end_time, align: 'center', width: '100px' },
   { key: 'standard_hours', header: 'Std Hours', accessor: (s) => s.standard_hours, sortable: true, sortValue: (s) => s.standard_hours, align: 'right', width: '110px' },
+  { key: 'break_minutes', header: 'Break (min)', accessor: (s) => s.break_minutes, sortable: true, sortValue: (s) => s.break_minutes, align: 'right', width: '110px' },
 ]
 
 export function ShiftManagementPanel() {
@@ -156,6 +157,7 @@ function ShiftForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleti
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('18:00')
   const [standardHours, setStandardHours] = useState('8')
+  const [breakMinutes, setBreakMinutes] = useState('60')
   const [validationError, setValidationError] = useState<string | null>(null)
 
   // Reset fields whenever the modal opens or the shift being edited changes.
@@ -166,11 +168,13 @@ function ShiftForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleti
       setStartTime(shift.start_time)
       setEndTime(shift.end_time)
       setStandardHours(String(shift.standard_hours))
+      setBreakMinutes(String(shift.break_minutes))
     } else {
       setName('')
       setStartTime('09:00')
       setEndTime('18:00')
       setStandardHours('8')
+      setBreakMinutes('60')
     }
     setValidationError(null)
   }, [isOpen, shift])
@@ -181,6 +185,8 @@ function ShiftForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleti
     if (!/^\d{2}:\d{2}$/.test(endTime)) { setValidationError('End time must be HH:MM'); return false }
     const hrs = Number(standardHours)
     if (!Number.isFinite(hrs) || hrs <= 0) { setValidationError('Standard hours must be a positive number'); return false }
+    const brk = Number(breakMinutes)
+    if (!Number.isInteger(brk) || brk < 0) { setValidationError('Break minutes must be zero or a positive whole number'); return false }
     return true
   }
 
@@ -194,6 +200,7 @@ function ShiftForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleti
       start_time: startTime,
       end_time: endTime,
       standard_hours: Number(standardHours),
+      break_minutes: Number(breakMinutes),
     }
     await onSubmit(data)
   }
@@ -249,14 +256,25 @@ function ShiftForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleti
           />
         </div>
 
-        <Input
-          label="Standard Hours"
-          required
-          type="number"
-          value={standardHours}
-          onChange={(e) => setStandardHours(e.target.value)}
-          placeholder="8"
-        />
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Standard Hours"
+            required
+            type="number"
+            value={standardHours}
+            onChange={(e) => setStandardHours(e.target.value)}
+            placeholder="8"
+          />
+          <Input
+            label="Allowed Break (minutes)"
+            required
+            type="number"
+            value={breakMinutes}
+            onChange={(e) => setBreakMinutes(e.target.value)}
+            placeholder="60"
+            helperText="Rest/lunch time this shift allows, for employees who clock out/in for break."
+          />
+        </div>
       </form>
     </Modal>
   )

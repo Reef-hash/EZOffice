@@ -87,13 +87,13 @@ export function triggerProcessing(
               (employee_id, date, payroll_period_id, processing_run_id,
                calendar_type, leave_type, leave_record_id, shift_id,
                attendance_status, first_in, last_out, session_count,
-               total_clocked_hours, break_hours, regular_hours, ot_hours,
+               total_clocked_hours, break_hours, break_minutes_over, regular_hours, ot_hours,
                minutes_late, minutes_early_out, is_finalized, created_at, updated_at)
             VALUES
               (@employee_id, @date, @payroll_period_id, @processing_run_id,
                @calendar_type, @leave_type, @leave_record_id, @shift_id,
                @attendance_status, @first_in, @last_out, @session_count,
-               @total_clocked_hours, @break_hours, @regular_hours, @ot_hours,
+               @total_clocked_hours, @break_hours, @break_minutes_over, @regular_hours, @ot_hours,
                @minutes_late, @minutes_early_out, 0, @now, @now)
           `).run(record)
         }
@@ -286,13 +286,13 @@ function processEmployee(
     "SELECT max_session_hours FROM payroll_settings WHERE id = 1",
   ).get() as { max_session_hours?: number } | undefined)?.max_session_hours ?? 16
 
-  type Session = { date: string; hours: number }
+  type Session = { date: string; hours: number; inTimestamp: string; outTimestamp: string }
   const sessions: Session[] = []
   for (const pair of pairs) {
     if (!pair.outTimestamp) continue
     const hours = (new Date(pair.outTimestamp).getTime() - new Date(pair.inTimestamp).getTime()) / (1000 * 60 * 60)
     if (hours > 0 && hours <= maxSessionHours) {
-      sessions.push({ date: pair.inTimestamp.slice(0, 10), hours })
+      sessions.push({ date: pair.inTimestamp.slice(0, 10), hours, inTimestamp: pair.inTimestamp, outTimestamp: pair.outTimestamp })
     }
   }
 
@@ -306,7 +306,8 @@ function processEmployee(
   // Get employee's default shift
   const empShift = db.prepare(`
     SELECT s.* FROM employees e LEFT JOIN shifts s ON s.id = e.shift_id WHERE e.id = ?
-  `).get(employeeId) as { id: number; start_time: string; end_time: string; standard_hours: number } | undefined
+  `).get(employeeId) as
+    { id: number; start_time: string; end_time: string; standard_hours: number; break_minutes: number } | undefined
 
   const now = new Date().toISOString()
   const records: Array<Record<string, unknown>> = []
@@ -358,11 +359,18 @@ function processEmployee(
       const dayIns = dayLogs.filter((l) => l.type === 'in')
       const dayOuts = dayLogs.filter((l) => l.type === 'out')
 
+      // empShift comes from a LEFT JOIN — the row itself is always truthy (one row
+      // per employee), even when the employee has no assigned shift, in which case
+      // every shifts.* column (including start_time/end_time) comes back null. A
+      // plain `if (empShift)` check is therefore always true and previously crashed
+      // (`null.split(':')`) for any employee with no shift — check the id instead.
+      const hasShift = empShift?.id != null
+
       if (dayIns.length === 0) {
         attendanceStatus = 'absent'
       } else {
         // Check lateness if employee has a shift
-        if (empShift) {
+        if (hasShift) {
           const firstInTime = dayIns[0].timestamp.slice(11, 16)
           const minutesBetween = (h1: string, h2: string): number => {
             const [ah, am] = h1.split(':').map(Number)
@@ -372,14 +380,14 @@ function processEmployee(
           const grace = (db.prepare(
             "SELECT grace_period_minutes FROM payroll_settings WHERE id = 1",
           ).get() as { grace_period_minutes?: number } | undefined)?.grace_period_minutes ?? 15
-          const raw = minutesBetween(empShift.start_time, firstInTime)
+          const raw = minutesBetween(empShift!.start_time, firstInTime)
           minutesLate = Math.max(0, raw - grace)
         }
 
         // Check early out if employee has a shift and has at least one OUT
-        if (empShift && dayOuts.length > 0) {
+        if (hasShift && dayOuts.length > 0) {
           const lastOutTime = dayOuts[dayOuts.length - 1].timestamp.slice(11, 16)
-          const raw = minutesBetween(lastOutTime, empShift.end_time)
+          const raw = minutesBetween(lastOutTime, empShift!.end_time)
           minutesEarlyOut = Math.max(0, raw)
         }
 
@@ -410,6 +418,20 @@ function processEmployee(
       otHours = Math.max(0, totalClockedHours - threshold)
     }
 
+    // Stage 10 continued: rest/lunch break — the gap between consecutive IN/OUT
+    // sessions on the same day (e.g. an employee who punches out for lunch and
+    // back in). Break time is never counted in totalClockedHours (it falls
+    // outside every session), so this is purely a visibility/reporting figure —
+    // it does not further reduce regular/OT hours, those are already correct.
+    let breakMinutesTaken = 0
+    for (let i = 1; i < currentDaySessions.length; i++) {
+      const gapMs = new Date(currentDaySessions[i].inTimestamp).getTime()
+        - new Date(currentDaySessions[i - 1].outTimestamp).getTime()
+      breakMinutesTaken += Math.max(0, gapMs / (1000 * 60))
+    }
+    const allowedBreakMinutes = empShift?.break_minutes ?? 60
+    const breakMinutesOver = Math.max(0, Math.round(breakMinutesTaken - allowedBreakMinutes))
+
     // Stage 10 continued: aggregate from day sessions
     const firstIn = logs.filter((l) => l.timestamp.slice(0, 10) === dateStr && l.type === 'in')
     const lastOut = logs.filter((l) => l.timestamp.slice(0, 10) === dateStr && l.type === 'out')
@@ -430,7 +452,8 @@ function processEmployee(
       last_out: lastOut.length > 0 ? lastOut[lastOut.length - 1].timestamp : null,
       session_count: sessionCount,
       total_clocked_hours: Math.round(totalClockedHours * 100) / 100,
-      break_hours: 0,
+      break_hours: Math.round((breakMinutesTaken / 60) * 100) / 100,
+      break_minutes_over: breakMinutesOver,
       regular_hours: Math.round(regularHours * 100) / 100,
       ot_hours: Math.round(otHours * 100) / 100,
       minutes_late: minutesLate,

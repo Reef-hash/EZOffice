@@ -110,6 +110,7 @@ const api: EzOfficeApi = {
     // Phase C — late detection
     excuseLate: (logId) => ipcRenderer.invoke('attendance:excuseLate', { log_id: logId }),
     getLateReport: (year, month) => ipcRenderer.invoke('attendance:getLateReport', { year, month }),
+    getBreakReport: (year, month) => ipcRenderer.invoke('attendance:getBreakReport', { year, month }),
     // Phase C — monthly calendar / export
     getMonthlyCalendar: (employeeId, year, month) => ipcRenderer.invoke('attendance:getMonthlyCalendar', { employee_id: employeeId, year, month }),
     exportMonthly: (year, month) => ipcRenderer.invoke('attendance:exportMonthly', { year, month }),
