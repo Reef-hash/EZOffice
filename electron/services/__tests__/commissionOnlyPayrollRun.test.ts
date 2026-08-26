@@ -41,6 +41,13 @@ function makeDb(): Database.Database {
     VALUES ('2020-01-01', 'all', 0, 5000, 11, 13)
   `).run()
 
+  // Payroll period the runs are created against — 'finalized' so createPayrollRun's
+  // "attendance period must be processed" guard doesn't block the attendance run.
+  db.prepare(`
+    INSERT INTO payroll_periods (id, name, start_date, end_date, status)
+    VALUES (1, 'August 2026', '2026-07-26', '2026-08-25', 'finalized')
+  `).run()
+
   return db
 }
 
@@ -51,24 +58,24 @@ describe('commission-only payroll run + pay-group separation', () => {
     db = makeDb()
   })
 
-  it('allows an attendance run and a commission-only run for the same year/month', () => {
-    const attendanceRun = createPayrollRun(db, { year: 2026, month: 8, pay_group: 'attendance', pay_date: '2026-08-26' })
-    const commissionRun = createPayrollRun(db, { year: 2026, month: 8, pay_group: 'commission_only', pay_date: '2026-09-01' })
+  it('allows an attendance run and a commission-only run for the same payroll period', () => {
+    const attendanceRun = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'attendance', pay_date: '2026-08-26' })
+    const commissionRun = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'commission_only', pay_date: '2026-09-01' })
 
     expect(attendanceRun.id).not.toBe(commissionRun.id)
     expect(attendanceRun.pay_group).toBe('attendance')
     expect(commissionRun.pay_group).toBe('commission_only')
   })
 
-  it('rejects a second run with the same year/month/pay_group', () => {
-    createPayrollRun(db, { year: 2026, month: 8, pay_group: 'attendance', pay_date: '2026-08-26' })
+  it('rejects a second run with the same payroll period and pay_group', () => {
+    createPayrollRun(db, { payroll_period_id: 1, pay_group: 'attendance', pay_date: '2026-08-26' })
     expect(() =>
-      createPayrollRun(db, { year: 2026, month: 8, pay_group: 'attendance', pay_date: '2026-08-26' }),
+      createPayrollRun(db, { payroll_period_id: 1, pay_group: 'attendance', pay_date: '2026-08-26' }),
     ).toThrow(/already exists/)
   })
 
   it('excludes the commission-only employee from the attendance run', () => {
-    const run = createPayrollRun(db, { year: 2026, month: 8, pay_group: 'attendance', pay_date: '2026-08-26' })
+    const run = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'attendance', pay_date: '2026-08-26' })
     calculatePayrollRun(db, run.id)
     const items = getPayrollRunItems(db, run.id)
 
@@ -76,7 +83,7 @@ describe('commission-only payroll run + pay-group separation', () => {
   })
 
   it('excludes the attendance employee from the commission-only run, and computes gross/statutory base correctly', () => {
-    const run = createPayrollRun(db, { year: 2026, month: 8, pay_group: 'commission_only', pay_date: '2026-09-01' })
+    const run = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'commission_only', pay_date: '2026-09-01' })
     upsertCommission(db, run.id, { employee_id: 2, amount: 2538, note: 'Trip RM12,690 x 20%', statutory_base_override: null })
 
     calculatePayrollRun(db, run.id)
@@ -98,7 +105,7 @@ describe('commission-only payroll run + pay-group separation', () => {
   })
 
   it('honors a per-run statutory base override over the recurring default', () => {
-    const run = createPayrollRun(db, { year: 2026, month: 8, pay_group: 'commission_only', pay_date: '2026-09-01' })
+    const run = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'commission_only', pay_date: '2026-09-01' })
     upsertCommission(db, run.id, { employee_id: 2, amount: 2538, note: null, statutory_base_override: 1800 })
 
     calculatePayrollRun(db, run.id)

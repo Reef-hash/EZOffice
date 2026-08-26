@@ -10,9 +10,9 @@
 // Claude.md §4: Multi-step writes use transactions. The entire calculate() is one transaction.
 
 import type Database from 'better-sqlite3'
-import type { PayrollRun, PayrollRunItem } from '../../../src/shared/types/entities'
+import type { PayrollRun, PayrollRunItem, PayrollPeriod } from '../../../src/shared/types/entities'
 import type { CreatePayrollRunInput } from '../../../src/shared/types/inputs'
-import { getMonthlySummaryFromDailyRecords } from '../attendanceProcessor'
+import { getAttendanceSummaryForDateRange } from '../attendanceProcessor'
 import { getCurrentSalaryStructure } from './salaryStructure'
 import { getPayrollSettings } from './settings'
 import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
@@ -22,8 +22,14 @@ import { calculatePay, type OtRule } from './calculationEngine'
 
 // ── Helpers ──────────────────────────────────────────────
 
+const RUN_SELECT_WITH_PERIOD = `
+  SELECT r.*, pp.name AS period_name, pp.start_date AS period_start_date, pp.end_date AS period_end_date
+  FROM payroll_runs r
+  LEFT JOIN payroll_periods pp ON pp.id = r.payroll_period_id
+`
+
 function queryRunById(db: Database.Database, id: number): PayrollRun | null {
-  const row = db.prepare('SELECT * FROM payroll_runs WHERE id = ?').get(id) as PayrollRun | undefined
+  const row = db.prepare(`${RUN_SELECT_WITH_PERIOD} WHERE r.id = ?`).get(id) as PayrollRun | undefined
   return row ?? null
 }
 
@@ -47,33 +53,41 @@ function previewAdvanceDeductions(
   return { total, perAdvance }
 }
 
-/** ISO date for the last day of a given year-month */
-function monthEndDate(year: number, month: number): string {
-  const lastDay = new Date(year, month, 0).getDate()
-  return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+function getPayrollPeriodOrThrow(db: Database.Database, payrollPeriodId: number): PayrollPeriod {
+  const period = db.prepare('SELECT * FROM payroll_periods WHERE id = ?').get(payrollPeriodId) as PayrollPeriod | undefined
+  if (!period) throw new Error(`Payroll period ${payrollPeriodId} not found`)
+  return period
 }
 
 /**
- * Reads public holidays for the given month from the public_holidays table.
- * Returns a Set of YYYY-MM-DD strings so workingDaysInMonth can exclude them.
+ * Reads public holidays within an explicit date range from the public_holidays table.
+ * Returns a Set of YYYY-MM-DD strings so workingDaysInRange can exclude them.
  */
-function getPublicHolidayDates(db: Database.Database, year: number, month: number): Set<string> {
-  const monthPrefix = `${year}-${String(month).padStart(2, '0')}`
+function getPublicHolidayDatesInRange(db: Database.Database, startDate: string, endDate: string): Set<string> {
   const rows = db.prepare(
-    `SELECT date FROM public_holidays WHERE date LIKE ?`,
-  ).all(`${monthPrefix}%`) as Array<{ date: string }>
+    `SELECT date FROM public_holidays WHERE date >= ? AND date <= ?`,
+  ).all(startDate, endDate) as Array<{ date: string }>
   return new Set(rows.map((r) => r.date))
 }
 
-/** Count working days in a month (Mon–Fri), excluding weekends and public holidays. */
-function workingDaysInMonth(year: number, month: number, publicHolidays: Set<string>): number {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const lastDay = new Date(year, month, 0).getDate()
+/**
+ * Count working days (Mon–Fri) within an inclusive date range, excluding public holidays.
+ * Replaces the old calendar-month version — a payroll period's real date range (e.g.
+ * 26 Jul – 25 Aug) does not line up with a calendar month, so working days must be
+ * counted across the period's actual start_date/end_date, not a derived year/month.
+ */
+function workingDaysInRange(startDate: string, endDate: string, publicHolidays: Set<string>): number {
   let count = 0
-  for (let d = 1; d <= lastDay; d++) {
-    const dateStr = `${year}-${pad(month)}-${pad(d)}`
-    const dow = new Date(year, month - 1, d).getDay()
+  const cursor = new Date(`${startDate}T00:00:00`)
+  const end = new Date(`${endDate}T00:00:00`)
+  while (cursor <= end) {
+    const y = cursor.getFullYear()
+    const m = cursor.getMonth() + 1
+    const d = cursor.getDate()
+    const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    const dow = cursor.getDay()
     if (dow !== 0 && dow !== 6 && !publicHolidays.has(dateStr)) count++
+    cursor.setDate(cursor.getDate() + 1)
   }
   return count
 }
@@ -81,7 +95,7 @@ function workingDaysInMonth(year: number, month: number, publicHolidays: Set<str
 // ── Public API ───────────────────────────────────────────
 
 export function listPayrollRuns(db: Database.Database): PayrollRun[] {
-  return db.prepare('SELECT * FROM payroll_runs ORDER BY year DESC, month DESC').all() as PayrollRun[]
+  return db.prepare(`${RUN_SELECT_WITH_PERIOD} ORDER BY r.year DESC, r.month DESC`).all() as PayrollRun[]
 }
 
 export function getPayrollRunById(db: Database.Database, id: number): PayrollRun | null {
@@ -99,25 +113,42 @@ export function getPayrollRunItems(db: Database.Database, runId: number): Payrol
 }
 
 /**
- * Create a draft payroll run for a given year/month/pay_group.
- * UNIQUE(year, month, pay_group) allows an attendance run and a commission-only
- * run to coexist for the same payroll month (docs/COMMISSION_PAYROLL_PLAN.md).
+ * Create a draft payroll run against a specific Payroll Period and pay_group.
+ * year/month are derived from the period's end_date — they remain a display label
+ * and feed the statutory rate/PCB effective-date lookups, but the period's own
+ * start_date/end_date (not year/month) is what calculatePayrollRun() actually uses
+ * to select attendance data. UNIQUE(payroll_period_id, pay_group) allows an
+ * attendance run and a commission-only run to coexist for the same period
+ * (docs/COMMISSION_PAYROLL_PLAN.md), while still preventing duplicates within
+ * the same pay_group.
  */
 export function createPayrollRun(
   db: Database.Database,
   input: CreatePayrollRunInput,
 ): PayrollRun {
+  const period = getPayrollPeriodOrThrow(db, input.payroll_period_id)
+  // Attendance runs need daily_attendance_records, which only exist once the period
+  // has been processed. Commission-only runs have no attendance dependency, so this
+  // gate only applies to the attendance pay_group.
+  if (input.pay_group === 'attendance' && period.status === 'open') {
+    throw new Error(
+      `Payroll period "${period.name}" has not been processed yet. ` +
+      'Go to Payroll Periods and click "Process Attendance" before creating a payroll run for it.',
+    )
+  }
+
+  const [endYear, endMonth] = period.end_date.split('-').map(Number)
   const now = new Date().toISOString()
-  const runDate = now
 
   try {
     const result = db.prepare(`
-      INSERT INTO payroll_runs (year, month, status, run_date, pay_group, pay_date, created_at, updated_at)
-      VALUES (@year, @month, 'draft', @run_date, @pay_group, @pay_date, @created_at, @updated_at)
+      INSERT INTO payroll_runs (payroll_period_id, year, month, status, run_date, pay_group, pay_date, created_at, updated_at)
+      VALUES (@payroll_period_id, @year, @month, 'draft', @run_date, @pay_group, @pay_date, @created_at, @updated_at)
     `).run({
-      year: input.year,
-      month: input.month,
-      run_date: runDate,
+      payroll_period_id: input.payroll_period_id,
+      year: endYear,
+      month: endMonth,
+      run_date: now,
       pay_group: input.pay_group,
       pay_date: input.pay_date,
       created_at: now,
@@ -128,12 +159,24 @@ export function createPayrollRun(
   } catch (err) {
     const msg = (err as Error).message
     if (msg.includes('UNIQUE') || msg.includes('UNIQUE constraint')) {
-      throw new Error(
-        `A ${input.pay_group} payroll run for ${input.year}-${String(input.month).padStart(2, '0')} already exists`,
-      )
+      throw new Error(`A ${input.pay_group} payroll run for period "${period.name}" already exists`)
     }
     throw err
   }
+}
+
+/**
+ * Delete a draft payroll run. Finalized runs can never be deleted (historical
+ * integrity — same rule as every other finalized/locked record in this app).
+ * Exists mainly so a legacy pre-migration-0020 run (created before payroll runs were
+ * linked to a Payroll Period, with no unambiguous period match to auto-backfill onto)
+ * can be discarded and recreated correctly against the right period.
+ */
+export function deletePayrollRun(db: Database.Database, runId: number): void {
+  const run = queryRunById(db, runId)
+  if (!run) throw new Error(`Payroll run ${runId} not found`)
+  if (run.status === 'finalized') throw new Error('Cannot delete a finalized payroll run')
+  db.prepare('DELETE FROM payroll_runs WHERE id = ?').run(runId)
 }
 
 /**
@@ -154,32 +197,46 @@ export function calculatePayrollRun(
   if (!run) throw new Error(`Payroll run ${runId} not found`)
   if (run.status === 'finalized') throw new Error('Cannot recalculate a finalized payroll run')
 
-  const { year, month } = run
+  // A run created before migration 0020 (payroll runs linked to Payroll Periods) has no
+  // payroll_period_id and could not be safely auto-matched to exactly one period during
+  // the upgrade. Recalculating it with the old calendar-month logic would silently
+  // reproduce the "hours don't match the real period" bug — refuse instead of guessing.
+  if (run.payroll_period_id == null) {
+    throw new Error(
+      `This payroll run (${run.year}-${String(run.month).padStart(2, '0')}) predates Payroll Periods ` +
+      'linking and has no unambiguous period match. Delete this draft run and create a new one, ' +
+      'selecting the correct Payroll Period, so hours are calculated from its real date range.',
+    )
+  }
+
+  const period = getPayrollPeriodOrThrow(db, run.payroll_period_id)
+  const { start_date: periodStart, end_date: periodEnd } = period
 
   // ── D5: pre-flight gate — block on open attendance exceptions ──────────────
-  // computeAttendanceExceptions is called first so the admin sees a complete list
-  // of issues in one shot, rather than discovering them one by one.
+  // Filtered by the period's actual date range, not year/month — a period spanning two
+  // calendar months (e.g. 26 Jul – 25 Aug) must block on open exceptions from EITHER
+  // month, not just the one the run happens to be labeled with.
   const hasExceptionsTable = db.prepare(
     `SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table' AND name='attendance_exceptions'`,
   ).get() as { cnt: number }
   if (hasExceptionsTable.cnt > 0) {
     const openExceptions = db.prepare(`
       SELECT COUNT(*) AS cnt FROM attendance_exceptions
-      WHERE year = ? AND month = ? AND status = 'open'
-    `).get(year, month) as { cnt: number }
+      WHERE date >= ? AND date <= ? AND status = 'open'
+    `).get(periodStart, periodEnd) as { cnt: number }
 
     if (openExceptions.cnt > 0) {
       throw new Error(
-        `Cannot calculate payroll for ${year}-${String(month).padStart(2, '0')}: ` +
-        `${openExceptions.cnt} unresolved attendance exception(s) exist for this month. ` +
+        `Cannot calculate payroll for period "${period.name}" (${periodStart} – ${periodEnd}): ` +
+        `${openExceptions.cnt} unresolved attendance exception(s) exist in this range. ` +
         'Open Attendance → Exceptions, fix or dismiss each item, then recalculate.',
       )
     }
   }
 
-  const asOfDate = monthEndDate(year, month)
-  const publicHolidays = getPublicHolidayDates(db, year, month)
-  const workingDays = workingDaysInMonth(year, month, publicHolidays)
+  const asOfDate = periodEnd
+  const publicHolidays = getPublicHolidayDatesInRange(db, periodStart, periodEnd)
+  const workingDays = workingDaysInRange(periodStart, periodEnd, publicHolidays)
 
   // Get payroll settings (OT rule)
   const settings = getPayrollSettings(db)
@@ -199,8 +256,8 @@ export function calculatePayrollRun(
 
   const employeeIds = employees.map((e) => e.employee_id)
 
-  // ── Get monthly attendance summaries from Daily Records (Phase 5) ──
-  const summaries = getMonthlySummaryFromDailyRecords(db, { employeeIds, year, month })
+  // ── Get attendance summaries from Daily Records (Phase 5), for the period's real date range ──
+  const summaries = getAttendanceSummaryForDateRange(db, { employeeIds, startDate: periodStart, endDate: periodEnd })
   const summaryMap = new Map<number, { employee_id: number; total_regular_hours: number; total_ot_hours: number; days_worked: number }>()
   for (const s of summaries) {
     summaryMap.set(s.employee_id, s)

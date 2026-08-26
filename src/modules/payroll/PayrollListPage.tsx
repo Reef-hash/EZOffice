@@ -19,7 +19,7 @@ import { RateTablesPage } from './rateTables/RateTablesPage'
 import { SalaryAdvanceListPage } from './salaryAdvances/SalaryAdvanceListPage'
 import { PayrollPeriodListPage } from './payrollPeriods/PayrollPeriodListPage'
 import type { Column } from '@/shared/components/Table'
-import type { PayrollRun } from '@/shared/types/entities'
+import type { PayrollPeriod, PayrollRun } from '@/shared/types/entities'
 import type { CreatePayrollRunInput } from '@/shared/types/inputs'
 import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE, PAYROLL_RUN_PAY_GROUP_LABEL, PAYROLL_RUN_PAY_GROUP_OPTIONS } from './constants'
 
@@ -38,7 +38,9 @@ const runColumns: Column<PayrollRun>[] = [
   {
     key: 'period',
     header: 'Period',
-    accessor: (r) => `${r.year}-${String(r.month).padStart(2, '0')}`,
+    accessor: (r) => r.period_name
+      ? `${r.period_name} (${r.period_start_date} – ${r.period_end_date})`
+      : `${r.year}-${String(r.month).padStart(2, '0')} (legacy — no linked period)`,
     sortable: true,
     sortValue: (r) => `${r.year}-${String(r.month).padStart(2, '0')}`,
   },
@@ -78,28 +80,11 @@ const runColumns: Column<PayrollRun>[] = [
   },
 ]
 
-const MONTHS = [
-  { value: '1', label: 'January' }, { value: '2', label: 'February' },
-  { value: '3', label: 'March' }, { value: '4', label: 'April' },
-  { value: '5', label: 'May' }, { value: '6', label: 'June' },
-  { value: '7', label: 'July' }, { value: '8', label: 'August' },
-  { value: '9', label: 'September' }, { value: '10', label: 'October' },
-  { value: '11', label: 'November' }, { value: '12', label: 'December' },
-]
-
-const currentYear = new Date().getFullYear()
-const currentMonth = new Date().getMonth() + 1
-const YEAR_OPTIONS = Array.from({ length: 5 }, (_, i) => ({
-  value: String(currentYear - 2 + i),
-  label: String(currentYear - 2 + i),
-}))
-
 export function PayrollListPage() {
   const [activeTab, setActiveTab] = useState<PayrollTab>('runs')
   const [showCreateRun, setShowCreateRun] = useState(false)
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
-  const [newYear, setNewYear] = useState(String(currentYear))
-  const [newMonth, setNewMonth] = useState(String(currentMonth))
+  const [selectedPeriodId, setSelectedPeriodId] = useState('')
   const [newPayGroup, setNewPayGroup] = useState<'attendance' | 'commission_only'>('attendance')
   const [newPayDate, setNewPayDate] = useState('')
 
@@ -123,6 +108,19 @@ export function PayrollListPage() {
     () => window.api.payroll.runs.list(),
   )
 
+  const { data: periods = [] } = useIpcQuery<PayrollPeriod[]>(
+    ['payroll', 'periods'],
+    () => window.api.payroll.periods.list(),
+  )
+
+  // A payroll run can only be created against a period whose attendance has already
+  // been processed — an 'open' period has no daily_attendance_records yet to summarize.
+  const eligiblePeriods = periods.filter((p) => p.status !== 'open')
+  const periodOptions = eligiblePeriods.map((p) => ({
+    value: String(p.id),
+    label: `${p.name} (${p.start_date} – ${p.end_date})`,
+  }))
+
   const createRunMutation = useIpcMutation<PayrollRun, CreatePayrollRunInput>(
     (data) => window.api.payroll.runs.create(data),
     [['payroll', 'runs']],
@@ -130,10 +128,10 @@ export function PayrollListPage() {
   )
 
   const handleCreateRun = useCallback(async () => {
+    if (!selectedPeriodId) return
     try {
       const result = await createRunMutation.mutateAsync({
-        year: Number(newYear),
-        month: Number(newMonth),
+        payroll_period_id: Number(selectedPeriodId),
         pay_group: newPayGroup,
         pay_date: newPayDate,
       })
@@ -142,7 +140,7 @@ export function PayrollListPage() {
     } catch {
       // error handled via mutation state
     }
-  }, [createRunMutation, newYear, newMonth, newPayGroup, newPayDate])
+  }, [createRunMutation, selectedPeriodId, newPayGroup, newPayDate])
 
   if (selectedRunId) {
     return (
@@ -222,35 +220,37 @@ export function PayrollListPage() {
             title="Create Payroll Run"
           >
             <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-4">
-                <Select
-                  label="Year"
-                  options={YEAR_OPTIONS}
-                  value={newYear}
-                  onChange={(e) => setNewYear(e.target.value)}
-                />
-                <Select
-                  label="Month"
-                  options={MONTHS}
-                  value={newMonth}
-                  onChange={(e) => setNewMonth(e.target.value)}
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <Select
-                  label="Pay Group"
-                  options={PAYROLL_RUN_PAY_GROUP_OPTIONS}
-                  value={newPayGroup}
-                  onChange={(e) => setNewPayGroup(e.target.value as 'attendance' | 'commission_only')}
-                  helperText="Commission-only employees are always excluded from an Attendance run, and vice versa."
-                />
-                <Input
-                  label="Pay Date"
-                  type="date"
-                  value={newPayDate}
-                  onChange={(e) => setNewPayDate(e.target.value)}
-                />
-              </div>
+              {periodOptions.length > 0 ? (
+                <>
+                  <Select
+                    label="Payroll Period"
+                    options={periodOptions}
+                    value={selectedPeriodId}
+                    onChange={(e) => setSelectedPeriodId(e.target.value)}
+                  />
+                  <div className="grid grid-cols-2 gap-4">
+                    <Select
+                      label="Pay Group"
+                      options={PAYROLL_RUN_PAY_GROUP_OPTIONS}
+                      value={newPayGroup}
+                      onChange={(e) => setNewPayGroup(e.target.value as 'attendance' | 'commission_only')}
+                      helperText="Commission-only employees are always excluded from an Attendance run, and vice versa."
+                    />
+                    <Input
+                      label="Pay Date"
+                      type="date"
+                      value={newPayDate}
+                      onChange={(e) => setNewPayDate(e.target.value)}
+                    />
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm text-neutral-500">
+                  No processed Payroll Periods yet. Go to the Payroll Periods tab, create a
+                  period with the correct date range, and click &quot;Process Attendance&quot;
+                  before creating a payroll run.
+                </p>
+              )}
               {createRunMutation.error && (
                 <p className="text-sm text-error-700">{createRunMutation.error.message}</p>
               )}
@@ -262,7 +262,7 @@ export function PayrollListPage() {
                   variant="primary"
                   onClick={handleCreateRun}
                   isLoading={createRunMutation.isPending}
-                  disabled={!newPayDate}
+                  disabled={!selectedPeriodId || !newPayDate}
                 >
                   Create Run
                 </Button>

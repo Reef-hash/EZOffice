@@ -394,6 +394,7 @@ export interface SalaryAdvance {
 
 export interface PayrollRun {
   id: number
+  payroll_period_id: number | null
   year: number
   month: number
   status: PayrollRunStatus
@@ -402,6 +403,11 @@ export interface PayrollRun {
   pay_date: string
   created_at: string
   updated_at: string
+  // Populated via JOIN — the linked Payroll Period's real name/date range, for display.
+  // Null for a legacy run with no linked period (see migration 0020).
+  period_name?: string | null
+  period_start_date?: string | null
+  period_end_date?: string | null
 }
 
 export interface PayrollRunItem {

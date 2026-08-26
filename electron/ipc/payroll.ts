@@ -314,6 +314,14 @@ export function registerPayrollHandlers(db: Database.Database): void {
     }
   })
 
+  ipcMain.handle('payroll:runs:delete', async (_event, id: number) => {
+    try {
+      return payrollRunService.deletePayrollRun(db, id)
+    } catch (err) {
+      throw new Error(`Failed to delete payroll run ${id}: ${String(err)}`)
+    }
+  })
+
   ipcMain.handle('payroll:runs:items', async (_event, runId: number) => {
     try { return payrollRunService.getPayrollRunItems(db, runId) } catch (err) {
       throw new Error(`Failed to get payroll run items for run ${runId}: ${String(err)}`)

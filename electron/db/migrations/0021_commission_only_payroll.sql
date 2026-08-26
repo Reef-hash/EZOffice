@@ -1,4 +1,4 @@
--- Migration 0020: Commission-only employees + separate payroll pay-groups/pay-dates.
+-- Migration 0021: Commission-only employees + separate payroll pay-groups/pay-dates.
 --
 -- Background: some employees are paid purely from commission (e.g. RM12,690 trip
 -- total x 20% = RM2,538) with NO base salary, and are paid on a different day of
@@ -7,6 +7,9 @@
 -- must be calculated off an explicit contribution base (e.g. RM1,700) instead of
 -- the commission amount itself. See docs/COMMISSION_PAYROLL_PLAN.md.
 --
+-- Builds on top of migration 0020 (payroll_runs.payroll_period_id) — that migration
+-- claimed the "0020" number first, hence this one is 0021, not 0020.
+--
 -- 1. salary_structures.rate_type gains 'commission_only'. For this rate_type,
 --    rate_amount is repurposed (same overloading pattern as 0017's 'monthly') to
 --    hold the employee's RECURRING DEFAULT statutory contribution base — NOT a
@@ -14,9 +17,10 @@
 --    via payroll_run_commissions.statutory_base_override.
 --
 -- 2. payroll_runs gains pay_group ('attendance' | 'commission_only') and pay_date.
---    The uniqueness rule changes from one run per (year, month) to one run per
---    (year, month, pay_group), so an attendance run and a commission run can both
---    exist for the same payroll month without colliding.
+--    The uniqueness rule changes from 0020's UNIQUE(payroll_period_id) to
+--    UNIQUE(payroll_period_id, pay_group), so an attendance run and a commission
+--    run can both exist for the same Payroll Period without colliding, while
+--    still preventing duplicates within the same pay_group.
 --
 -- 3. payroll_run_commissions gains statutory_base_override (nullable) — a per-run
 --    override of the employee's recurring default base.
@@ -67,12 +71,15 @@ CREATE INDEX IF NOT EXISTS idx_salary_structures_employee_effective
   ON salary_structures(employee_id, effective_from DESC);
 
 -- ── payroll_runs: add pay_group + pay_date, widen uniqueness ────────────────
--- Table recreate required (UNIQUE constraint change). FKs from payroll_run_items
--- and payroll_run_commissions reference this table by name, unaffected by the
--- rename-back. pay_date backfills to the existing run_date for pre-existing rows.
+-- Table recreate required (UNIQUE constraint change). Builds on top of 0020's
+-- payroll_period_id column — carried forward explicitly below, not dropped.
+-- FKs from payroll_run_items and payroll_run_commissions reference this table by
+-- name, unaffected by the rename-back. pay_date backfills to the existing
+-- run_date for pre-existing rows.
 
 CREATE TABLE IF NOT EXISTS payroll_runs_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
+  payroll_period_id INTEGER REFERENCES payroll_periods(id) ON DELETE RESTRICT,
   year INTEGER NOT NULL CHECK(year >= 2000 AND year <= 2100),
   month INTEGER NOT NULL CHECK(month >= 1 AND month <= 12),
   status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'finalized')),
@@ -81,19 +88,21 @@ CREATE TABLE IF NOT EXISTS payroll_runs_new (
   pay_date TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-  UNIQUE(year, month, pay_group)
+  UNIQUE(payroll_period_id, pay_group)
 );
 
 INSERT INTO payroll_runs_new (
-  id, year, month, status, run_date, pay_group, pay_date, created_at, updated_at
+  id, payroll_period_id, year, month, status, run_date, pay_group, pay_date, created_at, updated_at
 )
 SELECT
-  id, year, month, status, run_date, 'attendance', run_date, created_at, updated_at
+  id, payroll_period_id, year, month, status, run_date, 'attendance', run_date, created_at, updated_at
 FROM payroll_runs;
 
 DROP TABLE payroll_runs;
 
 ALTER TABLE payroll_runs_new RENAME TO payroll_runs;
+
+CREATE INDEX IF NOT EXISTS idx_payroll_runs_period ON payroll_runs(payroll_period_id);
 
 -- ── payroll_run_commissions: per-run statutory base override ────────────────
 -- Plain ADD COLUMN is safe (no CHECK constraint change, nullable, no recreate needed).

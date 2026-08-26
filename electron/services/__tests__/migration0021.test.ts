@@ -1,10 +1,13 @@
-// Regression coverage for migration 0020 (commission-only payroll + separate
-// pay-schedule): both salary_structures and payroll_runs are RECREATED tables
-// (rate_type CHECK widened; UNIQUE(year, month) -> UNIQUE(year, month, pay_group)).
-// Table recreates in this codebase have twice previously broken upgrades for
-// installs with pre-existing rows (0.2.9 positional SELECT * bug, 0.2.10 FK-drop
-// failure) — this test seeds pre-existing rows referencing both tables the same
-// way a real customer DB would, then verifies migration 0020 preserves everything.
+// Regression coverage for migration 0021 (commission-only payroll + separate
+// pay-schedule), which builds on top of migration 0020 (payroll_runs linked to
+// payroll_periods — see the 2026-08-26 CLAUDE.md entries for both). Both
+// salary_structures and payroll_runs are RECREATED tables across 0020+0021
+// (rate_type CHECK widened; UNIQUE(payroll_period_id) -> UNIQUE(payroll_period_id,
+// pay_group)). Table recreates in this codebase have twice previously broken
+// upgrades for installs with pre-existing rows (0.2.9 positional SELECT * bug,
+// 0.2.10 FK-drop failure) — this test seeds pre-existing rows referencing both
+// tables the same way a real customer DB would, then verifies 0020+0021 together
+// preserve everything.
 import { describe, it, expect } from 'vitest'
 import Database from 'better-sqlite3'
 import path from 'node:path'
@@ -63,8 +66,8 @@ function seedPreExistingPayrollData(db: Database.Database): void {
   `).run()
 }
 
-describe('migration 0020 — commission-only payroll + pay-group recreate', () => {
-  it('preserves pre-existing salary_structures and payroll_runs rows', () => {
+describe('migration 0021 — commission-only payroll on top of 0020 payroll_period linking', () => {
+  it('preserves pre-existing salary_structures and payroll_runs rows through both migrations', () => {
     const db = new Database(':memory:')
     db.pragma('foreign_keys = ON')
     db.exec(`
@@ -78,7 +81,8 @@ describe('migration 0020 — commission-only payroll + pay-group recreate', () =
     seedPreExistingPayrollData(db)
 
     const applied = runMigrations(db, migrationsDir)
-    expect(applied).toContain('0020_commission_only_payroll.sql')
+    expect(applied).toContain('0020_link_payroll_run_to_period.sql')
+    expect(applied).toContain('0021_commission_only_payroll.sql')
 
     // salary_structures row preserved with correct values in the correct columns
     // (named-column copy — not a positional SELECT * that could shift values, per
@@ -88,11 +92,13 @@ describe('migration 0020 — commission-only payroll + pay-group recreate', () =
       .get() as { rate_type: string; rate_amount: number; pcb_category: string; pcb_children_count: number }
     expect(structure).toEqual({ rate_type: 'daily', rate_amount: 100, pcb_category: 'single', pcb_children_count: 0 })
 
-    // payroll_runs row preserved, backfilled with pay_group='attendance' and
-    // pay_date defaulted to the existing run_date.
+    // payroll_runs row preserved through both recreates: payroll_period_id stays
+    // NULL (no payroll_periods row exists to unambiguously backfill onto — 0020's
+    // own behavior), pay_group/pay_date backfilled by 0021.
     const run = db
-      .prepare('SELECT year, month, status, run_date, pay_group, pay_date FROM payroll_runs WHERE id = 1')
-      .get() as { year: number; month: number; status: string; run_date: string; pay_group: string; pay_date: string }
+      .prepare('SELECT payroll_period_id, year, month, status, run_date, pay_group, pay_date FROM payroll_runs WHERE id = 1')
+      .get() as { payroll_period_id: number | null; year: number; month: number; status: string; run_date: string; pay_group: string; pay_date: string }
+    expect(run.payroll_period_id).toBeNull()
     expect(run.pay_group).toBe('attendance')
     expect(run.pay_date).toBe(run.run_date)
     expect(run.status).toBe('finalized')
@@ -109,7 +115,7 @@ describe('migration 0020 — commission-only payroll + pay-group recreate', () =
     expect(commission.statutory_base_override).toBeNull()
   })
 
-  it('accepts commission_only rate_type and allows two runs for the same year/month with different pay_group', () => {
+  it('accepts commission_only rate_type and allows two runs for the same payroll period with different pay_group', () => {
     const db = new Database(':memory:')
     db.pragma('foreign_keys = ON')
     runMigrations(db, migrationsDir)
@@ -118,6 +124,10 @@ describe('migration 0020 — commission-only payroll + pay-group recreate', () =
     db.prepare(`
       INSERT INTO employees (id, employee_code, name, ic_number, department_id, status, date_joined)
       VALUES (1, 'EMP001', 'Alice', '900101-01-0001', 1, 'active', '2020-01-01')
+    `).run()
+    db.prepare(`
+      INSERT INTO payroll_periods (id, name, start_date, end_date, status)
+      VALUES (1, 'August 2026', '2026-07-26', '2026-08-25', 'finalized')
     `).run()
 
     expect(() =>
@@ -128,22 +138,23 @@ describe('migration 0020 — commission-only payroll + pay-group recreate', () =
     ).not.toThrow()
 
     db.prepare(`
-      INSERT INTO payroll_runs (year, month, status, run_date, pay_group, pay_date)
-      VALUES (2026, 8, 'draft', '2026-08-26', 'attendance', '2026-08-26')
+      INSERT INTO payroll_runs (payroll_period_id, year, month, status, run_date, pay_group, pay_date)
+      VALUES (1, 2026, 8, 'draft', '2026-08-26', 'attendance', '2026-08-26')
     `).run()
 
     expect(() =>
       db.prepare(`
-        INSERT INTO payroll_runs (year, month, status, run_date, pay_group, pay_date)
-        VALUES (2026, 8, 'draft', '2026-08-26', 'commission_only', '2026-09-01')
+        INSERT INTO payroll_runs (payroll_period_id, year, month, status, run_date, pay_group, pay_date)
+        VALUES (1, 2026, 8, 'draft', '2026-08-26', 'commission_only', '2026-09-01')
       `).run(),
     ).not.toThrow()
 
     expect(() =>
       db.prepare(`
-        INSERT INTO payroll_runs (year, month, status, run_date, pay_group, pay_date)
-        VALUES (2026, 8, 'draft', '2026-08-26', 'attendance', '2026-08-26')
+        INSERT INTO payroll_runs (payroll_period_id, year, month, status, run_date, pay_group, pay_date)
+        VALUES (1, 2026, 8, 'draft', '2026-08-26', 'attendance', '2026-08-26')
       `).run(),
     ).toThrow(/UNIQUE/)
   })
 })
+

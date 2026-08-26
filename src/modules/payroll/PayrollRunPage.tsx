@@ -8,6 +8,7 @@ import { Button } from '@/shared/components/Button'
 import { StatusBadge } from '@/shared/components/StatusBadge'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { Card } from '@/shared/components/Card'
+import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { useToast } from '@/shared/components/Toast'
 import type { Column } from '@/shared/components/Table'
@@ -45,6 +46,7 @@ const itemColumns: Column<PayrollRunItem>[] = [
 export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
   const { addToast } = useToast()
   const [calculating, setCalculating] = useState(false)
+  const [showConfirmDelete, setShowConfirmDelete] = useState(false)
 
   const { data: run, isLoading: runLoading } = useIpcQuery<PayrollRun | null>(
     ['payroll', 'runs', String(runId)],
@@ -72,6 +74,22 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
     [['payroll', 'runs'], ['payroll', 'runs', String(runId)]],
     { onSuccessMessage: 'Payroll run finalized successfully' },
   )
+
+  const deleteMutation = useIpcMutation<void, number>(
+    (id) => window.api.payroll.runs.delete(id),
+    [['payroll', 'runs']],
+    { onSuccessMessage: 'Payroll run deleted' },
+  )
+
+  const handleDelete = useCallback(async () => {
+    try {
+      await deleteMutation.mutateAsync(runId)
+      setShowConfirmDelete(false)
+      onBack()
+    } catch {
+      // error handled via mutation state
+    }
+  }, [deleteMutation, runId, onBack])
 
   const handleCalculate = useCallback(async () => {
     setCalculating(true)
@@ -101,8 +119,11 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
   }, [runId, addToast])
 
   const isDraft = run?.status === 'draft'
+  const isLegacyRun = run != null && run.payroll_period_id == null
   const periodLabel = run
-    ? `${run.year}-${String(run.month).padStart(2, '0')}`
+    ? run.period_name
+      ? `${run.period_name} (${run.period_start_date} – ${run.period_end_date})`
+      : `${run.year}-${String(run.month).padStart(2, '0')}`
     : ''
 
   // Summary totals
@@ -147,6 +168,37 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
           <Button variant="ghost" onClick={onBack}>← Back to Runs</Button>
         }
       />
+
+      {/* Legacy run warning — created before payroll runs were linked to a Payroll
+          Period (migration 0020); its hours may not reflect the real period range. */}
+      {isLegacyRun && (
+        <div className="rounded-md border border-error-600 bg-error-50 px-4 py-3 text-sm text-error-700">
+          <strong>This run predates Payroll Periods linking.</strong> Its hours were computed from a
+          plain calendar month, not the real payroll period date range, and could be wrong if the
+          period spans two months. {isDraft
+            ? 'Delete this draft and create a new one against the correct Payroll Period.'
+            : 'This run is finalized and cannot be recalculated — review its totals manually.'}
+          {isDraft && (
+            <div className="mt-2">
+              <Button variant="ghost" onClick={() => setShowConfirmDelete(true)}>
+                Delete This Draft Run
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {showConfirmDelete && (
+        <ConfirmDialog
+          isOpen
+          title="Delete Payroll Run"
+          message="This will permanently delete this draft payroll run and its calculated items. This cannot be undone. Continue?"
+          confirmLabel="Delete"
+          tone="danger"
+          onConfirm={handleDelete}
+          onCancel={() => setShowConfirmDelete(false)}
+        />
+      )}
 
       {/* Empty rate table warning — shown for draft runs only; finalization will be blocked anyway */}
       {isDraft && rateTableCheck && rateTableCheck.missing.length > 0 && (
