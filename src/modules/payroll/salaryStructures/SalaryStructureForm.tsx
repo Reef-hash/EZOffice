@@ -28,7 +28,7 @@ export function SalaryStructureForm({
 
   const [employeeId, setEmployeeId] = useState('')
   const [effectiveFrom, setEffectiveFrom] = useState('')
-  const [rateType, setRateType] = useState<'daily' | 'hourly' | 'monthly'>('daily')
+  const [rateType, setRateType] = useState<'daily' | 'hourly' | 'monthly' | 'commission_only'>('daily')
   const [rateAmount, setRateAmount] = useState('')
   const [standardHoursPerDay, setStandardHoursPerDay] = useState('8')
   const [subjectToEpf, setSubjectToEpf] = useState(true)
@@ -69,8 +69,11 @@ export function SalaryStructureForm({
   function validate(): boolean {
     if (!employeeId) { setValidationError('Employee is required'); return false }
     if (!effectiveFrom) { setValidationError('Effective date is required'); return false }
-    if (!rateAmount || Number(rateAmount) <= 0) { setValidationError('Rate must be a positive number'); return false }
-    if (rateType !== 'monthly' && (!standardHoursPerDay || Number(standardHoursPerDay) <= 0)) { setValidationError('Standard hours must be a positive number'); return false }
+    if (!rateAmount || Number(rateAmount) <= 0) {
+      setValidationError(rateType === 'commission_only' ? 'Statutory contribution base must be a positive number' : 'Rate must be a positive number')
+      return false
+    }
+    if (rateType !== 'monthly' && rateType !== 'commission_only' && (!standardHoursPerDay || Number(standardHoursPerDay) <= 0)) { setValidationError('Standard hours must be a positive number'); return false }
     return true
   }
 
@@ -145,21 +148,27 @@ export function SalaryStructureForm({
             label="Rate Type"
             required
             value={rateType}
-            onChange={(e) => setRateType(e.target.value as 'daily' | 'hourly' | 'monthly')}
+            onChange={(e) => setRateType(e.target.value as 'daily' | 'hourly' | 'monthly' | 'commission_only')}
             options={RATE_TYPE_OPTIONS}
           />
           <Input
-            label={rateType === 'monthly' ? 'Monthly Salary (RM)' : rateType === 'daily' ? 'Daily Rate (RM)' : 'Hourly Rate (RM)'}
+            label={
+              rateType === 'monthly' ? 'Monthly Salary (RM)'
+                : rateType === 'daily' ? 'Daily Rate (RM)'
+                  : rateType === 'commission_only' ? 'Default EPF/SOCSO/EIS Base (RM)'
+                    : 'Hourly Rate (RM)'
+            }
             type="number"
             step="0.01"
             required
             value={rateAmount}
             onChange={(e) => setRateAmount(e.target.value)}
             placeholder="0.00"
+            helperText={rateType === 'commission_only' ? 'Not a salary — this employee has no base pay. Recurring default contribution base used for EPF/SOCSO/EIS, overridable per payroll run.' : undefined}
           />
         </div>
 
-        {rateType !== 'monthly' && (
+        {rateType !== 'monthly' && rateType !== 'commission_only' && (
         <Input
           label="Standard Hours Per Day"
           type="number"

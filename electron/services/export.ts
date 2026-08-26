@@ -81,6 +81,7 @@ export async function exportPayrollToExcel(
       i.gross_ot_pay,
       i.commission,
       i.gross_pay,
+      i.statutory_base,
       i.epf_employee,
       i.socso_employee,
       i.eis_employee,
@@ -98,6 +99,7 @@ export async function exportPayrollToExcel(
     gross_ot_pay: number
     commission: number
     gross_pay: number
+    statutory_base: number
     epf_employee: number
     socso_employee: number
     eis_employee: number
@@ -133,6 +135,7 @@ export async function exportPayrollToExcel(
     { header: 'OT Pay', key: 'gross_ot_pay', width: 12 },
     { header: 'Commission', key: 'commission', width: 12 },
     { header: 'Gross', key: 'gross_pay', width: 12 },
+    { header: 'EPF/SOCSO/EIS Base', key: 'statutory_base', width: 16 },
     { header: 'EPF', key: 'epf_employee', width: 10 },
     { header: 'SOCSO', key: 'socso_employee', width: 10 },
     { header: 'EIS', key: 'eis_employee', width: 10 },
@@ -152,7 +155,7 @@ export async function exportPayrollToExcel(
   })
 
   // Format currency columns
-  const currencyColumns = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  const currencyColumns = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
   worksheet.eachRow((row) => {
     currencyColumns.forEach((col) => {
       const cell = row.getCell(col)

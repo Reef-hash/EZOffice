@@ -25,14 +25,18 @@ export function listCommissionsForRun(db: Database.Database, runId: number): Pay
 }
 
 /**
- * Returns employee_id → commission amount for a run, for use by the calculation
- * engine. Employees with no entry are simply absent from the map (treat as 0).
+ * Returns employee_id → { amount, statutoryBaseOverride } for a run, for use by
+ * the calculation engine. Employees with no entry are absent from the map
+ * (treat as commission 0, no override).
  */
-export function getCommissionMapForRun(db: Database.Database, runId: number): Map<number, number> {
+export function getCommissionMapForRun(
+  db: Database.Database,
+  runId: number,
+): Map<number, { amount: number; statutoryBaseOverride: number | null }> {
   const rows = db.prepare(
-    'SELECT employee_id, amount FROM payroll_run_commissions WHERE payroll_run_id = ?',
-  ).all(runId) as Array<{ employee_id: number; amount: number }>
-  return new Map(rows.map((r) => [r.employee_id, r.amount]))
+    'SELECT employee_id, amount, statutory_base_override FROM payroll_run_commissions WHERE payroll_run_id = ?',
+  ).all(runId) as Array<{ employee_id: number; amount: number; statutory_base_override: number | null }>
+  return new Map(rows.map((r) => [r.employee_id, { amount: r.amount, statutoryBaseOverride: r.statutory_base_override }]))
 }
 
 /**
@@ -49,17 +53,19 @@ export function upsertCommission(
 
   const now = new Date().toISOString()
   db.prepare(`
-    INSERT INTO payroll_run_commissions (payroll_run_id, employee_id, amount, note, created_at, updated_at)
-    VALUES (@payroll_run_id, @employee_id, @amount, @note, @created_at, @updated_at)
+    INSERT INTO payroll_run_commissions (payroll_run_id, employee_id, amount, note, statutory_base_override, created_at, updated_at)
+    VALUES (@payroll_run_id, @employee_id, @amount, @note, @statutory_base_override, @created_at, @updated_at)
     ON CONFLICT(payroll_run_id, employee_id) DO UPDATE SET
       amount = excluded.amount,
       note = excluded.note,
+      statutory_base_override = excluded.statutory_base_override,
       updated_at = excluded.updated_at
   `).run({
     payroll_run_id: runId,
     employee_id: input.employee_id,
     amount: input.amount,
     note: input.note ?? null,
+    statutory_base_override: input.statutory_base_override ?? null,
     created_at: now,
     updated_at: now,
   })

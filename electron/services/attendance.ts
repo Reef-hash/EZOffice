@@ -360,10 +360,11 @@ export function listAttendanceLogs(
 }
 
 /**
- * Returns active employees whose current salary structure is NOT monthly —
- * i.e., employees who are expected to clock in/out (attendance-tracked).
- * Used by the Quick Clock panel to filter out monthly-salaried employees
- * who do not need attendance.
+ * Returns active employees whose current salary structure is NOT monthly or
+ * commission_only — i.e., employees who are expected to clock in/out
+ * (attendance-tracked). Used by the Quick Clock panel to filter out
+ * monthly-salaried and commission-only employees who do not need attendance
+ * (docs/COMMISSION_PAYROLL_PLAN.md).
  */
 export function listAttendanceEligibleEmployees(
   db: Database.Database,
@@ -379,7 +380,7 @@ export function listAttendanceEligibleEmployees(
           WHERE ss2.employee_id = e.id
           ORDER BY ss2.effective_from DESC
           LIMIT 1
-        ) != 'monthly'
+        ) NOT IN ('monthly', 'commission_only')
       )
     ORDER BY e.name ASC
   `).all() as Array<{ id: number; name: string; employee_code: string }>

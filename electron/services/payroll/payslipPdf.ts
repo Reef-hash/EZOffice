@@ -38,6 +38,7 @@ interface PayslipData {
   gross_ot_pay: number
   commission: number
   gross_pay: number
+  statutory_base: number
   epf_employee: number
   epf_employer: number
   socso_employee: number
@@ -65,7 +66,7 @@ function getRunItemWithEmployeeDetails(
       r.month,
       r.run_date,
       i.total_regular_hours, i.total_ot_hours,
-      i.gross_regular_pay, i.gross_ot_pay, i.commission, i.gross_pay,
+      i.gross_regular_pay, i.gross_ot_pay, i.commission, i.gross_pay, i.statutory_base,
       i.epf_employee, i.epf_employer,
       i.socso_employee, i.socso_employer,
       i.eis_employee, i.eis_employer,
@@ -222,6 +223,9 @@ export async function generatePayslipPdf(
 
       // ── Deductions ──
       { text: 'Deductions', style: 'sectionHeader' },
+      ...(item.statutory_base !== item.gross_pay
+        ? [{ text: `EPF/SOCSO/EIS calculated on RM ${item.statutory_base.toFixed(2)}`, style: 'disclaimer', margin: [0, 0, 0, 4] as [number, number, number, number] }]
+        : []),
       {
         table: {
           headerRows: 1,

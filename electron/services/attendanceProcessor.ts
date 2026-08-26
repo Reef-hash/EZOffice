@@ -40,11 +40,13 @@ export function triggerProcessing(
   try {
     // Determine which employees to process
     // Exclude employees whose most recent salary structure has rate_type = 'monthly'
-    // (monthly employees don't track attendance — their pay is fixed)
+    // or 'commission_only' (neither tracks attendance — 'monthly' pay is fixed,
+    // 'commission_only' pay comes entirely from ad-hoc per-run commission — see
+    // docs/COMMISSION_PAYROLL_PLAN.md).
     let employees: Array<{ id: number }>
     if (employeeIds && employeeIds.length > 0) {
-      // Filter out monthly employees from the explicit list
-      const monthlyIds = db.prepare(`
+      // Filter out monthly/commission-only employees from the explicit list
+      const excludedIds = db.prepare(`
         SELECT ss.employee_id FROM salary_structures ss
         INNER JOIN (
           SELECT employee_id, MAX(effective_from) AS max_ef
@@ -52,10 +54,10 @@ export function triggerProcessing(
           WHERE effective_from <= ?
           GROUP BY employee_id
         ) latest ON latest.employee_id = ss.employee_id AND latest.max_ef = ss.effective_from
-        WHERE ss.rate_type = 'monthly'
+        WHERE ss.rate_type IN ('monthly', 'commission_only')
       `).all(period.end_date) as Array<{ employee_id: number }>
-      const monthlyIdSet = new Set(monthlyIds.map((m) => m.employee_id))
-      employees = employeeIds.filter((id) => !monthlyIdSet.has(id)).map((id) => ({ id }))
+      const excludedIdSet = new Set(excludedIds.map((m) => m.employee_id))
+      employees = employeeIds.filter((id) => !excludedIdSet.has(id)).map((id) => ({ id }))
     } else {
       employees = db.prepare(`
         SELECT e.id FROM employees e
@@ -64,13 +66,13 @@ export function triggerProcessing(
             -- Employee has no salary structure at all → include (not yet configured)
             NOT EXISTS (SELECT 1 FROM salary_structures ss WHERE ss.employee_id = e.id AND ss.effective_from <= ?)
             OR
-            -- Employee's most recent salary structure as of period end is NOT monthly
+            -- Employee's most recent salary structure as of period end is NOT monthly/commission_only
             (
               SELECT ss2.rate_type FROM salary_structures ss2
               WHERE ss2.employee_id = e.id AND ss2.effective_from <= ?
               ORDER BY ss2.effective_from DESC
               LIMIT 1
-            ) != 'monthly'
+            ) NOT IN ('monthly', 'commission_only')
           )
       `).all(period.end_date, period.end_date) as Array<{ id: number }>
     }

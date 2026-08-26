@@ -134,7 +134,7 @@ export type UpdateAttendanceLogInput = z.infer<typeof updateAttendanceLogSchema>
 export const createSalaryStructureSchema = z.object({
   employee_id: z.number().int().positive('Employee is required'),
   effective_from: z.string().min(1, 'Effective date is required'),
-  rate_type: z.enum(['daily', 'hourly', 'monthly']),
+  rate_type: z.enum(['daily', 'hourly', 'monthly', 'commission_only']),
   rate_amount: z.number().positive('Rate must be positive'),
   standard_hours_per_day: z.number().positive('Hours must be positive').default(8),
   subject_to_epf: z.number().int().min(0).max(1).default(1),
@@ -249,6 +249,8 @@ export type UpdateSalaryAdvanceInput = z.infer<typeof updateSalaryAdvanceSchema>
 export const createPayrollRunSchema = z.object({
   year: z.number().int().min(2000).max(2100),
   month: z.number().int().min(1).max(12),
+  pay_group: z.enum(['attendance', 'commission_only']).default('attendance'),
+  pay_date: z.string().min(1, 'Pay date is required'),
 })
 
 export type CreatePayrollRunInput = z.infer<typeof createPayrollRunSchema>
@@ -259,6 +261,10 @@ export const upsertPayrollRunCommissionSchema = z.object({
   employee_id: z.number().int().positive('Employee is required'),
   amount: z.number().min(0, 'Amount must be non-negative'),
   note: z.string().trim().min(1).nullable().optional(),
+  // Overrides the employee's recurring default EPF/SOCSO/EIS contribution base
+  // for this run only. Null/omitted = use the employee's recurring default
+  // (salary_structures.rate_amount for commission_only employees).
+  statutory_base_override: z.number().min(0, 'Statutory base must be non-negative').nullable().optional(),
 })
 
 export type UpsertPayrollRunCommissionInput = z.infer<typeof upsertPayrollRunCommissionSchema>

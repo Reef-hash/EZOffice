@@ -57,6 +57,15 @@ export interface CalculationInput {
   commission?: number
   /** Number of working days in the month (for daily rate → monthly conversion) */
   workingDaysInMonth?: number
+  /**
+   * Explicit override for the EPF/SOCSO/EIS calculation base. Used for
+   * commission-only employees, where EPF/SOCSO/EIS must be calculated off a
+   * fixed contribution base (e.g. RM1,700) rather than the commission itself
+   * (e.g. RM2,538) — see docs/COMMISSION_PAYROLL_PLAN.md. When omitted, falls
+   * back to the actual gross pay, which is the pre-existing behavior for
+   * every other rate type and must not change.
+   */
+  statutoryBase?: number
 }
 
 /**
@@ -72,6 +81,13 @@ export function calculatePay(input: CalculationInput): PayCheckResult {
   if (structure.rate_type === 'monthly') {
     const grossRegularPay = Math.round(structure.rate_amount * 100) / 100
     return buildResult(summary.employee_id, 0, 0, grossRegularPay, 0, commission, input)
+  }
+
+  // ── Commission-only branch ──
+  // No base salary at all — gross pay is the commission itself. Attendance/hours
+  // are irrelevant (these employees are excluded from attendance processing).
+  if (structure.rate_type === 'commission_only') {
+    return buildResult(summary.employee_id, 0, 0, 0, 0, commission, input)
   }
 
   // ── 1. Compute hourly rate ──
@@ -120,6 +136,11 @@ function buildResult(
   const { structure, advanceDeduction } = input
   const grossPay = Math.round((grossRegularPay + grossOtPay + commission) * 100) / 100
 
+  // EPF/SOCSO/EIS calculation base: an explicit override (commission-only
+  // employees) falls back to the full gross pay — the pre-existing behavior
+  // for every other rate type, unchanged.
+  const statutoryBase = Math.round((input.statutoryBase ?? grossPay) * 100) / 100
+
   // Statutory deductions (only if subject + rate available)
   const statutory: StatutoryBreakdown = {
     epf_employee: 0,
@@ -132,8 +153,8 @@ function buildResult(
   }
 
   if (structure.subject_to_epf && input.epfRate) {
-    statutory.epf_employee = Math.round(grossPay * input.epfRate.employee_contribution_pct) / 100
-    statutory.epf_employer = Math.round(grossPay * input.epfRate.employer_contribution_pct) / 100
+    statutory.epf_employee = Math.round(statutoryBase * input.epfRate.employee_contribution_pct) / 100
+    statutory.epf_employer = Math.round(statutoryBase * input.epfRate.employer_contribution_pct) / 100
   }
 
   if (structure.subject_to_socso && input.socsoRate) {
@@ -163,6 +184,7 @@ function buildResult(
     gross_ot_pay: Math.round(grossOtPay * 100) / 100,
     commission: Math.round(commission * 100) / 100,
     gross_pay: Math.round(grossPay * 100) / 100,
+    statutory_base: statutoryBase,
     statutory,
     advance_deduction: advanceDeduction,
     net_pay: netPay,

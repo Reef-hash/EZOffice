@@ -225,6 +225,10 @@ export const SALARY_RATE_TYPE = {
   DAILY: 'daily',
   HOURLY: 'hourly',
   MONTHLY: 'monthly',
+  // No base salary — gross pay comes entirely from ad-hoc per-run commission
+  // (payroll_run_commissions). rate_amount is repurposed to hold the employee's
+  // RECURRING DEFAULT statutory (EPF/SOCSO/EIS) contribution base, not a wage.
+  COMMISSION_ONLY: 'commission_only',
 } as const
 
 export type SalaryRateType = (typeof SALARY_RATE_TYPE)[keyof typeof SALARY_RATE_TYPE]
@@ -242,6 +246,17 @@ export const PAYROLL_RUN_STATUS = {
 } as const
 
 export type PayrollRunStatus = (typeof PAYROLL_RUN_STATUS)[keyof typeof PAYROLL_RUN_STATUS]
+
+// A payroll run belongs to exactly one pay group. This is what lets an
+// attendance-based run (e.g. paid the 26th) and a commission-only run (e.g.
+// paid the 1st) both exist for the same year/month without colliding — see
+// docs/COMMISSION_PAYROLL_PLAN.md.
+export const PAYROLL_RUN_PAY_GROUP = {
+  ATTENDANCE: 'attendance',
+  COMMISSION_ONLY: 'commission_only',
+} as const
+
+export type PayrollRunPayGroup = (typeof PAYROLL_RUN_PAY_GROUP)[keyof typeof PAYROLL_RUN_PAY_GROUP]
 
 export const ADVANCE_STATUS = {
   ACTIVE: 'active',
@@ -272,6 +287,11 @@ export interface SalaryStructure {
   employee_name?: string // populated via JOIN
   effective_from: string
   rate_type: SalaryRateType
+  /**
+   * For 'daily'/'hourly'/'monthly': the wage rate/salary as usual.
+   * For 'commission_only': NOT a wage — the employee's recurring default
+   * EPF/SOCSO/EIS contribution base (e.g. RM1,700), overridable per payroll run.
+   */
   rate_amount: number
   standard_hours_per_day: number
   subject_to_epf: number // 0 or 1 (SQLite)
@@ -378,6 +398,8 @@ export interface PayrollRun {
   month: number
   status: PayrollRunStatus
   run_date: string
+  pay_group: PayrollRunPayGroup
+  pay_date: string
   created_at: string
   updated_at: string
 }
@@ -400,6 +422,10 @@ export interface PayrollRunItem {
   gross_ot_pay: number
   commission: number // ad-hoc per-run commission, snapshotted at calculation time
   gross_pay: number
+  // Actual wage base used for EPF/SOCSO/EIS on this snapshot. Equals gross_pay
+  // unless a statutory base override applied (commission-only employees) — see
+  // docs/COMMISSION_PAYROLL_PLAN.md. Informational/audit only.
+  statutory_base: number
   epf_employee: number
   epf_employer: number
   socso_employee: number
@@ -421,6 +447,10 @@ export interface PayrollRunCommission {
   employee_name?: string // populated via JOIN
   amount: number
   note: string | null
+  // Per-run override of the employee's recurring default statutory base
+  // (salary_structures.rate_amount for commission_only employees). Null means
+  // "use the employee's recurring default". Ignored for non-commission_only employees.
+  statutory_base_override: number | null
   created_at: string
   updated_at: string
 }
@@ -450,6 +480,9 @@ export interface PayCheckResult {
   gross_ot_pay: number
   commission: number
   gross_pay: number
+
+  // Actual wage base used for EPF/SOCSO/EIS (see PayrollRunItem.statutory_base)
+  statutory_base: number
 
   // Statutory
   statutory: StatutoryBreakdown

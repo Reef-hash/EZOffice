@@ -8,7 +8,7 @@ import { Card } from '@/shared/components/Card'
 import { StatusBadge } from '@/shared/components/StatusBadge'
 import { PageHeader } from '@/shared/components/PageHeader'
 import { Modal } from '@/shared/components/Modal'
-import { Select } from '@/shared/components/Input'
+import { Select, Input } from '@/shared/components/Input'
 import { cn } from '@/shared/lib/cn'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { useKeyboardShortcut } from '@/shared/hooks/useKeyboardShortcut'
@@ -21,7 +21,7 @@ import { PayrollPeriodListPage } from './payrollPeriods/PayrollPeriodListPage'
 import type { Column } from '@/shared/components/Table'
 import type { PayrollRun } from '@/shared/types/entities'
 import type { CreatePayrollRunInput } from '@/shared/types/inputs'
-import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE } from './constants'
+import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE, PAYROLL_RUN_PAY_GROUP_LABEL, PAYROLL_RUN_PAY_GROUP_OPTIONS } from './constants'
 
 type PayrollTab = 'runs' | 'salaryStructures' | 'settings' | 'rateTables' | 'advances' | 'periods'
 
@@ -41,6 +41,20 @@ const runColumns: Column<PayrollRun>[] = [
     accessor: (r) => `${r.year}-${String(r.month).padStart(2, '0')}`,
     sortable: true,
     sortValue: (r) => `${r.year}-${String(r.month).padStart(2, '0')}`,
+  },
+  {
+    key: 'pay_group',
+    header: 'Pay Group',
+    accessor: (r) => PAYROLL_RUN_PAY_GROUP_LABEL[r.pay_group] ?? r.pay_group,
+    sortable: true,
+    sortValue: (r) => r.pay_group,
+  },
+  {
+    key: 'pay_date',
+    header: 'Pay Date',
+    accessor: (r) => r.pay_date ? new Date(r.pay_date).toLocaleDateString() : '—',
+    sortable: true,
+    sortValue: (r) => r.pay_date,
   },
   {
     key: 'status',
@@ -86,6 +100,8 @@ export function PayrollListPage() {
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null)
   const [newYear, setNewYear] = useState(String(currentYear))
   const [newMonth, setNewMonth] = useState(String(currentMonth))
+  const [newPayGroup, setNewPayGroup] = useState<'attendance' | 'commission_only'>('attendance')
+  const [newPayDate, setNewPayDate] = useState('')
 
   const handleKeyboardN = useCallback(() => {
     if (activeTab === 'runs') {
@@ -118,13 +134,15 @@ export function PayrollListPage() {
       const result = await createRunMutation.mutateAsync({
         year: Number(newYear),
         month: Number(newMonth),
+        pay_group: newPayGroup,
+        pay_date: newPayDate,
       })
       setShowCreateRun(false)
       setSelectedRunId(result.id)
     } catch {
       // error handled via mutation state
     }
-  }, [createRunMutation, newYear, newMonth])
+  }, [createRunMutation, newYear, newMonth, newPayGroup, newPayDate])
 
   if (selectedRunId) {
     return (
@@ -218,6 +236,21 @@ export function PayrollListPage() {
                   onChange={(e) => setNewMonth(e.target.value)}
                 />
               </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Select
+                  label="Pay Group"
+                  options={PAYROLL_RUN_PAY_GROUP_OPTIONS}
+                  value={newPayGroup}
+                  onChange={(e) => setNewPayGroup(e.target.value as 'attendance' | 'commission_only')}
+                  helperText="Commission-only employees are always excluded from an Attendance run, and vice versa."
+                />
+                <Input
+                  label="Pay Date"
+                  type="date"
+                  value={newPayDate}
+                  onChange={(e) => setNewPayDate(e.target.value)}
+                />
+              </div>
               {createRunMutation.error && (
                 <p className="text-sm text-error-700">{createRunMutation.error.message}</p>
               )}
@@ -229,6 +262,7 @@ export function PayrollListPage() {
                   variant="primary"
                   onClick={handleCreateRun}
                   isLoading={createRunMutation.isPending}
+                  disabled={!newPayDate}
                 >
                   Create Run
                 </Button>

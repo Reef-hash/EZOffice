@@ -7,6 +7,7 @@ export const RATE_TYPE_LABEL: Record<string, string> = {
   daily: 'Daily Rate',
   hourly: 'Hourly Rate',
   monthly: 'Monthly Salary',
+  commission_only: 'Commission Only',
 }
 
 export const OT_RULE_TYPE_LABEL: Record<string, string> = {
@@ -51,6 +52,17 @@ export const RATE_TYPE_OPTIONS = [
   { value: 'daily', label: 'Daily Rate' },
   { value: 'hourly', label: 'Hourly Rate' },
   { value: 'monthly', label: 'Monthly Salary' },
+  { value: 'commission_only', label: 'Commission Only (no base salary)' },
+]
+
+export const PAYROLL_RUN_PAY_GROUP_LABEL: Record<string, string> = {
+  attendance: 'Attendance',
+  commission_only: 'Commission Only',
+}
+
+export const PAYROLL_RUN_PAY_GROUP_OPTIONS = [
+  { value: 'attendance', label: 'Attendance' },
+  { value: 'commission_only', label: 'Commission Only' },
 ]
 
 export const OT_RULE_TYPE_OPTIONS = [

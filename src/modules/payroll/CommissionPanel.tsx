@@ -46,6 +46,7 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
   const [employeeId, setEmployeeId] = useState('')
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
+  const [statutoryBaseOverride, setStatutoryBaseOverride] = useState('')
   const [pendingDelete, setPendingDelete] = useState<PayrollRunCommission | null>(null)
 
   const upsertMutation = useIpcMutation<PayrollRunCommission, UpsertPayrollRunCommissionInput>(
@@ -66,10 +67,12 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
       employee_id: Number(employeeId),
       amount: Number(amount),
       note: note.trim() ? note.trim() : null,
+      statutory_base_override: statutoryBaseOverride.trim() ? Number(statutoryBaseOverride) : null,
     })
     setEmployeeId('')
     setAmount('')
     setNote('')
+    setStatutoryBaseOverride('')
   }
 
   async function handleConfirmDelete() {
@@ -83,7 +86,9 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
       <h3 className="mb-1 text-sm font-semibold text-neutral-800 dark:text-white">Commission (this run only)</h3>
       <p className="mb-4 text-xs text-neutral-500">
         One-off sales commission for selected employees, this payroll period only — included in the
-        EPF/SOCSO/EIS/PCB base same as basic wages. {disabled
+        EPF/SOCSO/EIS/PCB base same as basic wages, unless a Statutory Base Override is set below
+        (used for commission-only employees, e.g. RM12,690 trip × 20% = RM2,538 commission with
+        EPF/SOCSO/EIS calculated off RM1,700 instead). {disabled
           ? 'This run is finalized — commission entries are locked.'
           : 'Add entries below, then click Calculate/Recalculate to apply them.'}
       </p>
@@ -100,6 +105,11 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
                   {c.employee_name || `ID ${c.employee_id}`}
                 </span>
                 {c.note && <span className="ml-2 text-xs text-neutral-500">{c.note}</span>}
+                {c.statutory_base_override != null && (
+                  <span className="ml-2 text-xs text-neutral-500">
+                    (EPF/SOCSO/EIS base: {formatCurrency(c.statutory_base_override)})
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-3">
                 <span className="tabular-nums">{formatCurrency(c.amount)}</span>
@@ -115,7 +125,7 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
       )}
 
       {!disabled && (
-        <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[2fr_1fr_2fr_auto]">
+        <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_2fr_auto]">
           <Select
             label="Employee"
             value={employeeId}
@@ -130,6 +140,16 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
             min="0"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
+          />
+          <Input
+            label="EPF/SOCSO/EIS Base (RM)"
+            type="number"
+            step="0.01"
+            min="0"
+            value={statutoryBaseOverride}
+            onChange={(e) => setStatutoryBaseOverride(e.target.value)}
+            placeholder="Optional"
+            helperText="Only for commission-only employees. Leave blank to use the employee's recurring default."
           />
           <Input label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
           <Button onClick={handleAdd} isLoading={upsertMutation.isPending}>

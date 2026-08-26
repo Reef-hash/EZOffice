@@ -12,7 +12,7 @@ import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { useToast } from '@/shared/components/Toast'
 import type { Column } from '@/shared/components/Table'
 import type { PayrollRun, PayrollRunItem } from '@/shared/types/entities'
-import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE } from './constants'
+import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE, PAYROLL_RUN_PAY_GROUP_LABEL } from './constants'
 import { CommissionPanel } from './CommissionPanel'
 
 interface PayrollRunPageProps {
@@ -30,6 +30,14 @@ const itemColumns: Column<PayrollRunItem>[] = [
   { key: 'ot_hours', header: 'OT Hrs', accessor: (r) => r.total_ot_hours.toFixed(1), sortable: true, sortValue: (r) => r.total_ot_hours, align: 'right', width: '80px' },
   { key: 'commission', header: 'Commission', accessor: (r) => r.commission > 0 ? formatCurrency(r.commission) : '—', sortable: true, sortValue: (r) => r.commission, align: 'right' },
   { key: 'gross_pay', header: 'Gross Pay', accessor: (r) => formatCurrency(r.gross_pay), sortable: true, sortValue: (r) => r.gross_pay, align: 'right' },
+  {
+    key: 'statutory_base',
+    header: 'EPF/SOCSO/EIS Base',
+    accessor: (r) => r.statutory_base !== r.gross_pay ? formatCurrency(r.statutory_base) : '—',
+    sortable: true,
+    sortValue: (r) => r.statutory_base,
+    align: 'right',
+  },
   { key: 'net_pay', header: 'Net Pay', accessor: (r) => formatCurrency(r.net_pay), sortable: true, sortValue: (r) => r.net_pay, align: 'right' },
   { key: 'advance', header: 'Adv Ded', accessor: (r) => r.advance_deduction > 0 ? formatCurrency(r.advance_deduction) : '—', sortable: true, sortValue: (r) => r.advance_deduction, align: 'right' },
 ]
@@ -125,9 +133,15 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
       <PageHeader
         title={`Payroll Run: ${periodLabel}`}
         subtitle={
-          <StatusBadge tone={PAYROLL_RUN_STATUS_TONE[run.status]}>
-            {PAYROLL_RUN_STATUS_LABEL[run.status]}
-          </StatusBadge>
+          <span className="flex items-center gap-2">
+            <StatusBadge tone={PAYROLL_RUN_STATUS_TONE[run.status]}>
+              {PAYROLL_RUN_STATUS_LABEL[run.status]}
+            </StatusBadge>
+            <span className="text-xs text-neutral-500">
+              {PAYROLL_RUN_PAY_GROUP_LABEL[run.pay_group] ?? run.pay_group}
+              {run.pay_date && ` · Pay date: ${new Date(run.pay_date).toLocaleDateString()}`}
+            </span>
+          </span>
         }
         actions={
           <Button variant="ghost" onClick={onBack}>← Back to Runs</Button>

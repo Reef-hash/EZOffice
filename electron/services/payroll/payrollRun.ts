@@ -99,8 +99,9 @@ export function getPayrollRunItems(db: Database.Database, runId: number): Payrol
 }
 
 /**
- * Create a draft payroll run for a given year/month.
- * UNIQUE(year, month) constraint prevents duplicate runs.
+ * Create a draft payroll run for a given year/month/pay_group.
+ * UNIQUE(year, month, pay_group) allows an attendance run and a commission-only
+ * run to coexist for the same payroll month (docs/COMMISSION_PAYROLL_PLAN.md).
  */
 export function createPayrollRun(
   db: Database.Database,
@@ -111,12 +112,14 @@ export function createPayrollRun(
 
   try {
     const result = db.prepare(`
-      INSERT INTO payroll_runs (year, month, status, run_date, created_at, updated_at)
-      VALUES (@year, @month, 'draft', @run_date, @created_at, @updated_at)
+      INSERT INTO payroll_runs (year, month, status, run_date, pay_group, pay_date, created_at, updated_at)
+      VALUES (@year, @month, 'draft', @run_date, @pay_group, @pay_date, @created_at, @updated_at)
     `).run({
       year: input.year,
       month: input.month,
       run_date: runDate,
+      pay_group: input.pay_group,
+      pay_date: input.pay_date,
       created_at: now,
       updated_at: now,
     })
@@ -125,7 +128,9 @@ export function createPayrollRun(
   } catch (err) {
     const msg = (err as Error).message
     if (msg.includes('UNIQUE') || msg.includes('UNIQUE constraint')) {
-      throw new Error(`A payroll run for ${input.year}-${String(input.month).padStart(2, '0')} already exists`)
+      throw new Error(
+        `A ${input.pay_group} payroll run for ${input.year}-${String(input.month).padStart(2, '0')} already exists`,
+      )
     }
     throw err
   }
@@ -222,6 +227,15 @@ export function calculatePayrollRun(
       const structure = getCurrentSalaryStructure(db, employeeId, asOfDate)
       if (!structure) continue // no active structure → skip
 
+      // Pay-group filter: an employee's CURRENT structure determines which run
+      // they belong to. A commission-only run must never include an attendance
+      // employee and vice versa (docs/COMMISSION_PAYROLL_PLAN.md) — checked here
+      // (not at the SQL gathering step above) so it always reflects the employee's
+      // actual current structure, the same one used for the calculation below.
+      const employeeIsCommissionOnly = structure.rate_type === 'commission_only'
+      const runIsCommissionOnly = run.pay_group === 'commission_only'
+      if (employeeIsCommissionOnly !== runIsCommissionOnly) continue
+
       // Get attendance summary (use zeroed if none)
       const summary = summaryMap.get(employeeId) ?? {
         employee_id: employeeId,
@@ -230,25 +244,39 @@ export function calculatePayrollRun(
         days_worked: 0,
       }
 
-      const commission = commissionMap.get(employeeId) ?? 0
+      const commissionEntry = commissionMap.get(employeeId)
+      const commission = commissionEntry?.amount ?? 0
 
-      // Monthly wage estimate (for statutory bracket lookup)
+      // Monthly wage estimate (for PCB bracket lookup — PCB always uses full gross
+      // wage including commission, per docs/COMMISSION_PAYROLL_PLAN.md).
       // For monthly-rate employees: the fixed monthly salary itself
       // For daily-rate employees: daily_rate × working_days_in_month
       // For hourly-rate employees: hourly_rate × standard_hours × working_days
-      // Commission is added in all cases — it's part of "wages" for EPF/SOCSO/EIS/PCB
-      // bracket lookup purposes (EPF Act 1991 Third Schedule), same as in calculationEngine.
+      // For commission-only employees: the commission itself — there is no base
+      // salary to add (rate_amount instead holds the recurring statutory base).
       const monthlyWage: number =
-        (structure.rate_type === 'monthly'
-          ? structure.rate_amount
-          : structure.rate_type === 'daily'
-            ? structure.rate_amount * workingDays
-            : structure.rate_amount * structure.standard_hours_per_day * workingDays) + commission
+        structure.rate_type === 'commission_only'
+          ? commission
+          : (structure.rate_type === 'monthly'
+              ? structure.rate_amount
+              : structure.rate_type === 'daily'
+                ? structure.rate_amount * workingDays
+                : structure.rate_amount * structure.standard_hours_per_day * workingDays) + commission
+
+      // EPF/SOCSO/EIS bracket lookup + calculation base. Commission-only employees
+      // use an explicit contribution base (per-run override, else the employee's
+      // recurring default) instead of their commission amount. Every other rate
+      // type is left undefined so the calculation engine falls back to the actual
+      // gross pay — the pre-existing behavior, unchanged.
+      const statutoryBase: number | undefined = structure.rate_type === 'commission_only'
+        ? (commissionEntry?.statutoryBaseOverride ?? structure.rate_amount)
+        : undefined
+      const statutoryBaseForBrackets = statutoryBase ?? monthlyWage
 
       // Look up statutory rates
-      const epfRate = structure.subject_to_epf ? lookupEpfRate(db, monthlyWage, asOfDate) : null
-      const socsoRate = structure.subject_to_socso ? lookupSocsoRate(db, monthlyWage, asOfDate) : null
-      const eisRate = structure.subject_to_eis ? lookupEisRate(db, monthlyWage, asOfDate) : null
+      const epfRate = structure.subject_to_epf ? lookupEpfRate(db, statutoryBaseForBrackets, asOfDate) : null
+      const socsoRate = structure.subject_to_socso ? lookupSocsoRate(db, statutoryBaseForBrackets, asOfDate) : null
+      const eisRate = structure.subject_to_eis ? lookupEisRate(db, statutoryBaseForBrackets, asOfDate) : null
 
       // PCB: use per-employee category and children count from salary_structures (migration 0005)
       const pcbBracket = lookupPcbBracket(db, monthlyWage, structure.pcb_category, structure.pcb_children_count, asOfDate)
@@ -275,6 +303,7 @@ export function calculatePayrollRun(
         pcbBracket,
         advanceDeduction,
         commission,
+        statutoryBase,
         workingDaysInMonth: workingDays,
       })
 
@@ -285,7 +314,7 @@ export function calculatePayrollRun(
           snapshot_rate_type, snapshot_rate_amount, snapshot_standard_hours_per_day,
           snapshot_subject_to_epf, snapshot_subject_to_socso, snapshot_subject_to_eis,
           total_regular_hours, total_ot_hours,
-          gross_regular_pay, gross_ot_pay, commission, gross_pay,
+          gross_regular_pay, gross_ot_pay, commission, gross_pay, statutory_base,
           epf_employee, epf_employer,
           socso_employee, socso_employer,
           eis_employee, eis_employer,
@@ -296,7 +325,7 @@ export function calculatePayrollRun(
           @snapshot_rate_type, @snapshot_rate_amount, @snapshot_standard_hours_per_day,
           @snapshot_subject_to_epf, @snapshot_subject_to_socso, @snapshot_subject_to_eis,
           @total_regular_hours, @total_ot_hours,
-          @gross_regular_pay, @gross_ot_pay, @commission, @gross_pay,
+          @gross_regular_pay, @gross_ot_pay, @commission, @gross_pay, @statutory_base,
           @epf_employee, @epf_employer,
           @socso_employee, @socso_employer,
           @eis_employee, @eis_employer,
@@ -319,6 +348,7 @@ export function calculatePayrollRun(
         gross_ot_pay: payResult.gross_ot_pay,
         commission: payResult.commission,
         gross_pay: payResult.gross_pay,
+        statutory_base: payResult.statutory_base,
         epf_employee: payResult.statutory.epf_employee,
         epf_employer: payResult.statutory.epf_employer,
         socso_employee: payResult.statutory.socso_employee,
