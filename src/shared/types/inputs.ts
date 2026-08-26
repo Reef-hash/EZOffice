@@ -270,6 +270,7 @@ export const createShiftSchema = z.object({
   start_time: z.string().regex(/^\d{2}:\d{2}$/, 'Start time must be HH:MM'),
   end_time: z.string().regex(/^\d{2}:\d{2}$/, 'End time must be HH:MM'),
   standard_hours: z.number().positive('Standard hours must be positive'),
+  break_minutes: z.number().int().nonnegative('Break minutes must be zero or positive'),
 })
 
 export const updateShiftSchema = createShiftSchema.partial()
@@ -356,6 +357,13 @@ export const lateReportSchema = z.object({
 })
 
 export type LateReportInput = z.infer<typeof lateReportSchema>
+
+export const breakReportSchema = z.object({
+  year: z.number().int().min(2000).max(2100),
+  month: z.number().int().min(1).max(12),
+})
+
+export type BreakReportInput = z.infer<typeof breakReportSchema>
 
 // --- Phase C: Monthly summary / export ---
 

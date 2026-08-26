@@ -20,6 +20,7 @@ import {
   initializeYearlyEntitlementsSchema,
   excuseLateSchema,
   lateReportSchema,
+  breakReportSchema,
   monthlySummarySchema,
   exceptionListSchema,
   resolveExceptionSchema,
@@ -270,6 +271,15 @@ export function registerAttendanceHandlers(db: Database.Database): void {
       return attendanceService.getLateReport(db, input.year, input.month)
     } catch (err) {
       throw new Error(`Failed to get late report: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:getBreakReport', async (_event, data: unknown) => {
+    try {
+      const input = breakReportSchema.parse(data)
+      return attendanceService.getBreakReport(db, input.year, input.month)
+    } catch (err) {
+      throw new Error(`Failed to get break report: ${String(err)}`)
     }
   })
 

@@ -1,8 +1,8 @@
 # OT (Overtime) Calculation — Status & Plan
 
-Written 2026-08-18 as a handoff note. Nothing in this document has been implemented
-yet — it's a plan to pick up in a future session. No app code was changed to produce
-this file.
+Written 2026-08-18 as a handoff note. Updated 2026-08-18 (later the same day) once
+break-limit tracking (§3/§4.2 below) was actually implemented — see the "Implemented"
+addendum at the bottom for what shipped and what's still open.
 
 ---
 
@@ -102,16 +102,59 @@ Do employees clock in/out for lunch, or is it one continuous punch per day?
 
 ## 5. Next-session checklist
 
-- [ ] Confirm with client: do employees clock in/out for lunch, or one continuous
-      punch per day? (Decides Scenario A vs B above — changes `standard_hours` config,
-      not code.)
+- [x] Confirm with client: do employees clock in/out for lunch, or one continuous
+      punch per day? **Answered: Scenario B — they clock out/in for lunch**, and they
+      additionally want to know who takes more than the allowed break. See the
+      Implemented addendum below.
 - [ ] Confirm: do they want live OT visibility on the Logs screen, or is the
-      payroll-period batch view enough?
-- [ ] If break isn't reliably clocked (Scenario A) and they want it modeled properly
-      rather than fudging `standard_hours`: build `break_minutes` on `shifts`
-      (migration + `attendanceProcessor.ts` Stage 5/10 change + Shift form UI field).
-- [ ] Once decided, re-verify actual `standard_hours` value configured for the
-      client's real "Morning" shift in their DB (Attendance → Shifts) — the numbers
-      in this doc (7 vs 8) are illustrative, not confirmed against their live config.
+      payroll-period batch view enough? Still open — not built.
+- [x] Break-limit tracking built (was "Automatic break deduction" in §4.2 above —
+      turned out the actual need was *visibility/reporting* on break overage, not
+      auto-deducting an unclocked break, since Scenario B means break time was
+      already correctly excluded from worked hours). See addendum.
+- [ ] Re-verify actual `standard_hours` configured for the client's real "Morning"
+      shift in their DB (Attendance → Shifts) — should be `7` per Scenario B. Not
+      yet confirmed against their live config; this is data entry, not code, once
+      confirmed.
 - [ ] Remind the client to click "Recompute Late Status" (Device Settings) after
       deploying the late-detection fix — past data does not correct itself.
+
+---
+
+## 6. Implemented 2026-08-18 — break-limit tracking
+
+Built on branch `claude/break-limit-tracking` (separate from the late-detection fix
+PR, since it's an unrelated feature).
+
+- **Migration `0019_break_limit.sql`**: `shifts.break_minutes` (allowed rest/lunch
+  duration, default 60 min) and `daily_attendance_records.break_minutes_over` (0 when
+  within the allowance, otherwise minutes exceeded).
+- **`attendanceProcessor.ts` Stage 10**: computes the actual gap between consecutive
+  IN/OUT sessions on the same day as the break taken (populates the pre-existing but
+  previously-always-0 `break_hours` field), and flags `break_minutes_over` against the
+  employee's shift allowance (falls back to 60 min if no shift assigned). This is
+  purely a visibility figure — it does **not** further reduce `regular_hours`/`ot_hours`,
+  since break time was already correctly excluded (it's the gap between sessions, never
+  inside one).
+- **Bug found and fixed while adding this**: `attendanceProcessor.ts`'s late/early-out
+  check used `if (empShift)` to mean "employee has an assigned shift" — but `empShift`
+  comes from a `LEFT JOIN`, so the row is *always* truthy (one row per employee) even
+  when no shift is assigned, with every `shifts.*` column coming back `null`. This meant
+  `if (empShift)` was always true and crashed (`null.split(':')`) processing any period
+  containing an employee with no shift assigned. Fixed by checking `empShift?.id != null`
+  instead. Caught by the new break-limit test suite, not by any existing test.
+- **New "Break Report" tab** (Attendance hub) mirroring the existing Late Report:
+  per-employee days-over-limit / total-minutes-over / avg-minutes-over for a chosen
+  month. Only employees who exceeded their break at least once appear.
+- **Payroll Periods → View Records**: added a Break column (hours taken, with an
+  over-limit amount highlighted in orange when applicable).
+- **Shift form** (Attendance → Shifts): new "Allowed Break (minutes)" field, default 60.
+- **Tests**: 4 new tests in `attendanceProcessorBreak.test.ts` (over-limit flagged,
+  within-limit not flagged, single continuous session → zero break, no-shift fallback
+  to the 60-min default — this last one is what caught the `if (empShift)` bug above).
+- **Verified**: `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3
+  bundles), `npm run test` — 51/51 pass (47 pre-existing + 4 new).
+- **Not yet verified**: the app has not been launched and clicked through (Shift form's
+  new field, Break Report tab, Payroll Periods Break column) — needs the
+  launch-confirmation step like every other phase. Also still needs the client to
+  confirm their real Morning shift's `standard_hours` is set to `7` (Scenario B).

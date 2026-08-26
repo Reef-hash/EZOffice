@@ -239,6 +239,7 @@ export function PayrollPeriodListPage() {
                     <th className="pb-1 pr-2 text-right">Regular</th>
                     <th className="pb-1 pr-2 text-right">OT</th>
                     <th className="pb-1 pr-2 text-right">Late</th>
+                    <th className="pb-1 pr-2 text-right">Break</th>
                     <th className="pb-1">Calendar</th>
                   </tr>
                 </thead>
@@ -262,6 +263,9 @@ export function PayrollPeriodListPage() {
                       <td className="py-1 pr-2 text-right">{r.regular_hours}</td>
                       <td className="py-1 pr-2 text-right">{r.ot_hours}</td>
                       <td className="py-1 pr-2 text-right">{r.minutes_late || '—'}</td>
+                      <td className={`py-1 pr-2 text-right ${r.break_minutes_over > 0 ? 'font-medium text-warning-700' : ''}`}>
+                        {r.break_hours}h{r.break_minutes_over > 0 ? ` (+${r.break_minutes_over}m)` : ''}
+                      </td>
                       <td className="py-1">{r.calendar_type}</td>
                     </tr>
                   ))}
