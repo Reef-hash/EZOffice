@@ -663,6 +663,20 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Shipped:** released as `v0.2.20` same day, right after `v0.2.19` (paid-leave-hours + reprocessing fix above) — both part of the same round of payroll-accuracy fixes triggered by the project owner's testing on 2026-08-26.
 
+- **2026-08-26 — Fixed: EPF amount didn't match KWSP's real contribution table (rounding).** The project owner compared a real payslip against the official KWSP table: regular pay RM1,764.72 showed EPF RM194.12/RM229.41 in the app, but RM196/RM232 on KWSP's table. Confirmed as a rounding-methodology bug, not a data-entry error — the rate percentages (11%/13%) were correct, only how the ringgit amount is derived from them was wrong.
+
+  - **Root cause:** `calcEpfContribution` (introduced a few fixes earlier today, previously inline in `buildResult`) computed `Math.round(wage * pct) / 100` — a plain percentage of the *exact* wage, rounded to the nearest cent. KWSP's actual Third Schedule contribution table (for monthly wages up to RM20,000) does not work this way: it bands wages into RM20 increments ("wages exceed X but do not exceed X+20") and publishes a fixed contribution amount per band, computed as **(the band's upper limit × rate), rounded UP to the next whole ringgit** — not the exact wage, and not rounded to nearest.
+
+  - **Verified against the reported figures, not guessed:** RM1,764.72 bands up to RM1,780 (`Math.ceil(1764.72 / 20) * 20`). `1780 × 11% = 195.80 → ceil → RM196` and `1780 × 13% = 231.40 → ceil → RM232` — both match the project owner's real KWSP figures exactly, confirming the banding + round-up-to-ringgit rule rather than some other rounding scheme (e.g. plain round-to-nearest-ringgit on the banded wage would give 196/231, one ringgit short on the employer side — round-UP specifically is what KWSP does).
+
+  - **Fix — `calcEpfContribution(wage, pct)` in `calculationEngine.ts`:** for wages ≤ RM20,000, bands the wage up to the nearest RM20 (`Math.ceil(wage / 20) * 20`) then applies the rate and rounds UP to the next ringgit (`Math.ceil`). Above RM20,000 — outside the published table's range — left unchanged (exact wage × rate to the cent, same as before this fix), since that behavior was never reported wrong and isn't independently confirmed against a real KWSP figure; inventing a new rule there without evidence would be guessing, not fixing.
+
+  - **No existing tests broke:** every prior EPF-asserting test case happened to use wages that are already exact multiples of RM20 (1600, 1700, 1800, 2200) where percentages land on whole ringgit anyway — banding and round-up are no-ops for those values, so this bug was invisible to the test suite until a real off-band wage (RM1,764.72) was compared against KWSP directly.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles), `npm run test` — 71/71 pass (68 pre-existing + 3 new in `epfKwspRounding.test.ts`: reproduces the exact reported RM196/RM232 figures for RM1,764.72; confirms wages above RM20,000 are unaffected by this fix; confirms an already-whole banded wage like RM1,700 is unaffected).
+
+  - **Not yet verified:** the app has not been launched and clicked through. **Action needed from the project owner:** same immutability caveat as every other fix today — any already-**finalized** payroll run has a permanently wrong (under-banded) EPF snapshot for any employee whose wage doesn't land exactly on an RM20 boundary; use "Un-finalize (Revert to Draft)" → Recalculate → Finalize to correct it. Draft runs just need Recalculate. If the SME's real KWSP table ever diverges from this banding+round-up formula for other wage ranges (e.g. very low wages under RM500, or age-60+ categories with different rates), that would need a similar side-by-side comparison against the real table to confirm before changing further — this fix is confirmed correct for the one data point reported, not assumed correct for every band.
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written
