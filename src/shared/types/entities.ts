@@ -388,6 +388,14 @@ export interface PayrollRun {
   period_end_date?: string | null
 }
 
+export interface UnfinalizeResult {
+  run: PayrollRun
+  // Employees whose finalized run item had a salary advance deduction applied.
+  // The deduction is NOT auto-reversed (see payrollRun.ts unfinalizePayrollRun) —
+  // the admin must manually verify/credit these back under Salary Advances.
+  advancesToVerify: Array<{ employee_id: number; employee_name: string; amount: number }>
+}
+
 export interface PayrollRunItem {
   id: number
   payroll_run_id: number

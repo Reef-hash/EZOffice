@@ -8,7 +8,14 @@ import Database from 'better-sqlite3'
 import path from 'node:path'
 import fs from 'node:fs'
 import { runMigrations } from '../../db/migrate'
-import { createPayrollRun, calculatePayrollRun, getPayrollRunItems, getPayrollRunById } from '../payroll/payrollRun'
+import {
+  createPayrollRun,
+  calculatePayrollRun,
+  finalizePayrollRun,
+  unfinalizePayrollRun,
+  getPayrollRunItems,
+  getPayrollRunById,
+} from '../payroll/payrollRun'
 
 const migrationsDir = path.resolve(process.cwd(), 'electron/db/migrations')
 
@@ -176,5 +183,113 @@ describe('payroll run linked to payroll period (migration 0020)', () => {
     expect(run?.payroll_period_id).toBeNull()
 
     expect(() => calculatePayrollRun(db, 1)).toThrow(/predates Payroll Periods/)
+  })
+})
+
+describe('unfinalizePayrollRun — reverting a finalized run computed with the calendar-month bug', () => {
+  function seedPcbBracket(db: Database.Database): void {
+    db.prepare(`
+      INSERT INTO pcb_brackets (effective_from, category, children_count, chargeable_income_from, chargeable_income_to, tax_amount)
+      VALUES ('2020-01-01', 'single', 0, 0, 100000, 0)
+    `).run()
+  }
+
+  it('reverts status to draft and does not touch salary_advances when nothing was deducted', () => {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys = ON')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `)
+    runMigrations(db, migrationsDir)
+    seedEmployeeAndStructure(db)
+    seedPcbBracket(db)
+
+    db.prepare(`
+      INSERT INTO payroll_periods (id, name, start_date, end_date, status)
+      VALUES (1, '26 Jul - 25 Aug', '2026-07-26', '2026-08-25', 'processing')
+    `).run()
+    seedDailyRecords(db, 1, julyAndAugustDates(), 8, 0)
+
+    const run = createPayrollRun(db, { payroll_period_id: 1 })
+    calculatePayrollRun(db, run.id)
+    finalizePayrollRun(db, run.id)
+
+    expect(getPayrollRunById(db, run.id)?.status).toBe('finalized')
+
+    const result = unfinalizePayrollRun(db, run.id)
+    expect(result.run.status).toBe('draft')
+    expect(result.advancesToVerify).toHaveLength(0)
+
+    // Recalculate now works again, and picks up the full period (no longer blocked
+    // by the 'finalized' guard).
+    calculatePayrollRun(db, run.id)
+    const items = getPayrollRunItems(db, run.id)
+    expect(items[0].total_regular_hours).toBe(31 * 8)
+  })
+
+  it('lists affected employees instead of guessing which advance to credit back', () => {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys = ON')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `)
+    runMigrations(db, migrationsDir)
+    seedEmployeeAndStructure(db)
+    seedPcbBracket(db)
+
+    db.prepare(`
+      INSERT INTO payroll_periods (id, name, start_date, end_date, status)
+      VALUES (1, '26 Jul - 25 Aug', '2026-07-26', '2026-08-25', 'processing')
+    `).run()
+    seedDailyRecords(db, 1, julyAndAugustDates(), 8, 0)
+    db.prepare(`
+      INSERT INTO salary_advances (id, employee_id, amount, date_issued, limit_max, balance_outstanding, status, deduction_mode)
+      VALUES (1, 1, 200, '2026-07-01', 200, 200, 'active', 'full_balance')
+    `).run()
+
+    const run = createPayrollRun(db, { payroll_period_id: 1 })
+    calculatePayrollRun(db, run.id)
+    finalizePayrollRun(db, run.id)
+
+    // Finalize actually applied the deduction — the advance is now settled.
+    const advanceAfterFinalize = db.prepare('SELECT status, balance_outstanding FROM salary_advances WHERE id = 1')
+      .get() as { status: string; balance_outstanding: number }
+    expect(advanceAfterFinalize).toEqual({ status: 'settled', balance_outstanding: 0 })
+
+    const result = unfinalizePayrollRun(db, run.id)
+    expect(result.run.status).toBe('draft')
+    expect(result.advancesToVerify).toEqual([{ employee_id: 1, employee_name: 'Alice', amount: 200 }])
+
+    // The advance balance is untouched by unfinalize — flagged for manual review instead.
+    const advanceAfterUnfinalize = db.prepare('SELECT status, balance_outstanding FROM salary_advances WHERE id = 1')
+      .get() as { status: string; balance_outstanding: number }
+    expect(advanceAfterUnfinalize).toEqual(advanceAfterFinalize)
+  })
+
+  it('refuses to unfinalize a run that is still draft', () => {
+    const db = new Database(':memory:')
+    db.pragma('foreign_keys = ON')
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename TEXT PRIMARY KEY,
+        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+      )
+    `)
+    runMigrations(db, migrationsDir)
+    seedEmployeeAndStructure(db)
+
+    db.prepare(`
+      INSERT INTO payroll_periods (id, name, start_date, end_date, status)
+      VALUES (1, '26 Jul - 25 Aug', '2026-07-26', '2026-08-25', 'processing')
+    `).run()
+    const run = createPayrollRun(db, { payroll_period_id: 1 })
+
+    expect(() => unfinalizePayrollRun(db, run.id)).toThrow(/Only a finalized payroll run/)
   })
 })

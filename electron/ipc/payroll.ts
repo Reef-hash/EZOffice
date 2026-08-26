@@ -340,6 +340,12 @@ export function registerPayrollHandlers(db: Database.Database): void {
     }
   })
 
+  ipcMain.handle('payroll:runs:unfinalize', async (_event, id: number) => {
+    try { return payrollRunService.unfinalizePayrollRun(db, id) } catch (err) {
+      throw new Error(`Failed to un-finalize payroll run ${id}: ${String(err)}`)
+    }
+  })
+
   // ── Payroll Run Commissions (ad-hoc, per employee, per run) ──────────
 
   ipcMain.handle('payroll:runs:commissions:list', async (_event, runId: number) => {

@@ -12,7 +12,7 @@ import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { useToast } from '@/shared/components/Toast'
 import type { Column } from '@/shared/components/Table'
-import type { PayrollRun, PayrollRunItem } from '@/shared/types/entities'
+import type { PayrollRun, PayrollRunItem, UnfinalizeResult } from '@/shared/types/entities'
 import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE } from './constants'
 import { CommissionPanel } from './CommissionPanel'
 
@@ -39,6 +39,8 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
   const { addToast } = useToast()
   const [calculating, setCalculating] = useState(false)
   const [showConfirmDelete, setShowConfirmDelete] = useState(false)
+  const [showConfirmUnfinalize, setShowConfirmUnfinalize] = useState(false)
+  const [advancesToVerify, setAdvancesToVerify] = useState<UnfinalizeResult['advancesToVerify']>([])
 
   const { data: run, isLoading: runLoading } = useIpcQuery<PayrollRun | null>(
     ['payroll', 'runs', String(runId)],
@@ -73,6 +75,11 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
     { onSuccessMessage: 'Payroll run deleted' },
   )
 
+  const unfinalizeMutation = useIpcMutation<UnfinalizeResult, number>(
+    (id) => window.api.payroll.runs.unfinalize(id),
+    [['payroll', 'runs'], ['payroll', 'runs', String(runId)], ['payroll', 'runs', String(runId), 'items']],
+  )
+
   const handleDelete = useCallback(async () => {
     try {
       await deleteMutation.mutateAsync(runId)
@@ -82,6 +89,17 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
       // error handled via mutation state
     }
   }, [deleteMutation, runId, onBack])
+
+  const handleUnfinalize = useCallback(async () => {
+    try {
+      const result = await unfinalizeMutation.mutateAsync(runId)
+      setShowConfirmUnfinalize(false)
+      setAdvancesToVerify(result.advancesToVerify)
+      addToast('Payroll run reverted to draft.', 'success')
+    } catch {
+      // error handled via mutation state
+    }
+  }, [unfinalizeMutation, runId, addToast])
 
   const handleCalculate = useCallback(async () => {
     setCalculating(true)
@@ -163,7 +181,7 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
           plain calendar month, not the real payroll period date range, and could be wrong if the
           period spans two months. {isDraft
             ? 'Delete this draft and create a new one against the correct Payroll Period.'
-            : 'This run is finalized and cannot be recalculated — review its totals manually.'}
+            : 'Use "Un-finalize" below to revert it to Draft, then Recalculate.'}
           {isDraft && (
             <div className="mt-2">
               <Button variant="ghost" onClick={() => setShowConfirmDelete(true)}>
@@ -221,11 +239,47 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
           </>
         )}
         {!isDraft && (
-          <span className="text-sm text-neutral-500">
-            This run is finalized — calculations are locked.
-          </span>
+          <>
+            <span className="text-sm text-neutral-500">
+              This run is finalized — calculations are locked.
+            </span>
+            <Button
+              variant="ghost"
+              onClick={() => setShowConfirmUnfinalize(true)}
+              isLoading={unfinalizeMutation.isPending}
+            >
+              Un-finalize (Revert to Draft)
+            </Button>
+          </>
         )}
       </div>
+
+      {showConfirmUnfinalize && (
+        <ConfirmDialog
+          isOpen
+          title="Un-finalize Payroll Run"
+          message="This reverts the run to Draft so it can be corrected and recalculated. It does NOT automatically reverse any salary advance deductions already applied — you'll get a list of employees to manually verify under Salary Advances. Payslips already given to employees will no longer match once you recalculate. Continue?"
+          confirmLabel="Un-finalize"
+          tone="danger"
+          onConfirm={handleUnfinalize}
+          onCancel={() => setShowConfirmUnfinalize(false)}
+        />
+      )}
+
+      {advancesToVerify.length > 0 && (
+        <div className="rounded-md border border-warning-600 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+          <strong>Manual action needed:</strong> this run had salary advance deductions applied for the
+          employees below. Un-finalizing did not reverse them automatically (see Payroll Run history —
+          the exact advance each deduction came from isn't tracked separately). Go to{' '}
+          <span className="font-medium">Payroll → Salary Advances</span> and manually add the amount
+          back to the correct advance for each:
+          <ul className="mt-2 list-disc pl-5">
+            {advancesToVerify.map((a) => (
+              <li key={a.employee_id}>{a.employee_name}: {formatCurrency(a.amount)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {calculateMutation.error && (
         <Card>
@@ -235,6 +289,11 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
       {finalizeMutation.error && (
         <Card>
           <p className="text-sm text-error-700">{finalizeMutation.error.message}</p>
+        </Card>
+      )}
+      {unfinalizeMutation.error && (
+        <Card>
+          <p className="text-sm text-error-700">{unfinalizeMutation.error.message}</p>
         </Card>
       )}
 
