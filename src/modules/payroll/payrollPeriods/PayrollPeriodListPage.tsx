@@ -60,6 +60,7 @@ export function PayrollPeriodListPage() {
   const [showConfirmTransition, setShowConfirmTransition] = useState<PayrollPeriod | null>(null)
   const [showConfirmReopen, setShowConfirmReopen] = useState<PayrollPeriod | null>(null)
   const [showConfirmDelete, setShowConfirmDelete] = useState<PayrollPeriod | null>(null)
+  const [showConfirmReprocess, setShowConfirmReprocess] = useState<PayrollPeriod | null>(null)
   const [periodName, setPeriodName] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -136,6 +137,15 @@ export function PayrollPeriodListPage() {
     )
   }
 
+  function handleReprocess() {
+    if (!showConfirmReprocess) return
+    setProcessingPeriodId(showConfirmReprocess.id)
+    // Already 'processing' — just re-run the engine (it replaces this period's
+    // existing daily records, it doesn't append to them).
+    processMutation.mutate({ payroll_period_id: showConfirmReprocess.id })
+    setShowConfirmReprocess(null)
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
@@ -170,6 +180,17 @@ export function PayrollPeriodListPage() {
               {period.status === 'open' && (
                 <Button size="sm" onClick={() => handleProcessClick(period)} isLoading={processMutation.isPending && processingPeriodId === period.id}>
                   Process Attendance
+                </Button>
+              )}
+
+              {period.status === 'processing' && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setShowConfirmReprocess(period)}
+                  isLoading={processMutation.isPending && processingPeriodId === period.id}
+                >
+                  Reprocess Attendance
                 </Button>
               )}
 
@@ -364,6 +385,19 @@ export function PayrollPeriodListPage() {
             setShowConfirmReopen(null)
           }}
           onCancel={() => setShowConfirmReopen(null)}
+        />
+      )}
+
+      {/* Confirm Reprocess */}
+      {showConfirmReprocess && (
+        <ConfirmDialog
+          isOpen
+          title="Reprocess Attendance"
+          message={`Recompute all daily attendance records for "${showConfirmReprocess.name}" from the current attendance logs, leave, and shift settings. This replaces the existing records for this period — do this after fixing attendance data or after an app update that changes how hours are calculated. Any payroll run already calculated from this period should be recalculated afterward. Continue?`}
+          confirmLabel="Reprocess"
+          tone="primary"
+          onConfirm={handleReprocess}
+          onCancel={() => setShowConfirmReprocess(null)}
         />
       )}
 
