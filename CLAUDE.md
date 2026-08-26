@@ -649,6 +649,20 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Not yet verified:** the app has not been launched and clicked through (approving an annual/sick leave request, reprocessing a period, seeing the corrected hours flow into a payroll run) — needs the launch-confirmation step like every other phase. **Action needed from the project owner:** any Payroll Period already processed before this fix needs "Reprocess Attendance" run again (now safely, via the new idempotent path) to pick up corrected paid-leave hours, then any payroll run drawing from it needs Recalculate (or Un-finalize → Recalculate, per the entry above, if already finalized).
 
+- **2026-08-26 — Fixed: EPF contribution was calculated on gross pay including overtime.** The project owner flagged this directly ("epf socso hanya dipotong hanya atas regular pay bukan termasuk ot") as a follow-up to the same day's other payroll fixes. This is the exact gap the 2026-07-24 commission decision log entry had already identified and *deliberately left unfixed* ("the existing engine folds OT into the EPF/SOCSO base too... left untouched per explicit instruction, not fixed as part of this change") — now addressed on the project owner's explicit instruction.
+
+  - **Root cause (`electron/services/payroll/calculationEngine.ts`, `buildResult`):** `statutory.epf_employee`/`epf_employer` were computed as `grossPay * pct`, where `grossPay = grossRegularPay + grossOtPay + commission`. EPF Act 1991 Third Schedule excludes overtime payments from EPF "wages" (it does include commission, unaffected by this fix) — so every employee earning OT had EPF over-deducted (and the employer's matching contribution over-paid) on the OT portion.
+
+  - **SOCSO/EIS investigated and found already correct, not touched:** unlike EPF's percentage-of-`grossPay` formula, `socso_employee`/`eis_employee` are a **fixed amount looked up from a wage bracket table**, keyed on `monthlyWage` (computed in `payrollRun.ts` from the employee's *contracted* rate × working days + commission — never from actual worked/OT hours in the first place). So OT was never part of the SOCSO/EIS wage base to begin with; the project owner's report bundled "EPF socso" together but only EPF needed a code change.
+
+  - **Fix:** introduced `epfWageBase = grossRegularPay + commission` (explicitly excluding `grossOtPay`) as the base for both `epf_employee` and `epf_employer`, replacing `grossPay`. `grossPay` itself (still `grossRegularPay + grossOtPay + commission`) is unchanged and still correct for SOCSO/EIS bracket lookup, PCB, and net pay — only the EPF percentage calculation's base changed.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles), `npm run test` — 68/68 pass (65 pre-existing + 3 new in `epfExcludesOvertime.test.ts`: hourly employee with OT gets EPF on regular pay only; commission is still included in the EPF base while OT is excluded; daily-rate employee with OT gets EPF on regular pay only). Existing tests (`commission.test.ts`, `monthlySalary.test.ts`) were unaffected — every existing EPF-asserting test case happened to have `total_ot_hours: 0` (monthly-salary employees always get `grossOtPay = 0` by design, so their EPF was never wrong in the first place).
+
+  - **Not yet verified:** the app has not been launched and clicked through. **Action needed from the project owner:** same as every other fix shipped today — any already-**finalized** payroll run with employees who earned OT has a permanently over-deducted EPF snapshot (finalized runs are immutable); use "Un-finalize (Revert to Draft)" → Recalculate → Finalize to correct it. Draft runs just need Recalculate.
+
+  - **Shipped:** released as `v0.2.20` same day, right after `v0.2.19` (paid-leave-hours + reprocessing fix above) — both part of the same round of payroll-accuracy fixes triggered by the project owner's testing on 2026-08-26.
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

@@ -131,9 +131,17 @@ function buildResult(
     pcb: 0,
   }
 
+  // EPF Act 1991 Third Schedule: EPF "wages" excludes overtime payments (also
+  // excludes service charge, gratuity, traveling allowance, director's fee, and
+  // retrenchment/termination benefits — none of which this app models — but DOES
+  // include commission, per the 2026-07-24 commission decision). grossOtPay must
+  // be excluded from the EPF base — grossPay (used for SOCSO/EIS bracket lookup and
+  // PCB, both of which are correct as-is) is NOT the right base for EPF specifically.
+  const epfWageBase = Math.round((grossRegularPay + commission) * 100) / 100
+
   if (structure.subject_to_epf && input.epfRate) {
-    statutory.epf_employee = Math.round(grossPay * input.epfRate.employee_contribution_pct) / 100
-    statutory.epf_employer = Math.round(grossPay * input.epfRate.employer_contribution_pct) / 100
+    statutory.epf_employee = Math.round(epfWageBase * input.epfRate.employee_contribution_pct) / 100
+    statutory.epf_employer = Math.round(epfWageBase * input.epfRate.employer_contribution_pct) / 100
   }
 
   if (structure.subject_to_socso && input.socsoRate) {
