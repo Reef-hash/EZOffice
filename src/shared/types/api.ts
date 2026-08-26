@@ -290,6 +290,7 @@ export interface PayrollRunApi {
   getById: (id: number) => Promise<PayrollRun | null>
   create: (data: CreatePayrollRunInput) => Promise<PayrollRun>
   calculate: (id: number) => Promise<PayrollRun>
+  delete: (id: number) => Promise<void>
   getItems: (runId: number) => Promise<PayrollRunItem[]>
   checkRateTables: () => Promise<{ missing: string[] }>
   finalize: (id: number) => Promise<PayrollRun>

@@ -247,8 +247,7 @@ export type UpdateSalaryAdvanceInput = z.infer<typeof updateSalaryAdvanceSchema>
 // --- Payroll: Run ---
 
 export const createPayrollRunSchema = z.object({
-  year: z.number().int().min(2000).max(2100),
-  month: z.number().int().min(1).max(12),
+  payroll_period_id: z.number().int().positive('Payroll period is required'),
 })
 
 export type CreatePayrollRunInput = z.infer<typeof createPayrollRunSchema>

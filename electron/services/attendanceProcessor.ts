@@ -168,18 +168,21 @@ export function getDailyRecordsByPeriod(
  * Aggregates per employee for a given month: sum of regular_hours, ot_hours, days_worked.
  * Falls back to zeroed values if no records exist for an employee.
  */
-export function getMonthlySummaryFromDailyRecords(
+/**
+ * Attendance hours summary for an explicit date range — used by payroll, which must
+ * summarize a payroll_period's actual start_date/end_date (e.g. 26 Jul - 25 Aug), not
+ * a plain calendar month. A payroll run that queried by calendar month instead of the
+ * real period range silently dropped days that spilled into the adjacent month — see
+ * CLAUDE.md decision log 2026-08-26.
+ */
+export function getAttendanceSummaryForDateRange(
   db: Database.Database,
-  filters: { employeeIds?: number[]; year: number; month: number },
+  filters: { employeeIds?: number[]; startDate: string; endDate: string },
 ): Array<{ employee_id: number; total_regular_hours: number; total_ot_hours: number; days_worked: number }> {
-  const { year, month, employeeIds } = filters
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const monthStart = `${year}-${pad(month)}-01`
-  const lastDay = new Date(year, month, 0).getDate()
-  const monthEnd = `${year}-${pad(month)}-${pad(lastDay)}`
+  const { startDate, endDate, employeeIds } = filters
 
   const conditions = ['dar.date >= ?', 'dar.date <= ?']
-  const params: unknown[] = [monthStart, monthEnd]
+  const params: unknown[] = [startDate, endDate]
 
   if (employeeIds && employeeIds.length > 0) {
     conditions.push(`dar.employee_id IN (${employeeIds.map(() => '?').join(',')})`)
