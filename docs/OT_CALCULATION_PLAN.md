@@ -109,19 +109,22 @@ Do employees clock in/out for lunch, or is it one continuous punch per day?
 ## 5. Next-session checklist
 
 - [x] Confirm with client: do employees clock in/out for lunch, or one continuous
-      punch per day? **Answered: Scenario B — they clock out/in for lunch**, and they
-      additionally want to know who takes more than the allowed break. See the
-      Implemented addendum below.
+      punch per day? **Originally logged here as Scenario B (they clock out/in for
+      lunch) — this was WRONG.** Re-confirmed 2026-08-27: the real answer is Scenario
+      A, one continuous punch, no lunch clock at all. See §9 for the correction and
+      what was built once that was actually established. They also want to know who
+      takes more than the allowed break — see the Implemented addendum below (still
+      correct, independent of which scenario applies).
 - [ ] Confirm: do they want live OT visibility on the Logs screen, or is the
       payroll-period batch view enough? Still open — not built.
 - [x] Break-limit tracking built (was "Automatic break deduction" in §4.2 above —
       turned out the actual need was *visibility/reporting* on break overage, not
       auto-deducting an unclocked break, since Scenario B means break time was
       already correctly excluded from worked hours). See addendum.
-- [ ] Re-verify actual `standard_hours` configured for the client's real "Morning"
-      shift in their DB (Attendance → Shifts) — should be `7` per Scenario B. Not
-      yet confirmed against their live config; this is data entry, not code, once
-      confirmed.
+- [x] Re-verify actual `standard_hours` configured for the client's real "Morning"
+      shift — superseded, see §9: with auto-deduct now built, the correct value is
+      `8`, not `7` (the §5 line above was wrong twice over — wrong scenario AND, even
+      under the scenario it assumed, wrong arithmetic; §8 already had the right `8`).
 - [ ] Remind the client to click "Recompute Late Status" (Device Settings) after
       deploying the late-detection fix — past data does not correct itself.
 
@@ -249,3 +252,55 @@ valid values, when the configured figure would manufacture daily overtime. That 
 **Lesson:** a number the admin types that is silently compared against measured data
 needs a sanity check at the point of entry. Documentation alone was not enough — the
 doc itself carried the error into the live configuration.
+
+---
+
+## 9. Implemented 2026-08-27 — Auto-deduct break
+
+Re-confirmed with the project owner the same day as §8: employees do **not** punch for
+lunch (Scenario A, one continuous session) — the §5 checklist item logging "Scenario B"
+was simply wrong, most likely a mix-up with a different client. This matters because
+§8's table shows Scenario A and Scenario B need *opposite* `standard_hours` settings (9
+vs. 8) — the project owner was about to switch affected employees to
+`rate_type='monthly', attendance_required=1` (migration 0022) and asked what to set
+Standard Hours to first. Under Scenario A with no auto-deduct, `8` reproduces the exact
+phantom-OT problem from §8 (now surfacing as phantom OT *on top of* a fixed basic,
+instead of on an hourly payslip) — so the interim advice was "keep it at 9". The
+project owner then asked for §4.2 item 2 ("Automatic break deduction") to be built,
+which removes that constraint.
+
+- **Rule** (`attendanceProcessor.ts` Stage 10): a day with exactly ONE session that
+  clocks MORE than the shift's threshold has the shift's `break_minutes` assumed to be
+  inside that span and deducted before the regular/OT (and rest-day/holiday) split. A
+  day with 2+ sessions (an explicit lunch punch) is untouched — the gap between
+  sessions already excludes the break naturally, so deducting again would double-count
+  it. A single session AT OR UNDER the threshold is also untouched — there's no
+  ambiguous excess to attribute to an unpunched break.
+- **Not a new setting** — reuses `shifts.break_minutes` (added in §6 for break-*limit*
+  reporting). A shift with `break_minutes = 0` is a natural no-op, which is the
+  existing per-shift opt-out for a shift that genuinely has no break.
+- **`break_hours`/`break_minutes_over` now reflect the assumption** when it fires
+  (e.g. `break_hours = 1` instead of `0` for an assumed-but-unpunched lunch), rather
+  than silently deducting pay while the Break Report still showed zero break taken.
+- **Consequence for §8's table:** Scenario A with `standard_hours = 8` now shows 0h
+  phantom OT too, same as `9` did — auto-deduct is what closes that gap. **`8` is now
+  the correct value regardless of which scenario the employee falls under**, which is
+  exactly why the project owner wanted this before switching employees to the
+  Monthly+attendance-gate model (migration 0022) — that model's shortfall calculation
+  runs through the identical Stage 10 code path and inherits the same fix.
+- **Tests:** `electron/services/__tests__/autoDeductBreak.test.ts` (6 cases: the
+  reported single-session scenario now shows 0 phantom OT; an explicit lunch punch is
+  never double-deducted; a session at/under threshold is untouched; genuine OT beyond
+  the assumed break still shows; `break_minutes = 0` is a no-op; the deduction never
+  goes negative). Every existing test built on a single-session punch exceeding
+  threshold (`otReport.test.ts`, `periodCalendar.test.ts`, `restDayHolidayPay.test.ts`,
+  `attendanceProcessorBreak.test.ts`) had its expected OT/premium/pay figures updated
+  to the new, lower (correct) numbers — see each file's inline comments for the
+  updated arithmetic.
+- **Verified:** `npm run typecheck` clean, `npm run build` clean, `npm run test` full
+  suite green (113/113).
+- **Action for the project owner:** any Payroll Period already processed under the old
+  no-auto-deduct behavior needs "Reprocess Attendance" re-run to pick up corrected
+  hours (same standing rule as every other Stage 10 change), and any payroll run drawn
+  from it needs Recalculate (or Un-finalize → Recalculate if already finalized).
+  Standard Hours can now safely be set to `8` for this client's Morning shift.

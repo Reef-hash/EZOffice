@@ -5,9 +5,13 @@
 //
 // The processing engine (attendanceProcessor.ts, Stage 10) computes the gap
 // between consecutive IN/OUT sessions on the same day as the break taken, and
-// flags break_minutes_over when it exceeds shift.break_minutes. This does not
-// change regular/OT hours — those were already correct since break time was
-// never counted in any session's elapsed time.
+// flags break_minutes_over when it exceeds shift.break_minutes. For a day with
+// an explicit lunch punch (2+ sessions) this is purely informational and does
+// not change regular/OT hours — break time was never counted in any session's
+// elapsed time to begin with. For a SINGLE continuous session long enough to
+// contain the shift's allowed break, the auto-deduct rule (2026-08-27) assumes
+// that break was taken and both reports it here AND excludes it from
+// regular/OT hours — see the single-continuous-session test below.
 import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
 import path from 'node:path'
@@ -86,7 +90,11 @@ describe('processing engine: break-limit tracking (Stage 10)', () => {
     expect(day!.break_minutes_over).toBe(0)
   })
 
-  it('records zero break for a single continuous session (no separate lunch punch)', () => {
+  it('assumes and excludes the shift\'s allowed break for a single continuous session over the threshold', () => {
+    // 09:00-17:00 = 8h clocked in ONE session, no separate lunch punch, against a
+    // 7h standard_hours threshold. Auto-deduct (2026-08-27) assumes the 60-min
+    // allowed break is inside that 8h span — the alternative (paying/flagging it
+    // as OT) was the exact "OT too expensive" complaint this rule fixes.
     log(db, 2, 'in', '2026-08-10T09:00:00')
     log(db, 2, 'out', '2026-08-10T17:00:00')
 
@@ -94,8 +102,26 @@ describe('processing engine: break-limit tracking (Stage 10)', () => {
     const records = getDailyRecordsByPeriod(db, 1, 2)
     const day = records.find((r) => r.date === '2026-08-10')
 
-    expect(day!.break_hours).toBe(0)
+    expect(day!.break_hours).toBeCloseTo(1, 2)
     expect(day!.break_minutes_over).toBe(0)
+    expect(day!.total_clocked_hours).toBeCloseTo(8, 2) // raw clock span, unadjusted
+    expect(day!.regular_hours).toBeCloseTo(7, 2) // 8h - 1h assumed break = 7h, matches threshold
+    expect(day!.ot_hours).toBe(0) // no phantom OT from the unpunched break
+  })
+
+  it('does NOT assume a break for a single session at or under the threshold — nothing ambiguous to explain away', () => {
+    // 09:00-16:00 = 7h clocked, exactly the 7h threshold, single session. There is no
+    // excess to attribute to an unpunched break, so nothing is deducted or assumed.
+    log(db, 2, 'in', '2026-08-10T09:00:00')
+    log(db, 2, 'out', '2026-08-10T16:00:00')
+
+    triggerProcessing(db, 1, [2])
+    const records = getDailyRecordsByPeriod(db, 1, 2)
+    const day = records.find((r) => r.date === '2026-08-10')
+
+    expect(day!.break_hours).toBe(0)
+    expect(day!.regular_hours).toBeCloseTo(7, 2)
+    expect(day!.ot_hours).toBe(0)
   })
 
   it('falls back to a 60-minute default allowance when the employee has no shift', () => {

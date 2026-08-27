@@ -456,6 +456,28 @@ function processEmployee(
     const standardHours = empShift?.standard_hours ?? 8
     const isHalfDay = calendarDay.is_half_day
     const threshold = isHalfDay ? standardHours / 2 : standardHours
+    const allowedBreakMinutes = empShift?.break_minutes ?? 60
+
+    // Auto-deduct break (2026-08-27, "auto-deduct" decision) — when an employee
+    // punches out/in for their break (2+ sessions that day), the gap between those
+    // sessions is already excluded from totalClockedHours naturally, so nothing more
+    // to do. But when they clock ONE continuous session covering the whole shift
+    // (never punching for lunch — the common case here), totalClockedHours includes
+    // their unpunched break, which was previously paid as ordinary work AND, if the
+    // shift's standard_hours was set to the true net figure, wrongly flagged as OT —
+    // the exact "OT too expensive" complaint from 2026-08-27's OT review.
+    //
+    // Only applies when the single session already exceeds the day's required
+    // threshold — that excess is the signal an unpunched break is plausibly inside
+    // it. A single session at or under the threshold (worked straight through with no
+    // break at all, or simply left early) is left alone: there is no ambiguous excess
+    // to explain away, so nothing is assumed or deducted.
+    let payHours = totalClockedHours
+    let assumedBreakMinutes = 0
+    if (currentDaySessions.length === 1 && totalClockedHours > threshold && allowedBreakMinutes > 0) {
+      assumedBreakMinutes = allowedBreakMinutes
+      payHours = Math.max(0, totalClockedHours - allowedBreakMinutes / 60)
+    }
 
     let regularHours = 0
     let otHours = 0
@@ -468,8 +490,8 @@ function processEmployee(
     let holidayOtHours = 0
 
     if (attendanceStatus === 'present' || attendanceStatus === 'late' || attendanceStatus === 'early_out') {
-      regularHours = Math.min(totalClockedHours, threshold)
-      otHours = Math.max(0, totalClockedHours - threshold)
+      regularHours = Math.min(payHours, threshold)
+      otHours = Math.max(0, payHours - threshold)
     } else if (attendanceStatus === 'on_leave' && (leaveType === 'annual' || leaveType === 'sick')) {
       // Annual and sick leave are PAID leave under the Employment Act 1955 — the
       // employee is paid as if they worked a normal day even without a punch.
@@ -477,35 +499,35 @@ function processEmployee(
       // Previously every leave type (including annual/sick) was paid 0 for the day,
       // silently underpaying daily/hourly-rate employees on approved paid leave.
       regularHours = threshold
-    } else if (attendanceStatus === 'weekly_off' && totalClockedHours > 0) {
+    } else if (attendanceStatus === 'weekly_off' && payHours > 0) {
       // Employment Act 1955 s.60(3): work on a rest day is paid in day-tiers, not by
       // the hour — up to half the normal hours earns half a day's wages, anything more
       // earns a full day's wages. Encoding that as HOURS here keeps payroll's job a
       // plain (hours x rate x multiplier) with no special-casing downstream.
       // Until 2026-08-27 these punches were discarded entirely and the employee was
       // paid RM0 for working their rest day.
-      restDayHours = totalClockedHours <= threshold / 2 ? threshold / 2 : threshold
-      restDayOtHours = Math.max(0, totalClockedHours - threshold)
-    } else if (attendanceStatus === 'holiday' && totalClockedHours > 0) {
+      restDayHours = payHours <= threshold / 2 ? threshold / 2 : threshold
+      restDayOtHours = Math.max(0, payHours - threshold)
+    } else if (attendanceStatus === 'holiday' && payHours > 0) {
       // Employment Act 1955 s.60D(3): any work on a public/company holiday earns the
       // holiday premium on the full normal day regardless of hours actually worked —
       // there is no half-day tier as there is for rest days.
       holidayHours = threshold
-      holidayOtHours = Math.max(0, totalClockedHours - threshold)
+      holidayOtHours = Math.max(0, payHours - threshold)
     }
 
-    // Stage 10 continued: rest/lunch break — the gap between consecutive IN/OUT
-    // sessions on the same day (e.g. an employee who punches out for lunch and
-    // back in). Break time is never counted in totalClockedHours (it falls
-    // outside every session), so this is purely a visibility/reporting figure —
-    // it does not further reduce regular/OT hours, those are already correct.
-    let breakMinutesTaken = 0
+    // Stage 10 continued: rest/lunch break, for the break_hours/break_minutes_over
+    // report columns. Two sources: the gap between consecutive IN/OUT sessions on the
+    // same day (an employee who punches out for lunch and back in), OR the assumed
+    // break above, when this was a single continuous session long enough to have one
+    // inside it. The two are mutually exclusive (assumedBreakMinutes is only ever set
+    // when currentDaySessions.length === 1, so the gap loop below is a no-op then).
+    let breakMinutesTaken = assumedBreakMinutes
     for (let i = 1; i < currentDaySessions.length; i++) {
       const gapMs = new Date(currentDaySessions[i].inTimestamp).getTime()
         - new Date(currentDaySessions[i - 1].outTimestamp).getTime()
       breakMinutesTaken += Math.max(0, gapMs / (1000 * 60))
     }
-    const allowedBreakMinutes = empShift?.break_minutes ?? 60
     const breakMinutesOver = Math.max(0, Math.round(breakMinutesTaken - allowedBreakMinutes))
 
     // Required hours for THIS day, snapshotted for the attendance-shortfall calculation

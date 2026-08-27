@@ -781,6 +781,28 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Not yet verified:** the app has not been launched and clicked through (the new Salary Structure checkbox, the payslip's two-line basic/shortfall display, a real payroll run against a gated employee) — needs the launch-confirmation step like every other phase.
 
+- **2026-08-27 — Added: auto-deduct break (electron/services/attendanceProcessor.ts Stage 10).** Confirmed with the project owner (correcting a stale note in `docs/OT_CALCULATION_PLAN.md` §5, which had wrongly logged the client as clocking in/out for lunch): employees clock ONE continuous session per day, never punching for the break. The project owner was about to switch these employees to `rate_type='monthly', attendance_required=1` (2026-08-27's earlier entry) and asked what to set Shift Standard Hours to first — under the real no-lunch-punch reality, setting it to the statutorily-correct `8` (9h span − 1h break) would have reproduced the exact "OT too expensive" incident from earlier the same day, now on top of a fixed basic instead of an hourly payslip. Requested: build the auto-deduct.
+
+  - **Rule:** a day with exactly ONE session that clocks MORE than the shift's threshold has `shifts.break_minutes` assumed to be inside that span and deducted (floored at 0) before the regular/OT split — and, since Stage 10 computes this once before branching, before the rest-day/holiday tiering too. A day with 2+ sessions (an explicit lunch punch) is untouched — the gap between sessions already excludes the break naturally, so deducting again would double-count it. A single session AT OR UNDER the threshold is also untouched — there is no ambiguous excess to attribute to an unpunched break, so nothing is assumed.
+
+  - **No new setting** — reuses the existing `shifts.break_minutes` (added for break-*limit* reporting, 2026-08-18). A shift with `break_minutes = 0` is a natural no-op, serving as the existing per-shift opt-out for a shift that genuinely has no break.
+
+  - **`break_hours`/`break_minutes_over` now reflect the assumption** when it fires (e.g. `break_hours = 1` for an assumed-but-unpunched lunch) rather than staying at the old `0`, which would have silently deducted pay while the Break Report still showed no break taken.
+
+  - **`total_clocked_hours` (raw) is unchanged** — only `regular_hours`/`ot_hours`/`rest_day_hours`/`rest_day_ot_hours`/`holiday_hours`/`holiday_ot_hours` (all pay-affecting) are computed from the break-adjusted figure. The Attendance Summary/Daily Records "Clocked" column still shows what literally happened; "Regular"/"OT" show what is paid — same separation of concerns as every other clocked-vs-paid distinction already in this app.
+
+  - **Ripple through existing tests:** every test built on a single continuous session that exceeded its shift's threshold now correctly shows less (or zero) OT/premium — these were pre-existing fixtures written before this feature existed, not new bugs. Updated with corrected expected figures and comments explaining the new arithmetic: `otReport.test.ts` (4 cases), `periodCalendar.test.ts` (2 cases), `restDayHolidayPay.test.ts` (4 cases), `attendanceProcessorBreak.test.ts` (1 case rewritten + 1 new case added for the at-or-under-threshold no-op path).
+
+  - **New dedicated coverage:** `electron/services/__tests__/autoDeductBreak.test.ts` (6 cases) — the reported client scenario (9h single session, 8h threshold → 0 phantom OT, was 1h); an explicit lunch punch is never double-deducted; a session at/under threshold is untouched; genuine OT beyond the assumed break still shows; `break_minutes = 0` is a no-op; the deduction never goes negative even when the assumed break exceeds the excess over threshold.
+
+  - **`docs/OT_CALCULATION_PLAN.md` corrected, not silently overridden:** §5's stale "Scenario B" checklist items (which caused the earlier `standard_hours = 7` mis-configuration incident in §8) are marked corrected with a pointer to the new §9, rather than quietly edited in place — so a future read of the doc's history shows the mistake and the fix, not just the current answer.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles), `npm run test` — 113/113 pass (92 pre-existing this session-start + 8 monthly-gate pure + 6 monthly-gate integration + 6 new auto-deduct + 1 new at/under-threshold case, with 11 pre-existing cases across 4 files updated in place for the corrected figures).
+
+  - **Action for the project owner:** any Payroll Period already processed before this change needs "Reprocess Attendance" re-run to pick up the corrected hours, then any payroll run drawn from it needs Recalculate (or Un-finalize → Recalculate if already finalized) — same standing rule as every other Stage 10 change this session. **Shift Standard Hours can now safely be set to `8`** for this client's Morning shift (previously advised to keep at `9` as an interim measure before this feature existed).
+
+  - **Not yet verified:** the app has not been launched and clicked through — needs the launch-confirmation step like every other phase.
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

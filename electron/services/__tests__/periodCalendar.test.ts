@@ -113,7 +113,9 @@ describe('getPeriodCalendar', () => {
   })
 
   it('reports clocked hours separately from the regular hours payroll pays on', () => {
-    // 09:00-19:00 = 10h clocked against an 8h standard -> 8 regular + 2 OT.
+    // 09:00-19:00 = 10h clocked, single session (no lunch punch), against an 8h
+    // standard. Auto-deduct (2026-08-27) assumes the shift's 60-min break is inside
+    // that span: 10h - 1h = 9h pay-hours -> 8 regular + 1 OT.
     punch(db, '2026-08-03', '09:00', '19:00')
     triggerProcessing(db, 1, [2])
 
@@ -122,7 +124,7 @@ describe('getPeriodCalendar', () => {
 
     expect(day.hours_worked).toBe(10) // raw clocked
     expect(day.regular_hours).toBe(8) // what payroll pays as regular
-    expect(day.ot_hours).toBe(2)
+    expect(day.ot_hours).toBe(1)
     // The clocked figure being larger than regular is exactly what looked like a
     // discrepancy before these fields existed.
     expect(cal.total_hours).toBe(10)
@@ -130,7 +132,9 @@ describe('getPeriodCalendar', () => {
   })
 
   it('counts rest-day work, which pays but is not ordinary regular time', () => {
-    // 2026-08-16 is a Sunday.
+    // 2026-08-16 is a Sunday. 09:00-18:00 = 9h clocked, single session -> auto-deduct
+    // assumes the 60-min break is inside it: 9h - 1h = 8h pay-hours, exactly the
+    // normal day (no rest-day OT).
     punch(db, '2026-08-16', '09:00', '18:00')
     triggerProcessing(db, 1, [2])
 
@@ -140,10 +144,10 @@ describe('getPeriodCalendar', () => {
     // Shown as leave-type (non-working day) and the paid hours are not lost — but they
     // are premium hours, NOT ordinary regular/OT time, because that is how payroll
     // stores and pays them.
-    expect(day.premium_hours).toBe(9) // 8 ordinary + 1 beyond the normal day
+    expect(day.premium_hours).toBe(8)
     expect(day.regular_hours).toBe(0)
     expect(day.ot_hours).toBe(0)
-    expect(cal.total_premium_hours).toBe(9)
+    expect(cal.total_premium_hours).toBe(8)
     expect(cal.total_regular_hours).toBe(0)
     expect(cal.total_ot_hours).toBe(0)
   })

@@ -54,10 +54,13 @@ describe('getOtReport', () => {
   beforeEach(() => { db = makeDb(8) })
 
   it('reports per-employee totals with a per-day breakdown, biggest OT first', () => {
-    // Ali: 1h OT on the 10th (09:00-19:00 = 10h clocked vs 8h standard)
+    // Ali: 09:00-19:00 = 10h clocked, single session, no lunch punch. Auto-deduct
+    // (2026-08-27) assumes the shift's 60-min break is inside that span: 10h - 1h =
+    // 9h pay-hours vs 8h standard = 1h real OT (not 2h — the unpunched break is
+    // excluded first, same as the "OT too expensive" fix).
     log(db, 2, 'in', '2026-08-10T09:00:00')
     log(db, 2, 'out', '2026-08-10T19:00:00')
-    // Siti: 3h OT on the 11th
+    // Siti: 09:00-20:00 = 11h clocked -> 10h pay-hours -> 2h OT.
     log(db, 3, 'in', '2026-08-11T09:00:00')
     log(db, 3, 'out', '2026-08-11T20:00:00')
 
@@ -68,20 +71,20 @@ describe('getOtReport', () => {
     expect(report.start_date).toBe('2026-08-10')
     expect(report.end_date).toBe('2026-08-12')
 
-    // Sorted by total OT descending — Siti (3h) before Ali (2h).
+    // Sorted by total OT descending — Siti (2h) before Ali (1h).
     expect(report.rows.map((r) => r.employee_name)).toEqual(['Siti', 'Ali'])
 
     const ali = report.rows.find((r) => r.employee_name === 'Ali')!
     expect(ali.days_with_ot).toBe(1)
-    expect(ali.total_ot_hours).toBe(2) // 10h clocked - 8h standard
+    expect(ali.total_ot_hours).toBe(1)
     expect(ali.days).toHaveLength(1)
     expect(ali.days[0].date).toBe('2026-08-10')
-    expect(ali.days[0].total_clocked_hours).toBe(10)
+    expect(ali.days[0].total_clocked_hours).toBe(10) // raw clock span, unadjusted
     expect(ali.days[0].standard_hours).toBe(8)
     expect(ali.days[0].first_in).toContain('09:00')
     expect(ali.days[0].last_out).toContain('19:00')
 
-    expect(report.grand_total_ot_hours).toBe(5) // 2 + 3
+    expect(report.grand_total_ot_hours).toBe(3) // 1 + 2
   })
 
   it('lists employees with zero OT but gives them no day rows', () => {
@@ -101,9 +104,13 @@ describe('getOtReport', () => {
     expect(report.grand_total_ot_hours).toBe(0)
   })
 
-  it('surfaces phantom OT from a too-low Standard Hours', () => {
+  it('surfaces phantom OT from a too-low Standard Hours, even after auto-deduct removes the break-related part', () => {
     // The real incident: shift standard_hours = 7 against a 9-6 shift where the break
-    // is never punched, so a plain full day shows 2h of OT it did not earn.
+    // is never punched. Auto-deduct (2026-08-27) now removes the 1h that was really
+    // just the unpunched lunch break (9h clocked - 1h assumed break = 8h pay-hours),
+    // but the shift is STILL misconfigured at 7h instead of the correct 8h, so 1h/day
+    // of genuine phantom OT remains — auto-deduct fixes the break-omission bug, not a
+    // wrong Standard Hours setting, and this report should still surface that.
     const db7 = makeDb(7)
     fullDay(db7, 2, '2026-08-10')
     fullDay(db7, 2, '2026-08-11')
@@ -113,7 +120,7 @@ describe('getOtReport', () => {
     const ali = report.rows.find((r) => r.employee_name === 'Ali')!
 
     expect(ali.days_with_ot).toBe(2)
-    expect(ali.total_ot_hours).toBe(4) // 2h/day of overtime nobody worked
+    expect(ali.total_ot_hours).toBe(2) // 1h/day of overtime nobody worked
     // Every flagged day clocked only a normal shift span — this pair (clocked vs
     // standard) is what the UI highlights so the cause is visible, not guessed.
     for (const day of ali.days) {
@@ -130,7 +137,7 @@ describe('getOtReport', () => {
       VALUES (1,2,'2020-01-01','hourly',10,8,0,0,0)
     `).run()
     log(db, 2, 'in', '2026-08-10T09:00:00')
-    log(db, 2, 'out', '2026-08-10T19:00:00') // 2h OT
+    log(db, 2, 'out', '2026-08-10T19:00:00') // 10h clocked - 1h auto-deducted break = 1h OT
 
     triggerProcessing(db, 1, [2])
 
@@ -143,9 +150,9 @@ describe('getOtReport', () => {
     calculatePayrollRun(db, run.id)
 
     const after = getOtReport(db, 1)
-    // Default OT rule for a fresh DB is multiplier 1.5 -> 2h x RM10 x 1.5 = RM30.
-    expect(after.rows.find((r) => r.employee_name === 'Ali')!.ot_pay).toBe(30)
-    expect(after.grand_total_ot_pay).toBe(30)
+    // Default OT rule for a fresh DB is multiplier 1.5 -> 1h x RM10 x 1.5 = RM15.
+    expect(after.rows.find((r) => r.employee_name === 'Ali')!.ot_pay).toBe(15)
+    expect(after.grand_total_ot_pay).toBe(15)
   })
 
   it('separates rest-day and holiday OT from normal-day OT', () => {
@@ -153,16 +160,16 @@ describe('getOtReport', () => {
     const dbWeekend = makeDb(8)
     dbWeekend.prepare(`UPDATE payroll_periods SET start_date='2026-08-14', end_date='2026-08-17' WHERE id=1`).run()
     log(dbWeekend, 2, 'in', '2026-08-16T09:00:00')
-    log(dbWeekend, 2, 'out', '2026-08-16T19:00:00') // 10h on a rest day -> 2h rest-day OT
+    log(dbWeekend, 2, 'out', '2026-08-16T19:00:00') // 10h clocked - 1h auto-deducted break = 1h rest-day OT
 
     triggerProcessing(dbWeekend, 1, [2])
     const report = getOtReport(dbWeekend, 1)
     const ali = report.rows.find((r) => r.employee_name === 'Ali')!
 
     expect(ali.total_ot_hours).toBe(0) // not normal-day OT
-    expect(ali.total_rest_day_ot_hours).toBe(2)
+    expect(ali.total_rest_day_ot_hours).toBe(1)
     expect(ali.days[0].calendar_type).toBe('weekly_off')
-    expect(report.grand_total_ot_hours).toBe(2)
+    expect(report.grand_total_ot_hours).toBe(1)
   })
 
   it('throws for an unknown payroll period rather than returning an empty report', () => {

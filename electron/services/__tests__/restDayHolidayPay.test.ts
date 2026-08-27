@@ -61,7 +61,9 @@ describe('rest day work is paid (EA 1955 s.60(3))', () => {
   beforeEach(() => { db = makeDb('2026-08-14', '2026-08-17') })
 
   it('credits a FULL day when more than half the normal hours are worked', () => {
-    // Sunday 2026-08-16, 09:00-18:00 = 9 hours (> 8h standard)
+    // Sunday 2026-08-16, 09:00-18:00 = 9 hours, single session (no lunch punch).
+    // Auto-deduct (2026-08-27) assumes the shift's 60-min break is inside that span:
+    // 9h - 1h = 8h pay-hours, exactly the normal day (no rest-day OT).
     log(db, 'in', '2026-08-16T09:00:00')
     log(db, 'out', '2026-08-16T18:00:00')
 
@@ -69,10 +71,9 @@ describe('rest day work is paid (EA 1955 s.60(3))', () => {
     const rec = getDailyRecordsByPeriod(db, 1, 2).find((r) => r.date === '2026-08-16')!
 
     expect(rec.calendar_type).toBe('weekly_off')
-    expect(rec.total_clocked_hours).toBe(9)
-    // 8h at the rest-day rate + 1h beyond the normal day as rest-day overtime.
+    expect(rec.total_clocked_hours).toBe(9) // raw clock span, unadjusted
     expect(rec.rest_day_hours).toBe(8)
-    expect(rec.rest_day_ot_hours).toBe(1)
+    expect(rec.rest_day_ot_hours).toBe(0)
     // Must NOT leak into the ordinary buckets — those are paid at the ordinary rate.
     expect(rec.regular_hours).toBe(0)
     expect(rec.ot_hours).toBe(0)
@@ -109,9 +110,10 @@ describe('rest day work is paid (EA 1955 s.60(3))', () => {
     calculatePayrollRun(db, run.id)
     const item = getPayrollRunItems(db, run.id)[0]
 
-    // 8h x RM10 x 1.0 (rest day) + 1h x RM10 x 2.0 (rest-day OT) = RM100
-    expect(item.rest_day_pay).toBe(100)
-    expect(item.gross_pay).toBe(100) // no ordinary hours worked this period
+    // 8h x RM10 x 1.0 (rest day), no rest-day OT after auto-deduct removes the
+    // unpunched break = RM80.
+    expect(item.rest_day_pay).toBe(80)
+    expect(item.gross_pay).toBe(80) // no ordinary hours worked this period
     expect(item.gross_pay).toBeGreaterThan(0) // the bug paid RM0
   })
 })
@@ -129,7 +131,7 @@ describe('public holiday work is paid (EA 1955 s.60D(3))', () => {
 
     expect(rec.calendar_type).toBe('public_holiday')
     expect(rec.holiday_hours).toBe(8)
-    expect(rec.holiday_ot_hours).toBe(1)
+    expect(rec.holiday_ot_hours).toBe(0) // 9h clocked - 1h auto-deducted break = 8h, no OT
     expect(rec.regular_hours).toBe(0)
 
     db.prepare(`UPDATE payroll_periods SET status='processing' WHERE id=1`).run()
@@ -137,9 +139,9 @@ describe('public holiday work is paid (EA 1955 s.60D(3))', () => {
     calculatePayrollRun(db, run.id)
     const item = getPayrollRunItems(db, run.id)[0]
 
-    // 8h x RM10 x 2.0 (holiday) + 1h x RM10 x 3.0 (holiday OT) = RM190
-    expect(item.holiday_pay).toBe(190)
-    expect(item.gross_pay).toBe(190)
+    // 8h x RM10 x 2.0 (holiday), no holiday OT = RM160
+    expect(item.holiday_pay).toBe(160)
+    expect(item.gross_pay).toBe(160)
   })
 
   it('has no half-day tier — any work earns the full holiday premium', () => {
@@ -184,10 +186,10 @@ describe('EPF base excludes premium overtime but includes ordinary premium hours
     calculatePayrollRun(db, run.id)
     const item = getPayrollRunItems(db, run.id)[0]
 
-    // EPF base = rest-day ORDINARY portion only (8h x 10 x 1.0 = 80); the 1h of
-    // rest-day OT (RM20) is overtime and excluded. KWSP banding: 80 -> band 80,
+    // Auto-deduct removes the unpunched break, leaving no rest-day OT — rest_day_pay
+    // is the ordinary portion only (8h x 10 x 1.0 = 80). KWSP banding: 80 -> band 80,
     // 80 x 11% = 8.80 -> ceil -> RM9.
-    expect(item.rest_day_pay).toBe(100)
+    expect(item.rest_day_pay).toBe(80)
     expect(item.epf_employee).toBe(9)
   })
 })
