@@ -66,15 +66,21 @@ summed independently). If they don't, a single continuous 9:00→18:00 punch rep
 Two valid configurations, and the correct one depends on how the client's employees
 actually behave day to day:
 
+> ⚠️ **CORRECTED 2026-08-27 — the table below originally had both values one hour too
+> low, and the error reached production.** It read "9–6 with 1hr rest = 7 net hours",
+> but 09:00→18:00 is a **9-hour span**, so the net working day is **8 hours, not 7**.
+> A shift configured from the old numbers generates phantom overtime for every
+> employee every single day. See §8 for the incident and the real figures.
+
 | Scenario | Employees clock lunch separately? | Correct `standard_hours` |
 |---|---|---|
-| A | No — one IN/OUT per day | `8` (9hr span, 1hr unclocked rest folded in) |
-| B | Yes — clock out/in for lunch (2 sessions/day) | `7` (true net target; break time never counted) |
+| A | No — one IN/OUT per day | `9` (the full span; the unclocked rest sits inside it) |
+| B | Yes — clock out/in for lunch (2 sessions/day) | `8` (span − break; break time is never clocked) |
 
-Given the client's own numbers (9–6 with 1hr rest = 7 net hours), **Scenario B** seems
-to be their mental model — but that only produces correct numbers if lunch punches are
-actually happening. If they're not, every employee will show ~1 hour of phantom "OT"
-every single day.
+The rule, stated once so it cannot be mis-derived again: **`standard_hours` is compared
+against CLOCKED hours.** So it must equal however many hours the clock will actually
+show on a normal full day — the whole span when the break is never punched, or the span
+minus the break when it is. It is *not* "hours of productive work" in the abstract.
 
 **Open question for the client — must be answered before touching OT code:**
 Do employees clock in/out for lunch, or is it one continuous punch per day?
@@ -208,3 +214,38 @@ Also: the default OT rule for **new installs** changed from `flat_addition` RM0.
       counts any present day regardless of hours). Intentional for a daily rate; worth
       confirming against the employer's policy.
 - [ ] Live OT visibility on the Logs screen — unchanged, still not built (§4.1).
+
+---
+
+## 8. Incident 2026-08-27 — phantom OT from a wrong `standard_hours`
+
+The client called asking why overtime was so expensive on their payroll run. It was not
+a code bug: the OT engine was doing exactly what it was told. `standard_hours` was set
+too low for the shift, so the clock showed more hours than the configured "normal day"
+on **every** ordinary day.
+
+Root cause is the arithmetic error corrected in §3 above — this document told whoever
+configured the shift that a 09:00–18:00 shift with a 1-hour rest has a 7-hour normal
+day. It has an **8**-hour normal day (9-hour span − 1-hour break).
+
+Measured against the real engine, for a 09:00–18:00 shift with a 1-hour break and a
+six-day week (Friday off — 27 working days in Aug 2026):
+
+| `standard_hours` | Lunch punched? | Phantom OT per day | Per employee, per month |
+|---|---|---|---|
+| 7 | No (one continuous punch) | **1.93 h** | **52 h** |
+| 7 | Yes (two sessions) | **0.96 h** | **26 h** |
+| **8** | **Yes — correct for Scenario B** | 0 h | 0 h |
+| **9** | **No — correct for Scenario A** | 0 h | 0 h |
+
+At an OT rate of hourly + RM0.50 and a RM10/hour employee, the `7` + no-lunch-punch row
+costs roughly **RM550 per employee per month** in overtime that nobody worked.
+
+**Guard added the same day:** the Shift form (Attendance → Shifts) now compares Standard
+Hours against `end_time − start_time − break_minutes` and warns inline, naming both
+valid values, when the configured figure would manufacture daily overtime. That check is
+`standardHoursWarning()` in `src/modules/attendance/ShiftManagementPanel.tsx`.
+
+**Lesson:** a number the admin types that is silently compared against measured data
+needs a sanity check at the point of entry. Documentation alone was not enough — the
+doc itself carried the error into the live configuration.

@@ -703,6 +703,20 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Not yet verified:** the app has not been launched and clicked through. **Action needed from the project owner:** reprocess any already-processed Payroll Period ("Reprocess Attendance") so rest-day/holiday hours are computed, then Recalculate the payroll run (or Un-finalize → Recalculate if already finalized). Also review Payroll → Settings: an existing install keeps its old OT rule, so it may still be on the non-compliant `flat_addition` RM0.50.
 
+- **2026-08-27 — Client's "OT too expensive" complaint diagnosed: a wrong `standard_hours`, caused by an arithmetic error in this project's own docs.** The project owner's client called asking why overtime cost so much on their payroll run. Investigated against the real engine — **not a code bug**: the OT calculation was doing exactly what it was configured to do.
+
+  - **Root cause:** `docs/OT_CALCULATION_PLAN.md` §3 told whoever configured the shift that a 09:00–18:00 shift with a 1-hour rest has a **7-hour** normal day ("9–6 with 1hr rest = 7 net hours"). 09:00→18:00 is a **9-hour span**, so the net day is **8 hours**. Both rows of that table were one hour too low, and the error propagated into the live shift configuration (and into this repo's own test fixtures, which used `standard_hours: 7` on a 9–6 shift).
+
+  - **Why it silently costs money:** `standard_hours` is compared against **clocked** hours. Set it below what the clock actually shows on a normal day and every employee accrues the difference as overtime, every day, with no one staying back. Measured on the real engine for a 09:00–18:00 shift, 1-hour break, six-day week (Friday off, 27 working days in Aug 2026): `standard_hours = 7` with no lunch punch → **1.93 h/day = 52 h/month**; with lunch punched → **0.96 h/day = 26 h/month**. Correct values (`8` when lunch is punched, `9` when it is not) → **0 h**. At hourly + RM0.50 on a RM10/hour employee that is roughly **RM550/employee/month** of overtime nobody worked.
+
+  - **Guard added, because documentation alone demonstrably was not enough:** the Shift form (Attendance → Shifts) now computes `end_time − start_time − break_minutes` and warns inline when Standard Hours falls below it, naming both defensible values and the resulting phantom OT per day (`standardHoursWarning()` in `src/modules/attendance/ShiftManagementPanel.tsx`). A number the admin types that is silently compared against measured data needs a sanity check at the point of entry.
+
+  - **Docs corrected, not quietly patched:** §3's table now carries the two right values plus a visible correction notice, and a new §8 records the incident with the measured table above, so the wrong figure cannot be re-derived from the old text.
+
+  - **Second, separate risk flagged to the project owner (config, not code):** this client's only rest day is **Friday**, but the Company Calendar ships defaulted to Sat+Sun off. If that was never changed, the app has been treating their two busiest working days as rest days and Friday as a working day. Under v0.3.0 that combination would pay Sat+Sun at **rest-day premium** on the next reprocess — so the calendar must be corrected to Friday-off *before* reprocessing, or the bill goes up sharply for the wrong reason.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run test` — 80/80 pass, `npm run build` clean. The phantom-OT figures above came from running the real processing engine against an in-memory DB, not from arithmetic on paper.
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written
