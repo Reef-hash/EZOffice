@@ -1682,6 +1682,7 @@ function buildCalendarForRange(
   let totalHours = 0
   let totalRegularHours = 0
   let totalOtHours = 0
+  let totalPremiumHours = 0
   let daysWorked = 0
   let daysLate = 0
   let daysLeave = 0
@@ -1700,32 +1701,34 @@ function buildCalendarForRange(
 
     if (!rec) {
       // No processed record — treat as absent (no data available)
-      days.push({ date: dateStr, first_in: null, last_out: null, hours_worked: 0, regular_hours: 0, ot_hours: 0, status: 'absent', leave_type: null })
+      days.push({ date: dateStr, first_in: null, last_out: null, hours_worked: 0, regular_hours: 0, ot_hours: 0, premium_hours: 0, status: 'absent', leave_type: null })
       continue
     }
 
     const status = rec.attendance_status
 
-    // Rest-day and public-holiday work is paid, so its hours must be counted here too —
-    // otherwise this screen would show zero for a day payroll actually paid for.
-    const premiumRegular = rec.rest_day_hours + rec.holiday_hours
-    const premiumOt = rec.rest_day_ot_hours + rec.holiday_ot_hours
+    // Rest-day and public-holiday work is paid, so it must be visible — but in its OWN
+    // bucket, exactly as payroll stores it. Folding it into regular_hours made this
+    // screen report more regular hours than the payroll run (found 2026-08-27).
+    const premium = rec.rest_day_hours + rec.holiday_hours
+      + rec.rest_day_ot_hours + rec.holiday_ot_hours
 
     // Map processing-engine statuses to UI-compatible statuses
     if (status === 'on_leave' || status === 'holiday' || status === 'weekly_off' || status === 'emergency_closure') {
-      const regular = round2(rec.regular_hours + premiumRegular)
-      const ot = round2(premiumOt)
+      const regular = round2(rec.regular_hours) // paid annual/sick leave credits ordinary hours
+      const premiumHrs = round2(premium)
       const clocked = round2(rec.total_clocked_hours)
       totalHours += clocked
       totalRegularHours += regular
-      totalOtHours += ot
+      totalPremiumHours += premiumHrs
       days.push({
         date: dateStr,
         first_in: rec.first_in,
         last_out: rec.last_out,
         hours_worked: clocked,
         regular_hours: regular,
-        ot_hours: ot,
+        ot_hours: 0,
+        premium_hours: premiumHrs,
         status: 'leave',
         leave_type: (rec.leave_type as LeaveRecord['leave_type']) ?? null,
       })
@@ -1734,17 +1737,19 @@ function buildCalendarForRange(
     }
 
     if (status === 'absent' || status === 'no_show') {
-      days.push({ date: dateStr, first_in: rec.first_in, last_out: rec.last_out, hours_worked: 0, regular_hours: 0, ot_hours: 0, status: 'absent', leave_type: null })
+      days.push({ date: dateStr, first_in: rec.first_in, last_out: rec.last_out, hours_worked: 0, regular_hours: 0, ot_hours: 0, premium_hours: 0, status: 'absent', leave_type: null })
       continue
     }
 
     // Working day statuses: present, late, excused_late, early_out
     const hours = round2(rec.total_clocked_hours)
-    const regular = round2(rec.regular_hours + premiumRegular)
-    const ot = round2(rec.ot_hours + premiumOt)
+    const regular = round2(rec.regular_hours)
+    const ot = round2(rec.ot_hours)
+    const premiumHrs = round2(premium)
     totalHours += hours
     totalRegularHours += regular
     totalOtHours += ot
+    totalPremiumHours += premiumHrs
     daysWorked++
 
     let dayStatus: AttendanceSummaryDay['status'] = 'on-time'
@@ -1763,6 +1768,7 @@ function buildCalendarForRange(
       hours_worked: hours,
       regular_hours: regular,
       ot_hours: ot,
+      premium_hours: premiumHrs,
       status: dayStatus,
       leave_type: null,
     })
@@ -1784,6 +1790,7 @@ function buildCalendarForRange(
     total_hours: round2(totalHours),
     total_regular_hours: round2(totalRegularHours),
     total_ot_hours: round2(totalOtHours),
+    total_premium_hours: round2(totalPremiumHours),
     days_worked: daysWorked,
     days_late: daysLate,
     days_leave: daysLeave,

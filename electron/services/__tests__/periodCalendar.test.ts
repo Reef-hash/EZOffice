@@ -93,6 +93,10 @@ describe('getPeriodCalendar', () => {
 
   it('totals match the payroll run for the same period — the reconciliation guarantee', () => {
     workEveryWeekday(db)
+    // A worked rest day (Sunday) is deliberately included: premium hours live in their
+    // own buckets in payroll, and folding them into regular_hours here made this screen
+    // over-report against the payroll run (the bug this case exists to catch).
+    punch(db, '2026-08-16', '09:00', '18:00')
     triggerProcessing(db, 1, [2])
 
     db.prepare(`UPDATE payroll_periods SET status='processing' WHERE id=1`).run()
@@ -104,6 +108,8 @@ describe('getPeriodCalendar', () => {
 
     expect(cal.total_regular_hours).toBe(item.total_regular_hours)
     expect(cal.total_ot_hours).toBe(item.total_ot_hours)
+    // And the rest-day hours are shown, just not counted as ordinary time.
+    expect(cal.total_premium_hours).toBeGreaterThan(0)
   })
 
   it('reports clocked hours separately from the regular hours payroll pays on', () => {
@@ -131,11 +137,15 @@ describe('getPeriodCalendar', () => {
     const cal = getPeriodCalendar(db, 2, 1)
     const day = cal.days.find((d) => d.date === '2026-08-16')!
 
-    // Shown as leave-type (non-working day) but the paid hours are not lost.
-    expect(day.regular_hours).toBe(8) // rest-day ordinary portion
-    expect(day.ot_hours).toBe(1) // beyond the normal day
-    expect(cal.total_regular_hours).toBe(8)
-    expect(cal.total_ot_hours).toBe(1)
+    // Shown as leave-type (non-working day) and the paid hours are not lost — but they
+    // are premium hours, NOT ordinary regular/OT time, because that is how payroll
+    // stores and pays them.
+    expect(day.premium_hours).toBe(9) // 8 ordinary + 1 beyond the normal day
+    expect(day.regular_hours).toBe(0)
+    expect(day.ot_hours).toBe(0)
+    expect(cal.total_premium_hours).toBe(9)
+    expect(cal.total_regular_hours).toBe(0)
+    expect(cal.total_ot_hours).toBe(0)
   })
 
   it('month view still works and is scoped to the calendar month', () => {

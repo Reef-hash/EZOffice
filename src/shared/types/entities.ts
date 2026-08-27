@@ -250,12 +250,18 @@ export interface AttendanceSummaryDay {
   /** Raw elapsed clocked time — includes any hours that payroll treats as overtime. */
   hours_worked: number
   /**
-   * The regular/overtime split payroll actually pays on. Carried alongside
-   * hours_worked so this screen reconciles against a payroll run instead of showing a
-   * larger "hours" figure that looks like a discrepancy (2026-08-27).
+   * The ORDINARY regular/overtime split payroll pays on, matching
+   * payroll_run_items.total_regular_hours / total_ot_hours exactly.
+   *
+   * Rest-day and public-holiday hours are deliberately NOT folded in here — payroll
+   * rates them at premium multipliers and keeps them in their own buckets, so folding
+   * them in would make this screen report more regular hours than the payroll run
+   * (the very discrepancy this split was added to remove).
    */
   regular_hours: number
   ot_hours: number
+  /** Rest-day + public-holiday hours (ordinary and overtime portions combined). */
+  premium_hours: number
   status: AttendanceStatus | 'leave'
   leave_type: LeaveType | null
 }
@@ -279,9 +285,11 @@ export interface AttendanceMonthlyCalendar {
   period_name: string | null
   days: AttendanceSummaryDay[]
   total_hours: number
-  /** Totals matching the payroll run's buckets. */
+  /** Totals matching the payroll run's buckets exactly. */
   total_regular_hours: number
   total_ot_hours: number
+  /** Rest-day + public-holiday hours, kept separate for the same reason payroll does. */
+  total_premium_hours: number
   days_worked: number
   days_late: number
   days_leave: number

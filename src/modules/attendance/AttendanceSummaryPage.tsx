@@ -4,9 +4,11 @@
 // pays on periods (e.g. 26 Jul - 25 Aug), so a month-only view could not be reconciled
 // against a payroll run and made correct payroll figures look inflated.
 //
-// Hours are shown as Regular / OT, not just raw clocked time, for the same reason — the
-// clocked figure is larger than what payroll pays as regular, which reads as a
-// discrepancy when the two screens are compared side by side.
+// Hours are shown as Regular / OT / Rest-Holiday, not just raw clocked time, for the same
+// reason — the clocked figure is larger than what payroll pays as regular, which reads as
+// a discrepancy when the two screens are compared side by side. Rest-day and public-
+// holiday hours get their own column because payroll pays them from their own buckets at
+// a premium rate; folding them into Regular here made this screen over-report.
 
 import { useState, useMemo } from 'react'
 import { Table } from '@/shared/components/Table'
@@ -157,6 +159,15 @@ export function AttendanceSummaryPage() {
       width: '80px',
     },
     {
+      key: 'premium_hours',
+      header: 'Rest/Holiday',
+      accessor: (d) => d.premium_hours > 0 ? d.premium_hours.toFixed(2) : '—',
+      sortable: true,
+      sortValue: (d) => d.premium_hours,
+      align: 'right',
+      width: '110px',
+    },
+    {
       key: 'status',
       header: 'Status',
       accessor: (d) => dayStatusBadge(d),
@@ -253,7 +264,7 @@ export function AttendanceSummaryPage() {
       )}
 
       {calendar && (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
           <div className="rounded-xl bg-surface p-4 shadow-sm">
             <p className="text-xs font-medium uppercase text-neutral-500">Regular Hours</p>
             <p className="mt-1 text-2xl font-semibold text-neutral-900">{calendar.total_regular_hours.toFixed(2)}</p>
@@ -262,6 +273,11 @@ export function AttendanceSummaryPage() {
           <div className="rounded-xl bg-surface p-4 shadow-sm">
             <p className="text-xs font-medium uppercase text-neutral-500">OT Hours</p>
             <p className="mt-1 text-2xl font-semibold text-neutral-900">{calendar.total_ot_hours.toFixed(2)}</p>
+          </div>
+          <div className="rounded-xl bg-surface p-4 shadow-sm">
+            <p className="text-xs font-medium uppercase text-neutral-500">Rest/Holiday Hours</p>
+            <p className="mt-1 text-2xl font-semibold text-neutral-900">{calendar.total_premium_hours.toFixed(2)}</p>
+            <p className="mt-0.5 text-xs text-neutral-500">Paid at premium rate</p>
           </div>
           <div className="rounded-xl bg-surface p-4 shadow-sm">
             <p className="text-xs font-medium uppercase text-neutral-500">Days Worked</p>

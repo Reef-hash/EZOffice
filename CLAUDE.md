@@ -751,6 +751,18 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Not yet verified:** the app has not been launched and clicked through (mode toggle, period dropdown, the new columns/tiles).
 
+- **2026-08-27 — Fixed (regression I introduced the same day): the Attendance Summary counted rest-day/public-holiday hours as *regular* hours, so it reported more regular time than the payroll run.** Caught while checking the project owner's question about a 224.94-hour regular figure that looked too high for 24 days on a six-day week.
+
+  - **Root cause:** `buildCalendarForRange` (added earlier the same day for the period-based Summary view) folded `rest_day_hours`/`holiday_hours`/`rest_day_ot_hours`/`holiday_ot_hours` into the day's `regular_hours`/`ot_hours`. Payroll keeps those in their own buckets (migration 0021) precisely so they are paid at a premium and never at the ordinary rate — so the two screens disagreed by exactly the premium hours. Measured on a real in-memory DB: 2 normal days + 1 worked Sunday at 9h standard gave `PAYROLL regular=18` but `SUMMARY regular=27`.
+
+  - **Why the tests missed it:** the reconciliation test in `periodCalendar.test.ts` — written specifically to pin Summary totals to payroll totals — only punched weekdays, so no premium hours ever entered the fixture. The assertion was right; the data it ran against could not exercise the bug. The test now includes a worked Sunday, which is what makes the guarantee real rather than nominal.
+
+  - **Fix:** `AttendanceSummaryDay` gained `premium_hours` and `AttendanceMonthlyCalendar` gained `total_premium_hours`; `regular_hours`/`ot_hours` are now documented and computed as ORDINARY time only. Premium hours are surfaced in their own "Rest/Holiday" table column and stat tile rather than dropped — hiding them would have traded an over-report for a silent under-report.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles), `npm run test` — 92/92 pass. The original repro now reports `PAYROLL regular=18` / `SUMMARY regular=18, premium=9`.
+
+  - **Not yet verified:** the app has not been launched and clicked through (the new column and tile).
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written
