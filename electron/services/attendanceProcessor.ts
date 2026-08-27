@@ -5,7 +5,7 @@
 // Produces: daily_attendance_records
 
 import type Database from 'better-sqlite3'
-import type { ProcessingRun, DailyAttendanceRecord, AttendanceDayStatus } from '../../src/shared/types/entities'
+import type { ProcessingRun, DailyAttendanceRecord, AttendanceDayStatus, EmployeeMonthlySummary } from '../../src/shared/types/entities'
 import { resolveCalendarDay } from './calendar'
 
 /** Returns minutes between two "HH:MM" strings (b - a). */
@@ -113,12 +113,14 @@ export function triggerProcessing(
                calendar_type, leave_type, leave_record_id, shift_id,
                attendance_status, first_in, last_out, session_count,
                total_clocked_hours, break_hours, break_minutes_over, regular_hours, ot_hours,
+               rest_day_hours, rest_day_ot_hours, holiday_hours, holiday_ot_hours,
                minutes_late, minutes_early_out, is_finalized, created_at, updated_at)
             VALUES
               (@employee_id, @date, @payroll_period_id, @processing_run_id,
                @calendar_type, @leave_type, @leave_record_id, @shift_id,
                @attendance_status, @first_in, @last_out, @session_count,
                @total_clocked_hours, @break_hours, @break_minutes_over, @regular_hours, @ot_hours,
+               @rest_day_hours, @rest_day_ot_hours, @holiday_hours, @holiday_ot_hours,
                @minutes_late, @minutes_early_out, 0, @now, @now)
           `).run(record)
         }
@@ -203,7 +205,7 @@ export function getDailyRecordsByPeriod(
 export function getAttendanceSummaryForDateRange(
   db: Database.Database,
   filters: { employeeIds?: number[]; startDate: string; endDate: string },
-): Array<{ employee_id: number; total_regular_hours: number; total_ot_hours: number; days_worked: number }> {
+): EmployeeMonthlySummary[] {
   const { startDate, endDate, employeeIds } = filters
 
   const conditions = ['dar.date >= ?', 'dar.date <= ?']
@@ -219,13 +221,17 @@ export function getAttendanceSummaryForDateRange(
       dar.employee_id,
       COALESCE(SUM(dar.regular_hours), 0) AS total_regular_hours,
       COALESCE(SUM(dar.ot_hours), 0) AS total_ot_hours,
+      COALESCE(SUM(dar.rest_day_hours), 0) AS total_rest_day_hours,
+      COALESCE(SUM(dar.rest_day_ot_hours), 0) AS total_rest_day_ot_hours,
+      COALESCE(SUM(dar.holiday_hours), 0) AS total_holiday_hours,
+      COALESCE(SUM(dar.holiday_ot_hours), 0) AS total_holiday_ot_hours,
       COUNT(DISTINCT CASE WHEN dar.attendance_status IN ('present', 'late', 'early_out', 'excused_late')
                              OR (dar.attendance_status = 'on_leave' AND dar.leave_type IN ('annual', 'sick'))
                         THEN dar.date END) AS days_worked
     FROM daily_attendance_records dar
     WHERE ${conditions.join(' AND ')}
     GROUP BY dar.employee_id
-  `).all(...params) as Array<{ employee_id: number; total_regular_hours: number; total_ot_hours: number; days_worked: number }>
+  `).all(...params) as EmployeeMonthlySummary[]
 
   return rows
 }
@@ -442,6 +448,13 @@ function processEmployee(
 
     let regularHours = 0
     let otHours = 0
+    // Hours worked on a non-working day. Kept in their own buckets because payroll
+    // pays them at premium multipliers — folding them into regularHours/otHours would
+    // silently pay rest-day and public-holiday work at the ordinary rate.
+    let restDayHours = 0
+    let restDayOtHours = 0
+    let holidayHours = 0
+    let holidayOtHours = 0
 
     if (attendanceStatus === 'present' || attendanceStatus === 'late' || attendanceStatus === 'early_out') {
       regularHours = Math.min(totalClockedHours, threshold)
@@ -453,6 +466,21 @@ function processEmployee(
       // Previously every leave type (including annual/sick) was paid 0 for the day,
       // silently underpaying daily/hourly-rate employees on approved paid leave.
       regularHours = threshold
+    } else if (attendanceStatus === 'weekly_off' && totalClockedHours > 0) {
+      // Employment Act 1955 s.60(3): work on a rest day is paid in day-tiers, not by
+      // the hour — up to half the normal hours earns half a day's wages, anything more
+      // earns a full day's wages. Encoding that as HOURS here keeps payroll's job a
+      // plain (hours x rate x multiplier) with no special-casing downstream.
+      // Until 2026-08-27 these punches were discarded entirely and the employee was
+      // paid RM0 for working their rest day.
+      restDayHours = totalClockedHours <= threshold / 2 ? threshold / 2 : threshold
+      restDayOtHours = Math.max(0, totalClockedHours - threshold)
+    } else if (attendanceStatus === 'holiday' && totalClockedHours > 0) {
+      // Employment Act 1955 s.60D(3): any work on a public/company holiday earns the
+      // holiday premium on the full normal day regardless of hours actually worked —
+      // there is no half-day tier as there is for rest days.
+      holidayHours = threshold
+      holidayOtHours = Math.max(0, totalClockedHours - threshold)
     }
 
     // Stage 10 continued: rest/lunch break — the gap between consecutive IN/OUT
@@ -493,6 +521,10 @@ function processEmployee(
       break_minutes_over: breakMinutesOver,
       regular_hours: Math.round(regularHours * 100) / 100,
       ot_hours: Math.round(otHours * 100) / 100,
+      rest_day_hours: Math.round(restDayHours * 100) / 100,
+      rest_day_ot_hours: Math.round(restDayOtHours * 100) / 100,
+      holiday_hours: Math.round(holidayHours * 100) / 100,
+      holiday_ot_hours: Math.round(holidayOtHours * 100) / 100,
       minutes_late: minutesLate,
       minutes_early_out: minutesEarlyOut,
       now,

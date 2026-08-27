@@ -158,3 +158,53 @@ PR, since it's an unrelated feature).
   new field, Break Report tab, Payroll Periods Break column) — needs the
   launch-confirmation step like every other phase. Also still needs the client to
   confirm their real Morning shift's `standard_hours` is set to `7` (Scenario B).
+
+---
+
+## 7. Reviewed 2026-08-27 — OT logic audit, three bugs fixed
+
+The project owner asked for a full review of the OT calculation. **The OT arithmetic
+described in §2 above was confirmed correct** — elapsed clocked hours vs.
+`shifts.standard_hours`, then the configured OT rule. Three bugs *around* it were not.
+All three were reproduced against a real in-memory DB before any code changed. Full
+write-up in `CLAUDE.md`'s Decision Log; summary:
+
+1. **Work on a rest day or public holiday was paid RM0.** A 9-hour Sunday punch
+   recorded `total_clocked_hours: 9` but `regular_hours: 0, ot_hours: 0` — Stage 10
+   only credited hours for `present`/`late`/`early_out`. Fixed via migration `0021`:
+   new `rest_day_hours`/`rest_day_ot_hours`/`holiday_hours`/`holiday_ot_hours` columns
+   plus four configurable multipliers in Payroll Settings, seeded to the EA 1955
+   minimums. The statutory half-day/full-day rest-day tiers are encoded as **hours** in
+   the processing engine so payroll stays `hours × rate × multiplier`.
+
+2. **Daily-rate employees on a six-day week lost ~19% of pay.** `workingDaysInRange`
+   hardcoded Mon–Fri and the `Math.min(days_worked, workingDays)` cap then discarded
+   the Saturdays (RM1,680 paid instead of RM2,080 in the repro). Replaced with
+   `workingDaysForEmployeeInRange`, which delegates to `resolveCalendarDay` — the
+   calendar module's own resolver — per employee.
+
+3. **Payroll read a dead holiday table.** `getPublicHolidayDatesInRange` queried
+   `public_holidays` (no dates past 2025, nothing writes to it) instead of
+   `calendar_events`. Deleted; same delegation as above.
+
+Also: the default OT rule for **new installs** changed from `flat_addition` RM0.50 to
+`multiplier` 1.5 (EA 1955 s.60A minimum). Existing installs keep their configured rule
+— Payroll → Settings now warns inline when it is below the minimum.
+
+### Still open after this review
+
+- [ ] **Unworked public holidays pay 0** for daily/hourly employees. EA 1955 entitles
+      employees to paid gazetted holidays — likely a further gap, but a separate
+      entitlement question (which holidays, pro-ration, eligibility) that was out of
+      scope for an OT review.
+- [ ] **Two sources of truth for "standard hours per day"** remain: the OT threshold
+      uses `shifts.standard_hours`, the daily-rate hourly rate divides by
+      `salary_structures.standard_hours_per_day`. Setting the shift to `7` (Scenario B
+      in §3) while leaving the salary structure at `8` produces one hour of phantom OT
+      every normal day. Consolidating the two is a schema decision, not a bug fix — but
+      §5's "re-verify the client's real Morning shift `standard_hours`" checklist item
+      is now *more* urgent, not less.
+- [ ] **Daily-rate employees get a full day's pay for a partial day** (`days_worked`
+      counts any present day regardless of hours). Intentional for a daily rate; worth
+      confirming against the employer's policy.
+- [ ] Live OT visibility on the Logs screen — unchanged, still not built (§4.1).

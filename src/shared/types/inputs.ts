@@ -164,6 +164,11 @@ export const updatePayrollSettingsSchema = z.object({
   // Leave entitlement defaults (2026-07-15)
   default_annual_leave_days: z.number().min(0, 'Must be non-negative').optional(),
   default_sick_leave_days: z.number().min(0, 'Must be non-negative').optional(),
+  // Rest-day / public-holiday premium multipliers (2026-08-27, EA 1955 s.60(3)/s.60D(3))
+  rest_day_multiplier: z.number().min(0, 'Must be non-negative').optional(),
+  rest_day_ot_multiplier: z.number().min(0, 'Must be non-negative').optional(),
+  holiday_multiplier: z.number().min(0, 'Must be non-negative').optional(),
+  holiday_ot_multiplier: z.number().min(0, 'Must be non-negative').optional(),
 })
 
 export type UpdatePayrollSettingsInput = z.infer<typeof updatePayrollSettingsSchema>

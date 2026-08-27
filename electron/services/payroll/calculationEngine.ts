@@ -10,6 +10,28 @@ export interface OtRule {
 }
 
 /**
+ * Multipliers applied to the employee's ordinary hourly rate for work performed on a
+ * rest day or a public/company holiday. Configurable in Payroll Settings; seeded to
+ * the Employment Act 1955 minimums by migration 0021. See that migration's header for
+ * how the "half day / full day" rest-day tiers are encoded as HOURS upstream, which is
+ * why rest_day_multiplier is 1.0 rather than 2.0.
+ */
+export interface PremiumRates {
+  rest_day_multiplier: number
+  rest_day_ot_multiplier: number
+  holiday_multiplier: number
+  holiday_ot_multiplier: number
+}
+
+/** Employment Act 1955 minimums — used when a caller supplies no explicit rates. */
+const DEFAULT_PREMIUM_RATES: PremiumRates = {
+  rest_day_multiplier: 1.0,
+  rest_day_ot_multiplier: 2.0,
+  holiday_multiplier: 2.0,
+  holiday_ot_multiplier: 3.0,
+}
+
+/**
  * OT pay calculation per the OT rule.
  * - flat_addition: each OT hour pays rate + flat_amount (e.g. daily_rate + 0.50/hour)
  * - multiplier: each OT hour pays rate × multiplier (e.g. 1.5× hourly rate)
@@ -81,8 +103,44 @@ export interface CalculationInput {
    * director's fee, and retrenchment/termination benefits are excluded).
    */
   commission?: number
+  /** Rest-day / public-holiday premium multipliers. Defaults to the EA 1955 minimums. */
+  premiumRates?: PremiumRates
   /** Number of working days in the month (for daily rate → monthly conversion) */
   workingDaysInMonth?: number
+}
+
+/** Pay earned on rest days and public/company holidays, split ordinary vs overtime. */
+interface PremiumPay {
+  restDayOrdinary: number
+  restDayOt: number
+  holidayOrdinary: number
+  holidayOt: number
+}
+
+const NO_PREMIUM_PAY: PremiumPay = {
+  restDayOrdinary: 0,
+  restDayOt: 0,
+  holidayOrdinary: 0,
+  holidayOt: 0,
+}
+
+/**
+ * Pay for work performed on rest days and public/company holidays.
+ * The HOURS were already tiered by the processing engine (a rest day worked beyond
+ * half the normal hours is credited a full day's hours, etc.) — this only applies the
+ * configured rate multipliers to them.
+ */
+function calcPremiumPay(
+  hourlyRate: number,
+  summary: EmployeeMonthlySummary,
+  rates: PremiumRates,
+): PremiumPay {
+  return {
+    restDayOrdinary: summary.total_rest_day_hours * hourlyRate * rates.rest_day_multiplier,
+    restDayOt: summary.total_rest_day_ot_hours * hourlyRate * rates.rest_day_ot_multiplier,
+    holidayOrdinary: summary.total_holiday_hours * hourlyRate * rates.holiday_multiplier,
+    holidayOt: summary.total_holiday_ot_hours * hourlyRate * rates.holiday_ot_multiplier,
+  }
 }
 
 /**
@@ -94,10 +152,12 @@ export function calculatePay(input: CalculationInput): PayCheckResult {
   const commission = input.commission ?? 0
 
   // ── Monthly salary branch ──
-  // Gross pay = fixed monthly salary + commission. No hours-based math, no OT.
+  // Gross pay = fixed monthly salary + commission. No hours-based math, no OT, and no
+  // rest-day/holiday premium: monthly-rate employees are excluded from attendance
+  // processing entirely (2026-07-17 decision), so they never accrue those hours.
   if (structure.rate_type === 'monthly') {
     const grossRegularPay = Math.round(structure.rate_amount * 100) / 100
-    return buildResult(summary.employee_id, 0, 0, grossRegularPay, 0, commission, input)
+    return buildResult(summary.employee_id, 0, 0, grossRegularPay, 0, commission, NO_PREMIUM_PAY, input)
   }
 
   // ── 1. Compute hourly rate ──
@@ -124,7 +184,19 @@ export function calculatePay(input: CalculationInput): PayCheckResult {
   // ── 3. Gross OT pay ──
   const grossOtPay = calcOtPay(hourlyRate, summary.total_ot_hours, otRule)
 
-  return buildResult(summary.employee_id, summary.total_regular_hours, summary.total_ot_hours, grossRegularPay, grossOtPay, commission, input)
+  // ── 4. Rest-day / public-holiday premium pay ──
+  const premiumPay = calcPremiumPay(hourlyRate, summary, input.premiumRates ?? DEFAULT_PREMIUM_RATES)
+
+  return buildResult(
+    summary.employee_id,
+    summary.total_regular_hours,
+    summary.total_ot_hours,
+    grossRegularPay,
+    grossOtPay,
+    commission,
+    premiumPay,
+    input,
+  )
 }
 
 /**
@@ -141,10 +213,15 @@ function buildResult(
   grossRegularPay: number,
   grossOtPay: number,
   commission: number,
+  premiumPay: PremiumPay,
   input: CalculationInput,
 ): PayCheckResult {
   const { structure, advanceDeduction } = input
-  const grossPay = Math.round((grossRegularPay + grossOtPay + commission) * 100) / 100
+  const restDayPay = premiumPay.restDayOrdinary + premiumPay.restDayOt
+  const holidayPay = premiumPay.holidayOrdinary + premiumPay.holidayOt
+  const grossPay = Math.round(
+    (grossRegularPay + grossOtPay + commission + restDayPay + holidayPay) * 100,
+  ) / 100
 
   // Statutory deductions (only if subject + rate available)
   const statutory: StatutoryBreakdown = {
@@ -163,7 +240,14 @@ function buildResult(
   // include commission, per the 2026-07-24 commission decision). grossOtPay must
   // be excluded from the EPF base — grossPay (used for SOCSO/EIS bracket lookup and
   // PCB, both of which are correct as-is) is NOT the right base for EPF specifically.
-  const epfWageBase = Math.round((grossRegularPay + commission) * 100) / 100
+  //
+  // Rest-day and public-holiday pay is split the same way: the ORDINARY-hours portion
+  // is payment for work (wages, so it counts), while the portion earned beyond the
+  // normal day is overtime and is excluded — the Act excludes "overtime payment", not
+  // "payment for work on a non-working day".
+  const epfWageBase = Math.round(
+    (grossRegularPay + commission + premiumPay.restDayOrdinary + premiumPay.holidayOrdinary) * 100,
+  ) / 100
 
   if (structure.subject_to_epf && input.epfRate) {
     statutory.epf_employee = calcEpfContribution(epfWageBase, input.epfRate.employee_contribution_pct)
@@ -196,6 +280,8 @@ function buildResult(
     gross_regular_pay: Math.round(grossRegularPay * 100) / 100,
     gross_ot_pay: Math.round(grossOtPay * 100) / 100,
     commission: Math.round(commission * 100) / 100,
+    rest_day_pay: Math.round(restDayPay * 100) / 100,
+    holiday_pay: Math.round(holidayPay * 100) / 100,
     gross_pay: Math.round(grossPay * 100) / 100,
     statutory,
     advance_deduction: advanceDeduction,

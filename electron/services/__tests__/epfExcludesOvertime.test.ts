@@ -8,7 +8,7 @@
 // in the first place — so this fix is EPF-only.
 import { describe, it, expect } from 'vitest'
 import { calculatePay, type OtRule } from '../payroll/calculationEngine'
-import type { EmployeeMonthlySummary } from '../../../src/shared/types/entities'
+import { makeSummary } from './helpers/summary'
 
 const otRule: OtRule = { ot_rule_type: 'multiplier', ot_rule_value: 1.5 }
 
@@ -32,12 +32,7 @@ const dailyStruct = {
 
 describe('calculatePay — EPF excludes overtime pay', () => {
   it('computes EPF on regular pay only for an hourly employee with OT', () => {
-    const summary: EmployeeMonthlySummary = {
-      employee_id: 1,
-      total_regular_hours: 160,
-      total_ot_hours: 20,
-      days_worked: 20,
-    }
+    const summary = makeSummary({ total_regular_hours: 160, total_ot_hours: 20, days_worked: 20 })
     const result = calculatePay({
       summary,
       structure: hourlyStruct,
@@ -60,12 +55,7 @@ describe('calculatePay — EPF excludes overtime pay', () => {
   })
 
   it('includes commission but still excludes OT from the EPF base', () => {
-    const summary: EmployeeMonthlySummary = {
-      employee_id: 1,
-      total_regular_hours: 160,
-      total_ot_hours: 10,
-      days_worked: 20,
-    }
+    const summary = makeSummary({ total_regular_hours: 160, total_ot_hours: 10, days_worked: 20 })
     const result = calculatePay({
       summary,
       structure: hourlyStruct,
@@ -86,12 +76,7 @@ describe('calculatePay — EPF excludes overtime pay', () => {
   })
 
   it('computes EPF on regular pay only for a daily-rate employee with OT', () => {
-    const summary: EmployeeMonthlySummary = {
-      employee_id: 1,
-      total_regular_hours: 0,
-      total_ot_hours: 5,
-      days_worked: 20,
-    }
+    const summary = makeSummary({ total_regular_hours: 0, total_ot_hours: 5, days_worked: 20 })
     const result = calculatePay({
       summary,
       structure: dailyStruct,

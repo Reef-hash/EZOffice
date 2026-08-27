@@ -296,6 +296,12 @@ export interface PayrollSettings {
   device_last_synced_at: string | null // H1: watermark ISO timestamp; null = never synced
   default_annual_leave_days: number // company-wide default, applied via initializeYearlyLeaveEntitlements()
   default_sick_leave_days: number
+  // Premium multipliers on the ordinary hourly rate for work on non-working days.
+  // Seeded to the Employment Act 1955 minimums by migration 0021; editable by the admin.
+  rest_day_multiplier: number
+  rest_day_ot_multiplier: number
+  holiday_multiplier: number
+  holiday_ot_multiplier: number
   created_at: string
   updated_at: string
 }
@@ -413,6 +419,8 @@ export interface PayrollRunItem {
   gross_regular_pay: number
   gross_ot_pay: number
   commission: number // ad-hoc per-run commission, snapshotted at calculation time
+  rest_day_pay: number // work on rest days (ordinary + OT portions), EA 1955 s.60(3)
+  holiday_pay: number  // work on public/company holidays, EA 1955 s.60D(3)
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -463,6 +471,9 @@ export interface PayCheckResult {
   gross_regular_pay: number
   gross_ot_pay: number
   commission: number
+  // Pay for work on rest days / public holidays (ordinary + overtime portions combined)
+  rest_day_pay: number
+  holiday_pay: number
   gross_pay: number
 
   // Statutory
@@ -481,6 +492,12 @@ export interface EmployeeMonthlySummary {
   total_regular_hours: number
   total_ot_hours: number
   days_worked: number
+  // Hours worked on non-working days, paid at premium multipliers (EA 1955 s.60(3)/s.60D(3)).
+  // Kept out of total_regular_hours/total_ot_hours so payroll can rate them separately.
+  total_rest_day_hours: number
+  total_rest_day_ot_hours: number
+  total_holiday_hours: number
+  total_holiday_ot_hours: number
 }
 
 // Phase D1: Company Settings (singleton)
@@ -761,6 +778,12 @@ export interface DailyAttendanceRecord {
   break_minutes_over: number
   regular_hours: number
   ot_hours: number
+  // Hours worked on non-working days — paid at premium multipliers, never folded
+  // into regular_hours/ot_hours (see migration 0021).
+  rest_day_hours: number
+  rest_day_ot_hours: number
+  holiday_hours: number
+  holiday_ot_hours: number
   minutes_late: number
   minutes_early_out: number
   is_finalized: boolean

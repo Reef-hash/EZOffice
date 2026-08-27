@@ -1,13 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { calculatePay, type OtRule } from '../payroll/calculationEngine'
-import type { EmployeeMonthlySummary } from '../../../src/shared/types/entities'
+import { makeSummary } from './helpers/summary'
 
-const defaultSummary: EmployeeMonthlySummary = {
-  employee_id: 1,
-  total_regular_hours: 0,
-  total_ot_hours: 0,
-  days_worked: 0,
-}
+const defaultSummary = makeSummary()
 
 const otRule: OtRule = { ot_rule_type: 'multiplier', ot_rule_value: 1.5 }
 
@@ -127,7 +122,7 @@ describe('calculatePay — monthly salary', () => {
 
   it('gross pay is unaffected by hours summary — hours ignored when monthly', () => {
     const result = calculatePay({
-      summary: { employee_id: 1, total_regular_hours: 999, total_ot_hours: 888, days_worked: 999 },
+      summary: makeSummary({ total_regular_hours: 999, total_ot_hours: 888, days_worked: 999 }),
       structure: monthlyStruct,
       otRule,
       epfRate: null,

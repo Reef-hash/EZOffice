@@ -55,6 +55,19 @@ const TRANSITION_LABELS: Record<string, string> = {
   finalized_closed: 'Close',
 }
 
+/**
+ * Hours worked on a rest day or public holiday, which are paid at premium rates and
+ * therefore never appear in the Regular/OT columns. Rendered as one cell because a
+ * given day is either a rest day or a holiday, never both.
+ */
+function formatPremiumHours(r: DailyAttendanceRecord): string {
+  const rest = r.rest_day_hours + r.rest_day_ot_hours
+  const holiday = r.holiday_hours + r.holiday_ot_hours
+  if (rest > 0) return `${rest} (rest)`
+  if (holiday > 0) return `${holiday} (holiday)`
+  return '—'
+}
+
 export function PayrollPeriodListPage() {
   const [showCreate, setShowCreate] = useState(false)
   const [showConfirmTransition, setShowConfirmTransition] = useState<PayrollPeriod | null>(null)
@@ -259,6 +272,7 @@ export function PayrollPeriodListPage() {
                     <th className="pb-1 pr-2 text-right">Hours</th>
                     <th className="pb-1 pr-2 text-right">Regular</th>
                     <th className="pb-1 pr-2 text-right">OT</th>
+                    <th className="pb-1 pr-2 text-right">Rest/Holiday</th>
                     <th className="pb-1 pr-2 text-right">Late</th>
                     <th className="pb-1 pr-2 text-right">Break</th>
                     <th className="pb-1">Calendar</th>
@@ -283,6 +297,9 @@ export function PayrollPeriodListPage() {
                       <td className="py-1 pr-2 text-right">{r.total_clocked_hours}</td>
                       <td className="py-1 pr-2 text-right">{r.regular_hours}</td>
                       <td className="py-1 pr-2 text-right">{r.ot_hours}</td>
+                      <td className="py-1 pr-2 text-right font-medium text-primary-700">
+                        {formatPremiumHours(r)}
+                      </td>
                       <td className="py-1 pr-2 text-right">{r.minutes_late || '—'}</td>
                       <td className={`py-1 pr-2 text-right ${r.break_minutes_over > 0 ? 'font-medium text-warning-700' : ''}`}>
                         {r.break_hours}h{r.break_minutes_over > 0 ? ` (+${r.break_minutes_over}m)` : ''}

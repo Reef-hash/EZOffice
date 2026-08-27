@@ -37,6 +37,8 @@ interface PayslipData {
   gross_regular_pay: number
   gross_ot_pay: number
   commission: number
+  rest_day_pay: number
+  holiday_pay: number
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -65,7 +67,8 @@ function getRunItemWithEmployeeDetails(
       r.month,
       r.run_date,
       i.total_regular_hours, i.total_ot_hours,
-      i.gross_regular_pay, i.gross_ot_pay, i.commission, i.gross_pay,
+      i.gross_regular_pay, i.gross_ot_pay, i.commission,
+      i.rest_day_pay, i.holiday_pay, i.gross_pay,
       i.epf_employee, i.epf_employer,
       i.socso_employee, i.socso_employer,
       i.eis_employee, i.eis_employer,
@@ -210,6 +213,11 @@ export async function generatePayslipPdf(
             ['Regular Pay', item.total_regular_hours, item.gross_regular_pay.toFixed(2)],
             ['Overtime', item.total_ot_hours, item.gross_ot_pay.toFixed(2)],
             ...(item.commission > 0 ? [['Commission', '', item.commission.toFixed(2)]] : []),
+            // Rest-day / public-holiday work is paid at a premium and must appear as
+            // its own line — it is part of gross_pay, so omitting it would leave the
+            // payslip's lines not adding up to the stated gross.
+            ...(item.rest_day_pay > 0 ? [['Rest Day Work', '', item.rest_day_pay.toFixed(2)]] : []),
+            ...(item.holiday_pay > 0 ? [['Public Holiday Work', '', item.holiday_pay.toFixed(2)]] : []),
             [
               { text: 'Gross Pay', style: 'bold', colSpan: 2 },
               {},

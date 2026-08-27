@@ -9,7 +9,7 @@
 // the exact wage rounded to nearest. See calcEpfContribution in calculationEngine.ts.
 import { describe, it, expect } from 'vitest'
 import { calculatePay, type OtRule } from '../payroll/calculationEngine'
-import type { EmployeeMonthlySummary } from '../../../src/shared/types/entities'
+import { makeSummary } from './helpers/summary'
 
 const otRule: OtRule = { ot_rule_type: 'multiplier', ot_rule_value: 1.5 }
 
@@ -22,12 +22,7 @@ const monthlyStruct = {
   subject_to_eis: 1,
 }
 
-const defaultSummary: EmployeeMonthlySummary = {
-  employee_id: 1,
-  total_regular_hours: 0,
-  total_ot_hours: 0,
-  days_worked: 0,
-}
+const defaultSummary = makeSummary()
 
 describe('calculatePay — EPF matches the real KWSP contribution table', () => {
   it('reproduces the exact reported KWSP figures for RM1,764.72', () => {
