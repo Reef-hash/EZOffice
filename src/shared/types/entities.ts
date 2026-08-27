@@ -355,6 +355,10 @@ export interface SalaryStructure {
   subject_to_eis: number
   pcb_category: 'single' | 'married_no_spouse_income' | 'married_with_spouse_income'
   pcb_children_count: number
+  // Only meaningful when rate_type = 'monthly'. 0 (default) = fixed salary regardless
+  // of attendance, unchanged since 2026-07-17. 1 = the basic is gated on actually
+  // meeting the shift's required daily hours — see migration 0022.
+  attendance_required: number // 0 or 1 (SQLite)
   created_at: string
   updated_at: string
 }
@@ -497,6 +501,10 @@ export interface PayrollRunItem {
   commission: number // ad-hoc per-run commission, snapshotted at calculation time
   rest_day_pay: number // work on rest days (ordinary + OT portions), EA 1955 s.60(3)
   holiday_pay: number  // work on public/company holidays, EA 1955 s.60D(3)
+  // Monthly + attendance_required only (migration 0022) — 0 for every other rate type.
+  basic_salary_snapshot: number
+  attendance_shortfall_hours: number
+  attendance_shortfall_amount: number
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -552,6 +560,15 @@ export interface PayCheckResult {
   holiday_pay: number
   gross_pay: number
 
+  // Monthly + attendance_required only (migration 0022) — 0 for every other case.
+  // basic_salary_snapshot is the full contracted amount BEFORE the shortfall
+  // deduction; gross_regular_pay above is already net of it. Kept separate so a
+  // payslip can show "Basic Salary: RM1,700" and "Attendance Shortfall: -RM4.09" as
+  // two lines rather than silently shrinking the basic.
+  basic_salary_snapshot: number
+  attendance_shortfall_hours: number
+  attendance_shortfall_amount: number
+
   // Statutory
   statutory: StatutoryBreakdown
 
@@ -574,6 +591,12 @@ export interface EmployeeMonthlySummary {
   total_rest_day_ot_hours: number
   total_holiday_hours: number
   total_holiday_ot_hours: number
+  // Sum of required_hours over working days, and the shortfall against it
+  // (required_hours - regular_hours, floored at 0 per day) — used only by a
+  // monthly + attendance_required salary structure (migration 0022); 0 for every
+  // other rate type.
+  total_required_hours: number
+  total_shortfall_hours: number
 }
 
 // Phase D1: Company Settings (singleton)
@@ -860,6 +883,10 @@ export interface DailyAttendanceRecord {
   rest_day_ot_hours: number
   holiday_hours: number
   holiday_ot_hours: number
+  // Shift threshold snapshotted for this day (0 on weekly_off/holiday/emergency days,
+  // which are never part of the attendance requirement). Used to compute pro-rata
+  // shortfall for a monthly + attendance_required salary structure (migration 0022).
+  required_hours: number
   minutes_late: number
   minutes_early_out: number
   is_finalized: boolean

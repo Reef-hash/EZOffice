@@ -36,6 +36,7 @@ export function SalaryStructureForm({
   const [subjectToEis, setSubjectToEis] = useState(true)
   const [pcbCategory, setPcbCategory] = useState<'single' | 'married_no_spouse_income' | 'married_with_spouse_income'>('single')
   const [pcbChildrenCount, setPcbChildrenCount] = useState('0')
+  const [attendanceRequired, setAttendanceRequired] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export function SalaryStructureForm({
       setSubjectToEis(!!structure.subject_to_eis)
       setPcbCategory(structure.pcb_category)
       setPcbChildrenCount(String(structure.pcb_children_count))
+      setAttendanceRequired(!!structure.attendance_required)
     } else {
       setEmployeeId('')
       setEffectiveFrom(new Date().toISOString().slice(0, 10))
@@ -62,6 +64,7 @@ export function SalaryStructureForm({
       setSubjectToEis(true)
       setPcbCategory('single')
       setPcbChildrenCount('0')
+      setAttendanceRequired(false)
     }
     setValidationError(null)
   }, [isOpen, structure])
@@ -90,6 +93,7 @@ export function SalaryStructureForm({
       subject_to_eis: subjectToEis ? 1 : 0,
       pcb_category: pcbCategory,
       pcb_children_count: Number(pcbChildrenCount),
+      attendance_required: rateType === 'monthly' && attendanceRequired ? 1 : 0,
     }
 
     await onSubmit(data)
@@ -169,6 +173,28 @@ export function SalaryStructureForm({
           onChange={(e) => setStandardHoursPerDay(e.target.value)}
           helperText="Hours worked beyond this per day count as OT, per the Payroll Settings OT rule."
         />
+        )}
+
+        {rateType === 'monthly' && (
+          <label className="flex items-start gap-2 rounded-lg border border-neutral-200 p-3 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={attendanceRequired}
+              onChange={(e) => setAttendanceRequired(e.target.checked)}
+            />
+            <span>
+              <span className="font-medium">Require attendance for full basic salary</span>
+              <br />
+              <span className="text-neutral-500">
+                When on, this basic salary is only paid in full if the employee actually
+                meets their assigned shift&apos;s required daily hours. Shortfall is
+                deducted pro-rata by the hour (never a flat day), and OT / rest-day /
+                public-holiday work is paid on top using a rate derived from this salary.
+                When off (default), the full basic is paid regardless of attendance.
+              </span>
+            </span>
+          </label>
         )}
 
         <div>

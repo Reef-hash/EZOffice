@@ -763,6 +763,24 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Not yet verified:** the app has not been launched and clicked through (the new column and tile).
 
+- **2026-08-27 — Added: monthly salary gated on attendance ("Basic tetap + syarat attendance").** Full design discussion is in this session's chat, prompted by a client whose employees are paid a fixed monthly basic but whose pay should still depend on actually attending — the existing `rate_type='monthly'` pays in full regardless of hours (2026-07-17 decision), which doesn't fit that arrangement.
+
+  - **Migration (`0022_monthly_attendance_gate.sql`):** `salary_structures.attendance_required` (0/1, default 0 — existing monthly employees are completely unaffected). `daily_attendance_records.required_hours` — the shift threshold snapshotted per day (0 on weekly_off/holiday/emergency days, which are never part of the attendance requirement regardless of hours worked there). `payroll_run_items` gained `basic_salary_snapshot`/`attendance_shortfall_hours`/`attendance_shortfall_amount` so a payslip can show the full contracted basic and the deduction as two separate lines, never a silently-shrunk number.
+
+  - **Shortfall formula — pro-rata by the hour, never a flat day:** `shortfall = required_hours - regular_hours` per working day, summed over the period (`getAttendanceSummaryForDateRange` gained `total_required_hours`/`total_shortfall_hours`). An absence is NOT a special case — it naturally falls out of the same formula as `regular_hours = 0`, so its shortfall equals that day's full `required_hours`. Approved annual/sick leave already credits `regular_hours = required_hours` upstream (2026-08-26 fix), so it costs nothing here without any leave-specific branching.
+
+  - **OT/rest-day/holiday pay on top of the basic**, using an hourly rate *derived* from the monthly wage — `deriveMonthlyHourlyRate()` in `payrollRun.ts`, implementing the EA 1955 Second Schedule formula: `(12 × monthly wage) / (52 × working days/week)`, then `÷ shift standard hours`. **Working days per week is read from the employee's actual Company Calendar profile** (or the company default), never hardcoded to 26 — a 5-day-week and a 6-day-week employee must not share the same divisor. This is the same rate used for both the shortfall deduction and OT/premium pay — one number, two uses, so they can't silently drift apart.
+
+  - **Processing engine inclusion:** a monthly employee with `attendance_required=1` is no longer excluded from `triggerProcessing()` — the exclusion (2026-07-17) now only fires for `rate_type='monthly' AND attendance_required=0`. A gated employee needs real `daily_attendance_records` rows, same as hourly/daily.
+
+  - **Calculation engine (`calculationEngine.ts`):** new branch inside the existing `rate_type === 'monthly'` check (not a new `rate_type` — this is a flag on monthly, not a fourth rate type). `buildResult()` gained an optional 4th `attendanceExtras` parameter (defaulted to zeros) rather than becoming a required param on every call site, so the hourly/daily/plain-monthly branches are textually untouched.
+
+  - **UI:** Salary Structure form shows a "Require attendance for full basic salary" checkbox only when Rate Type = Monthly. Salary Structure list shows an "Attendance" badge next to Monthly rows that have it on. Payroll Run items table gained a Shortfall column. Payslip PDF shows "Basic Salary" (full) + "Attendance Shortfall (Xh)" as two lines that net to the same `gross_regular_pay` used for statutory calculations — deliberately kept as two lines within the SAME earnings table (not split into the deductions table as originally sketched in chat) so each table's own printed total still equals the sum of its own rows. Payroll Excel export gained Shortfall Hrs/Ded columns.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles), `npm run test` — 106/106 pass (92 pre-existing + 8 new pure calculation-engine cases in `monthlyAttendanceGate.test.ts` + 6 new integration cases in `monthlyAttendanceGateIntegration.test.ts` covering: processing-engine inclusion vs. the still-excluded plain-monthly case; full attendance paying the full basic; a full-day absence using the identical formula as a partial shortfall; a six-day-week employee deriving a different hourly rate than a five-day-week one from the real Company Calendar; OT paid on top without touching the basic).
+
+  - **Not yet verified:** the app has not been launched and clicked through (the new Salary Structure checkbox, the payslip's two-line basic/shortfall display, a real payroll run against a gated employee) — needs the launch-confirmation step like every other phase.
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

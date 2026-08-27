@@ -261,6 +261,8 @@ export function getMonthlyAttendanceSummary(
       total_rest_day_ot_hours: 0,
       total_holiday_hours: 0,
       total_holiday_ot_hours: 0,
+      total_required_hours: 0,
+      total_shortfall_hours: 0,
     })
   }
 

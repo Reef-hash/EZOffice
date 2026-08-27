@@ -142,6 +142,8 @@ export const createSalaryStructureSchema = z.object({
   subject_to_eis: z.number().int().min(0).max(1).default(1),
   pcb_category: z.enum(['single', 'married_no_spouse_income', 'married_with_spouse_income']).default('single'),
   pcb_children_count: z.number().int().min(0).default(0),
+  // Only meaningful when rate_type = 'monthly' — see migration 0022.
+  attendance_required: z.number().int().min(0).max(1).default(0),
 })
 
 export const updateSalaryStructureSchema = createSalaryStructureSchema.partial()

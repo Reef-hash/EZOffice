@@ -39,6 +39,9 @@ interface PayslipData {
   commission: number
   rest_day_pay: number
   holiday_pay: number
+  basic_salary_snapshot: number
+  attendance_shortfall_hours: number
+  attendance_shortfall_amount: number
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -68,7 +71,9 @@ function getRunItemWithEmployeeDetails(
       r.run_date,
       i.total_regular_hours, i.total_ot_hours,
       i.gross_regular_pay, i.gross_ot_pay, i.commission,
-      i.rest_day_pay, i.holiday_pay, i.gross_pay,
+      i.rest_day_pay, i.holiday_pay,
+      i.basic_salary_snapshot, i.attendance_shortfall_hours, i.attendance_shortfall_amount,
+      i.gross_pay,
       i.epf_employee, i.epf_employer,
       i.socso_employee, i.socso_employer,
       i.eis_employee, i.eis_employer,
@@ -210,7 +215,24 @@ export async function generatePayslipPdf(
               { text: 'Hours', style: 'tableHeader' },
               { text: 'Amount (RM)', style: 'tableHeader' },
             ],
-            ['Regular Pay', item.total_regular_hours, item.gross_regular_pay.toFixed(2)],
+            // Monthly + attendance_required (migration 0022): show the full contracted
+            // basic and the attendance shortfall as two separate lines that net to
+            // gross_regular_pay, rather than silently printing only the net figure —
+            // an employee should be able to see both what they're contracted for and
+            // what was deducted. Every other rate type/flag keeps the plain "Regular
+            // Pay" line unchanged.
+            ...(item.basic_salary_snapshot > 0
+              ? [
+                  ['Basic Salary', '', item.basic_salary_snapshot.toFixed(2)],
+                  ...(item.attendance_shortfall_amount > 0
+                    ? [[
+                        `Attendance Shortfall (${item.attendance_shortfall_hours.toFixed(1)}h)`,
+                        '',
+                        `-${item.attendance_shortfall_amount.toFixed(2)}`,
+                      ]]
+                    : []),
+                ]
+              : [['Regular Pay', item.total_regular_hours, item.gross_regular_pay.toFixed(2)]]),
             ['Overtime', item.total_ot_hours, item.gross_ot_pay.toFixed(2)],
             ...(item.commission > 0 ? [['Commission', '', item.commission.toFixed(2)]] : []),
             // Rest-day / public-holiday work is paid at a premium and must appear as

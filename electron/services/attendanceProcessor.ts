@@ -50,10 +50,14 @@ export function triggerProcessing(
   try {
     // Determine which employees to process
     // Exclude employees whose most recent salary structure has rate_type = 'monthly'
-    // (monthly employees don't track attendance — their pay is fixed)
+    // AND attendance_required = 0 (fixed pay, no attendance dependency at all — their
+    // pay is fixed regardless of hours). A monthly employee with attendance_required = 1
+    // (migration 0022) DOES need daily records — their basic is gated on actually
+    // meeting the shift's required hours, so they go through the pipeline like any
+    // hourly/daily employee.
     let employees: Array<{ id: number }>
     if (employeeIds && employeeIds.length > 0) {
-      // Filter out monthly employees from the explicit list
+      // Filter out monthly-fixed employees from the explicit list
       const monthlyIds = db.prepare(`
         SELECT ss.employee_id FROM salary_structures ss
         INNER JOIN (
@@ -62,7 +66,7 @@ export function triggerProcessing(
           WHERE effective_from <= ?
           GROUP BY employee_id
         ) latest ON latest.employee_id = ss.employee_id AND latest.max_ef = ss.effective_from
-        WHERE ss.rate_type = 'monthly'
+        WHERE ss.rate_type = 'monthly' AND ss.attendance_required = 0
       `).all(period.end_date) as Array<{ employee_id: number }>
       const monthlyIdSet = new Set(monthlyIds.map((m) => m.employee_id))
       employees = employeeIds.filter((id) => !monthlyIdSet.has(id)).map((id) => ({ id }))
@@ -74,15 +78,20 @@ export function triggerProcessing(
             -- Employee has no salary structure at all → include (not yet configured)
             NOT EXISTS (SELECT 1 FROM salary_structures ss WHERE ss.employee_id = e.id AND ss.effective_from <= ?)
             OR
-            -- Employee's most recent salary structure as of period end is NOT monthly
-            (
-              SELECT ss2.rate_type FROM salary_structures ss2
+            -- Employee's most recent salary structure as of period end is NOT
+            -- monthly-fixed (either not 'monthly' at all, or 'monthly' with
+            -- attendance_required = 1)
+            NOT EXISTS (
+              SELECT 1 FROM salary_structures ss2
               WHERE ss2.employee_id = e.id AND ss2.effective_from <= ?
-              ORDER BY ss2.effective_from DESC
-              LIMIT 1
-            ) != 'monthly'
+                AND ss2.effective_from = (
+                  SELECT MAX(ss3.effective_from) FROM salary_structures ss3
+                  WHERE ss3.employee_id = e.id AND ss3.effective_from <= ?
+                )
+                AND ss2.rate_type = 'monthly' AND ss2.attendance_required = 0
+            )
           )
-      `).all(period.end_date, period.end_date) as Array<{ id: number }>
+      `).all(period.end_date, period.end_date, period.end_date) as Array<{ id: number }>
     }
 
     let totalDays = 0
@@ -113,14 +122,14 @@ export function triggerProcessing(
                calendar_type, leave_type, leave_record_id, shift_id,
                attendance_status, first_in, last_out, session_count,
                total_clocked_hours, break_hours, break_minutes_over, regular_hours, ot_hours,
-               rest_day_hours, rest_day_ot_hours, holiday_hours, holiday_ot_hours,
+               rest_day_hours, rest_day_ot_hours, holiday_hours, holiday_ot_hours, required_hours,
                minutes_late, minutes_early_out, is_finalized, created_at, updated_at)
             VALUES
               (@employee_id, @date, @payroll_period_id, @processing_run_id,
                @calendar_type, @leave_type, @leave_record_id, @shift_id,
                @attendance_status, @first_in, @last_out, @session_count,
                @total_clocked_hours, @break_hours, @break_minutes_over, @regular_hours, @ot_hours,
-               @rest_day_hours, @rest_day_ot_hours, @holiday_hours, @holiday_ot_hours,
+               @rest_day_hours, @rest_day_ot_hours, @holiday_hours, @holiday_ot_hours, @required_hours,
                @minutes_late, @minutes_early_out, 0, @now, @now)
           `).run(record)
         }
@@ -225,6 +234,8 @@ export function getAttendanceSummaryForDateRange(
       COALESCE(SUM(dar.rest_day_ot_hours), 0) AS total_rest_day_ot_hours,
       COALESCE(SUM(dar.holiday_hours), 0) AS total_holiday_hours,
       COALESCE(SUM(dar.holiday_ot_hours), 0) AS total_holiday_ot_hours,
+      COALESCE(SUM(dar.required_hours), 0) AS total_required_hours,
+      COALESCE(SUM(MAX(0, dar.required_hours - dar.regular_hours)), 0) AS total_shortfall_hours,
       COUNT(DISTINCT CASE WHEN dar.attendance_status IN ('present', 'late', 'early_out', 'excused_late')
                              OR (dar.attendance_status = 'on_leave' AND dar.leave_type IN ('annual', 'sick'))
                         THEN dar.date END) AS days_worked
@@ -497,6 +508,18 @@ function processEmployee(
     const allowedBreakMinutes = empShift?.break_minutes ?? 60
     const breakMinutesOver = Math.max(0, Math.round(breakMinutesTaken - allowedBreakMinutes))
 
+    // Required hours for THIS day, snapshotted for the attendance-shortfall calculation
+    // (monthly + attendance_required salary structures, migration 0022). Only working
+    // days carry a requirement — weekly_off/holiday/emergency_closure days are never
+    // part of it, regardless of whether the employee worked (that's paid separately,
+    // at a premium, via rest_day_hours/holiday_hours above).
+    const requiredHours =
+      calendarDay.day_type === 'working_day'
+      || calendarDay.day_type === 'special_working_day'
+      || calendarDay.day_type === 'company_event'
+        ? threshold
+        : 0
+
     // Stage 10 continued: aggregate from day sessions
     const firstIn = logs.filter((l) => l.timestamp.slice(0, 10) === dateStr && l.type === 'in')
     const lastOut = logs.filter((l) => l.timestamp.slice(0, 10) === dateStr && l.type === 'out')
@@ -525,6 +548,7 @@ function processEmployee(
       rest_day_ot_hours: Math.round(restDayOtHours * 100) / 100,
       holiday_hours: Math.round(holidayHours * 100) / 100,
       holiday_ot_hours: Math.round(holidayOtHours * 100) / 100,
+      required_hours: Math.round(requiredHours * 100) / 100,
       minutes_late: minutesLate,
       minutes_early_out: minutesEarlyOut,
       now,

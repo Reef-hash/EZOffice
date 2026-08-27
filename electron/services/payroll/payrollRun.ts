@@ -13,7 +13,7 @@ import type Database from 'better-sqlite3'
 import type { PayrollRun, PayrollRunItem, PayrollPeriod, EmployeeMonthlySummary } from '../../../src/shared/types/entities'
 import type { CreatePayrollRunInput } from '../../../src/shared/types/inputs'
 import { getAttendanceSummaryForDateRange } from '../attendanceProcessor'
-import { resolveCalendarDay } from '../calendar'
+import { resolveCalendarDay, getEmployeeCalendarProfile, getCompanyCalendarProfile } from '../calendar'
 import { getCurrentSalaryStructure } from './salaryStructure'
 import { getPayrollSettings } from './settings'
 import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
@@ -94,6 +94,38 @@ function workingDaysForEmployeeInRange(
     cursor.setDate(cursor.getDate() + 1)
   }
   return count
+}
+
+/**
+ * Hourly rate derived from a monthly salary, for a rate_type='monthly' AND
+ * attendance_required=1 salary structure (migration 0022) — used for both the
+ * attendance-shortfall deduction and OT/rest-day/holiday pay on top of the basic.
+ *
+ * EA 1955 Second Schedule formula:
+ *   ordinary daily rate = (12 × monthly wage) / (52 × working days per week)
+ *   hourly rate         = ordinary daily rate / the shift's standard hours
+ *
+ * "Working days per week" is read from the employee's actual Company Calendar profile
+ * (or the company default) — a 5-day-week employee and a 6-day-week employee must not
+ * share the same divisor, and hardcoding 26 (the common 6-day-week shortcut) would be
+ * silently wrong for anyone else.
+ */
+function deriveMonthlyHourlyRate(
+  db: Database.Database,
+  employeeId: number,
+  monthlyWage: number,
+  standardHours: number,
+): number {
+  if (standardHours <= 0) return 0
+  const profile = getEmployeeCalendarProfile(db, employeeId) ?? getCompanyCalendarProfile(db)
+  const workingDaysPerWeek = [
+    profile.monday_is_working, profile.tuesday_is_working, profile.wednesday_is_working,
+    profile.thursday_is_working, profile.friday_is_working, profile.saturday_is_working,
+    profile.sunday_is_working,
+  ].filter(Boolean).length
+  if (workingDaysPerWeek <= 0) return 0
+  const dailyRate = (12 * monthlyWage) / (52 * workingDaysPerWeek)
+  return dailyRate / standardHours
 }
 
 // ── Public API ───────────────────────────────────────────
@@ -267,6 +299,16 @@ export function calculatePayrollRun(
   // calculating, folded into gross pay + statutory base below.
   const commissionMap = getCommissionMapForRun(db, runId)
 
+  // Assigned shift's standard hours per employee — needed only for the
+  // monthly + attendance_required derived hourly rate below, but cheap to batch for
+  // everyone up front rather than querying per-employee inside the loop.
+  const shiftHoursRows = db.prepare(`
+    SELECT e.id AS employee_id, s.standard_hours
+    FROM employees e
+    LEFT JOIN shifts s ON s.id = e.shift_id
+  `).all() as Array<{ employee_id: number; standard_hours: number | null }>
+  const shiftHoursMap = new Map(shiftHoursRows.map((r) => [r.employee_id, r.standard_hours ?? 8]))
+
   const now = new Date().toISOString()
 
   // ── Begin TRANSACTION ──────────────────────────────────
@@ -294,6 +336,8 @@ export function calculatePayrollRun(
         total_rest_day_ot_hours: 0,
         total_holiday_hours: 0,
         total_holiday_ot_hours: 0,
+        total_required_hours: 0,
+        total_shortfall_hours: 0,
       }
 
       const commission = commissionMap.get(employeeId) ?? 0
@@ -329,6 +373,13 @@ export function calculatePayrollRun(
       // Balances are only mutated when the run is finalized (see finalizePayrollRun).
       const { total: advanceDeduction } = previewAdvanceDeductions(db, employeeId)
 
+      // Only computed for monthly + attendance_required (migration 0022) — cheap to
+      // skip the calendar lookup for every other rate type/flag combination.
+      const monthlyHourlyRate =
+        structure.rate_type === 'monthly' && structure.attendance_required
+          ? deriveMonthlyHourlyRate(db, employeeId, structure.rate_amount, shiftHoursMap.get(employeeId) ?? 8)
+          : undefined
+
       // ── Run the calculation engine ──
       const payResult = calculatePay({
         summary,
@@ -339,6 +390,7 @@ export function calculatePayrollRun(
           subject_to_epf: structure.subject_to_epf,
           subject_to_socso: structure.subject_to_socso,
           subject_to_eis: structure.subject_to_eis,
+          attendance_required: structure.attendance_required,
         },
         otRule,
         premiumRates,
@@ -349,6 +401,7 @@ export function calculatePayrollRun(
         advanceDeduction,
         commission,
         workingDaysInMonth: workingDays,
+        monthlyHourlyRate,
       })
 
       // ── Insert snapshotted payroll_run_item ──
@@ -359,7 +412,9 @@ export function calculatePayrollRun(
           snapshot_subject_to_epf, snapshot_subject_to_socso, snapshot_subject_to_eis,
           total_regular_hours, total_ot_hours,
           gross_regular_pay, gross_ot_pay, commission,
-          rest_day_pay, holiday_pay, gross_pay,
+          rest_day_pay, holiday_pay,
+          basic_salary_snapshot, attendance_shortfall_hours, attendance_shortfall_amount,
+          gross_pay,
           epf_employee, epf_employer,
           socso_employee, socso_employer,
           eis_employee, eis_employer,
@@ -371,7 +426,9 @@ export function calculatePayrollRun(
           @snapshot_subject_to_epf, @snapshot_subject_to_socso, @snapshot_subject_to_eis,
           @total_regular_hours, @total_ot_hours,
           @gross_regular_pay, @gross_ot_pay, @commission,
-          @rest_day_pay, @holiday_pay, @gross_pay,
+          @rest_day_pay, @holiday_pay,
+          @basic_salary_snapshot, @attendance_shortfall_hours, @attendance_shortfall_amount,
+          @gross_pay,
           @epf_employee, @epf_employer,
           @socso_employee, @socso_employer,
           @eis_employee, @eis_employer,
@@ -395,6 +452,9 @@ export function calculatePayrollRun(
         commission: payResult.commission,
         rest_day_pay: payResult.rest_day_pay,
         holiday_pay: payResult.holiday_pay,
+        basic_salary_snapshot: payResult.basic_salary_snapshot,
+        attendance_shortfall_hours: payResult.attendance_shortfall_hours,
+        attendance_shortfall_amount: payResult.attendance_shortfall_amount,
         gross_pay: payResult.gross_pay,
         epf_employee: payResult.statutory.epf_employee,
         epf_employer: payResult.statutory.epf_employer,
