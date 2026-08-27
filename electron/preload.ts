@@ -114,6 +114,8 @@ const api: EzOfficeApi = {
     // Phase C — monthly calendar / export
     getMonthlyCalendar: (employeeId, year, month) => ipcRenderer.invoke('attendance:getMonthlyCalendar', { employee_id: employeeId, year, month }),
     exportMonthly: (year, month) => ipcRenderer.invoke('attendance:exportMonthly', { year, month }),
+    getOtReport: (payrollPeriodId) => ipcRenderer.invoke('attendance:getOtReport', payrollPeriodId),
+    exportOtReport: (payrollPeriodId) => ipcRenderer.invoke('attendance:exportOtReport', payrollPeriodId),
     // Phase 3 — Processing Engine
     triggerProcessing: (data) => ipcRenderer.invoke('attendance:triggerProcessing', data),
     listProcessingRuns: (payrollPeriodId) => ipcRenderer.invoke('attendance:listProcessingRuns', payrollPeriodId),

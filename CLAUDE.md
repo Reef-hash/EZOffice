@@ -717,6 +717,22 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run test` — 80/80 pass, `npm run build` clean. The phantom-OT figures above came from running the real processing engine against an in-memory DB, not from arithmetic on paper.
 
+- **2026-08-27 — Added: OT Report (per employee, per day, per payroll period).** Requested by the client during the phantom-OT incident above: they could see a large OT total on the payroll run but had no way to ask "which day, and why". No such report existed — the Payroll Run items table showed one OT-hours figure per employee, and Payroll Periods → View Records dumped every employee × every day with no grouping or drill-down.
+
+  - **Keyed by payroll period, not year/month** — unlike the older Late/Break reports. The period is the range payroll actually pays on, and a period spanning two calendar months (the 2026-08-26 bug) is precisely the case a month-keyed report gets wrong. Accepted the inconsistency with the older reports rather than propagate a known-wrong key.
+
+  - **Service (`electron/services/otReport.ts`, new file):** `getOtReport(db, payrollPeriodId)` returns per-employee totals (normal-day OT, rest-day OT, holiday OT, days with OT, snapshotted OT pay) plus a per-day breakdown. Given its own file rather than appended to `attendance.ts`, which is already ~1800 lines (CLAUDE.md §3). Two deliberate shape decisions: **every employee with daily records is listed, including those with zero OT** (an employee silently missing from an audit report reads as a bug to whoever is checking it), while only days that actually carry OT appear in the breakdown; and **`ot_pay` is read from `payroll_run_items.gross_ot_pay`**, not recomputed, so the report can never disagree with the payslip. `ot_pay` is `null` — not `0` — when no run exists yet, so "not calculated" is distinguishable from "earned nothing". Rows sort by total OT descending, since that is what someone opening this report is looking for.
+
+  - **Each day shows CLOCKED hours next to the shift's STANDARD hours.** This is the point of the report, not decoration: that pair is what separates real overtime from a misconfigured shift, and it is what the client had no way to see. `isSuspectDay()` in the UI flags any ordinary working day where OT accrued despite the employee clocking no more than a normal day + 1h, highlights the row, and shows a banner counting them — turning the incident above into something the app diagnoses itself instead of requiring a repro script.
+
+  - **Excel export** (`exportOtReportExcel`) writes one flat row per employee-day. Flat on purpose: merged/nested rows look tidier but cannot be pivoted, and pivoting is the entire reason to hand someone a spreadsheet rather than a screenshot.
+
+  - **UI:** new "OT Report" tab in the Attendance hub (between Late Report and Break Report), with period selector, three summary tiles (total OT hours, total OT pay, employees with OT), the suspect-day banner, and a click-to-expand per-employee table.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles), `npm run test` — 86/86 pass (80 pre-existing + 6 new in `otReport.test.ts`: per-employee totals with day breakdown and descending sort; zero-OT employees listed with no day rows; phantom OT from `standard_hours = 7` surfaced with the clocked-vs-standard pair; `ot_pay` null before a run and the RM30 snapshot after; rest-day OT kept separate from normal-day OT; unknown period throws rather than returning an empty report).
+
+  - **Not yet verified:** the app has not been launched and clicked through (period selector, expand/collapse, the Excel export opening).
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

@@ -187,6 +187,52 @@ export interface LateReportRow {
   avg_minutes_late: number
 }
 
+/**
+ * One day's overtime detail for a single employee.
+ *
+ * `standard_hours` is the employee's shift threshold, shown alongside
+ * `total_clocked_hours` on purpose: seeing "clocked 8h against a 7h standard" is what
+ * makes a misconfigured shift — the cause of the 2026-08-27 phantom-OT incident —
+ * obvious at a glance instead of arriving as a payroll surprise.
+ */
+export interface OtReportDay {
+  date: string // YYYY-MM-DD
+  calendar_type: CalendarDayType
+  attendance_status: AttendanceDayStatus
+  first_in: string | null
+  last_out: string | null
+  total_clocked_hours: number
+  standard_hours: number | null // null when the employee has no assigned shift
+  ot_hours: number // overtime on a normal working day
+  rest_day_ot_hours: number
+  holiday_ot_hours: number
+}
+
+/** Per-employee overtime totals for a payroll period, with the day-by-day breakdown. */
+export interface OtReportRow {
+  employee_id: number
+  employee_name: string
+  days_with_ot: number
+  total_ot_hours: number
+  total_rest_day_ot_hours: number
+  total_holiday_ot_hours: number
+  /** Snapshotted OT pay from the period's payroll run; null when no run exists yet. */
+  ot_pay: number | null
+  days: OtReportDay[]
+}
+
+/** Overtime report for one payroll period — the auditable "why is OT this much" view. */
+export interface OtReport {
+  payroll_period_id: number
+  period_name: string
+  start_date: string
+  end_date: string
+  rows: OtReportRow[]
+  grand_total_ot_hours: number
+  /** Null when the period has no payroll run yet. */
+  grand_total_ot_pay: number | null
+}
+
 /** One row of the break report — who exceeds their shift's allowed rest/lunch break. */
 export interface BreakReportRow {
   employee_id: number
