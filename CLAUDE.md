@@ -803,6 +803,20 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Not yet verified:** the app has not been launched and clicked through — needs the launch-confirmation step like every other phase.
 
+- **2026-08-27 — Added: EPF wage base shown on the payslip.** Prompted by a follow-up question confirming a small shortfall (49 sen on a RM1,700 basic) still bands to the same KWSP RM20 bracket, so EPF stays RM187 — the project owner then asked to surface this directly on the payslip so the exact wage figure is easy to key into KWSP's own portal/table at submission time, instead of re-deriving `basic − shortfall` by hand every time.
+
+  - **Migration (`0023_epf_wage_base_snapshot.sql`):** `payroll_run_items.epf_wage_base` (REAL, default 0) — plain `ALTER TABLE ADD COLUMN`, no CHECK/UNIQUE, so none of the 0.2.9/0.2.10-style table-recreate pitfalls apply here.
+
+  - **`calculationEngine.ts`:** `buildResult()` already computed `epfWageBase` locally (the shortfall-net basic + commission + rest-day/holiday ordinary portions, excluding OT, per the 2026-08-26 fix) — it just wasn't returned. Now included in `PayCheckResult` as `epf_wage_base`, set to `0` when the employee isn't `subject_to_epf` rather than showing a wage figure that's not actually being used for anything.
+
+  - **Universal, not gated-monthly-specific:** every rate type with EPF now carries this field — the wage base is equally useful to verify for hourly/daily employees, not just the new Monthly + attendance_required case that prompted it. No special-casing by `rate_type`.
+
+  - **Payslip PDF:** the EPF deduction row's label becomes `EPF (Wages: RM1,699.51)` when `epf_wage_base > 0`, falling back to plain `EPF` when not subject to EPF — shown in the label itself rather than a separate row, since it's one figure tied directly to that one deduction line, not a standalone earning/deduction of its own.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles), `npm run test` — 115/115 pass (113 pre-existing + 2 new in `epfKwspRounding.test.ts`: the wage base is exposed correctly for an already-whole banded wage; a 49-sen shortfall produces `epf_wage_base ≈ 1699.51` while `epf_employee` stays RM187, since KWSP's RM20 banding rounds both up to the same bracket — the exact scenario that prompted this).
+
+  - **Not yet verified:** the app has not been launched and clicked through (a generated payslip PDF showing the new label) — needs the launch-confirmation step like every other phase.
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

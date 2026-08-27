@@ -322,6 +322,7 @@ function buildResult(
     basic_salary_snapshot: attendanceExtras?.basicSalarySnapshot ?? 0,
     attendance_shortfall_hours: attendanceExtras?.shortfallHours ?? 0,
     attendance_shortfall_amount: attendanceExtras?.shortfallAmount ?? 0,
+    epf_wage_base: structure.subject_to_epf ? epfWageBase : 0,
     gross_pay: Math.round(grossPay * 100) / 100,
     statutory,
     advance_deduction: advanceDeduction,

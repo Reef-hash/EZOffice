@@ -40,6 +40,7 @@ interface PayslipData {
   rest_day_pay: number
   holiday_pay: number
   basic_salary_snapshot: number
+  epf_wage_base: number
   attendance_shortfall_hours: number
   attendance_shortfall_amount: number
   gross_pay: number
@@ -73,6 +74,7 @@ function getRunItemWithEmployeeDetails(
       i.gross_regular_pay, i.gross_ot_pay, i.commission,
       i.rest_day_pay, i.holiday_pay,
       i.basic_salary_snapshot, i.attendance_shortfall_hours, i.attendance_shortfall_amount,
+      i.epf_wage_base,
       i.gross_pay,
       i.epf_employee, i.epf_employer,
       i.socso_employee, i.socso_employer,
@@ -262,7 +264,14 @@ export async function generatePayslipPdf(
               { text: 'Employee', style: 'tableHeader' },
               { text: 'Employer', style: 'tableHeader' },
             ],
-            ['EPF', item.epf_employee.toFixed(2), item.epf_employer.toFixed(2)],
+            // Wage base shown in the label, not a separate row — the admin can key
+            // this exact figure into KWSP's own portal/table when submitting, rather
+            // than re-deriving it from the shortfall by hand.
+            [
+              item.epf_wage_base > 0 ? `EPF (Wages: RM${item.epf_wage_base.toFixed(2)})` : 'EPF',
+              item.epf_employee.toFixed(2),
+              item.epf_employer.toFixed(2),
+            ],
             ['SOCSO', item.socso_employee.toFixed(2), item.socso_employer.toFixed(2)],
             ['EIS', item.eis_employee.toFixed(2), item.eis_employer.toFixed(2)],
             ['PCB (Income Tax)', item.pcb.toFixed(2), '-'],

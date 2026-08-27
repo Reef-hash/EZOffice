@@ -505,6 +505,11 @@ export interface PayrollRunItem {
   basic_salary_snapshot: number
   attendance_shortfall_hours: number
   attendance_shortfall_amount: number
+  // The actual wage EPF was calculated against (net of any shortfall above, before
+  // KWSP's RM20 banding) — shown on the payslip so the admin can key the same figure
+  // into KWSP's own portal/table when submitting, rather than re-deriving it by hand.
+  // 0 when the employee is not subject_to_epf.
+  epf_wage_base: number
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -568,6 +573,10 @@ export interface PayCheckResult {
   basic_salary_snapshot: number
   attendance_shortfall_hours: number
   attendance_shortfall_amount: number
+
+  // The actual wage EPF was calculated against, before KWSP's RM20 banding — see
+  // PayrollRunItem.epf_wage_base for why this is surfaced. 0 when not subject_to_epf.
+  epf_wage_base: number
 
   // Statutory
   statutory: StatutoryBreakdown
