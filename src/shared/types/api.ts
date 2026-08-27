@@ -17,6 +17,7 @@ import type {
   SalaryAdvance,
   PayrollRun,
   PayrollRunItem,
+  UnfinalizeResult,
   EmployeeMonthlySummary,
   Shift,
   LeaveRecord,
@@ -294,6 +295,7 @@ export interface PayrollRunApi {
   getItems: (runId: number) => Promise<PayrollRunItem[]>
   checkRateTables: () => Promise<{ missing: string[] }>
   finalize: (id: number) => Promise<PayrollRun>
+  unfinalize: (id: number) => Promise<UnfinalizeResult>
   printPayslip: (runId: number, employeeId: number) => Promise<{ filePath: string; filename: string }>
   commissions: PayrollRunCommissionApi
 }

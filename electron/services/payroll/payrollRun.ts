@@ -489,3 +489,48 @@ export function finalizePayrollRun(db: Database.Database, runId: number): Payrol
 
   return queryRunById(db, runId)!
 }
+
+export interface UnfinalizeResult {
+  run: PayrollRun
+  advancesToVerify: Array<{ employee_id: number; employee_name: string; amount: number }>
+}
+
+/**
+ * Reverts a finalized payroll run back to 'draft' so it can be corrected and
+ * recalculated — e.g. a run finalized before migration 0020 linked payroll_runs to
+ * their real Payroll Period (see the 2026-08-26 decision log entry). This is a
+ * deliberate, audited reversal through the app, not a raw database edit — finalize
+ * is otherwise meant as a one-way lock (historical integrity, Claude.md §4), so this
+ * exists specifically to correct a run that was finalized with wrong data.
+ *
+ * IMPORTANT — does NOT touch salary_advances balances. finalizePayrollRun() only
+ * ever snapshots the TOTAL advance deduction per employee onto payroll_run_items,
+ * not which specific advance(s) it came from — an employee can have more than one
+ * concurrent advance, so guessing which advance(s) to credit back could silently
+ * corrupt an unrelated advance's balance. Instead, every employee whose run item had
+ * advance_deduction > 0 is returned in `advancesToVerify` so the admin can manually
+ * add the amount back to the correct advance under Salary Advances, rather than the
+ * app guessing.
+ */
+export function unfinalizePayrollRun(db: Database.Database, runId: number): UnfinalizeResult {
+  const run = queryRunById(db, runId)
+  if (!run) throw new Error(`Payroll run ${runId} not found`)
+  if (run.status !== 'finalized') throw new Error('Only a finalized payroll run can be un-finalized')
+
+  const items = getPayrollRunItems(db, runId)
+  const now = new Date().toISOString()
+
+  const advancesToVerify = items
+    .filter((item) => item.advance_deduction > 0)
+    .map((item) => ({
+      employee_id: item.employee_id,
+      employee_name: item.employee_name ?? `ID ${item.employee_id}`,
+      amount: item.advance_deduction,
+    }))
+
+  db.prepare(`
+    UPDATE payroll_runs SET status = 'draft', updated_at = @updated_at WHERE id = @id
+  `).run({ updated_at: now, id: runId })
+
+  return { run: queryRunById(db, runId)!, advancesToVerify }
+}

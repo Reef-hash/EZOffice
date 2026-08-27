@@ -30,6 +30,32 @@ function calcOtPay(
 }
 
 /**
+ * KWSP EPF Third Schedule contribution amount — NOT a plain (wage × rate) calculation.
+ * For monthly wages up to RM20,000, KWSP's published contribution table bands wages
+ * into RM20 increments ("wages exceed X but do not exceed X+20") and the amount for
+ * each band is (the band's UPPER limit × rate), rounded UP to the next whole ringgit —
+ * not rounded to nearest, and not applied to the exact wage.
+ *
+ * Confirmed against a real KWSP figure reported by the project owner: wage RM1,764.72
+ * (11%/13% rates) — banded up to RM1,780 → 1780×11% = 195.80 → ceil → RM196 (KWSP's
+ * real value); 1780×13% = 231.40 → ceil → RM232 (KWSP's real value). A plain
+ * `Math.round(1764.72 × pct) / 100` gives RM194.12/RM229.41 — visibly wrong once
+ * compared against the real contribution table, which is what prompted this fix.
+ *
+ * Above RM20,000/month, wages fall outside the published table's range — left as the
+ * exact wage × rate (to the cent, same as before this fix) since that behavior was
+ * never reported wrong and isn't independently confirmed against a real KWSP figure.
+ */
+function calcEpfContribution(wage: number, pct: number): number {
+  if (wage <= 0 || pct <= 0) return 0
+  if (wage > 20000) {
+    return Math.round(wage * pct) / 100
+  }
+  const bandedWage = Math.ceil(wage / 20) * 20
+  return Math.ceil((bandedWage * pct) / 100)
+}
+
+/**
  * PCB Schedule lookup (Malaysia PCB Schedule, simplified per CLAUDE.md §7 2026-06-26).
  * The bracket passed in was already selected by the caller for the employee's
  * chargeable income (see lookupPcbBracket) — this just returns its tax_amount.
@@ -136,10 +162,16 @@ function buildResult(
   const { structure, advanceDeduction } = input
   const grossPay = Math.round((grossRegularPay + grossOtPay + commission) * 100) / 100
 
-  // EPF/SOCSO/EIS calculation base: an explicit override (commission-only
-  // employees) falls back to the full gross pay — the pre-existing behavior
-  // for every other rate type, unchanged.
-  const statutoryBase = Math.round((input.statutoryBase ?? grossPay) * 100) / 100
+  // EPF Act 1991 Third Schedule: EPF "wages" excludes overtime payments (also
+  // excludes service charge, gratuity, traveling allowance, director's fee, and
+  // retrenchment/termination benefits — none of which this app models — but DOES
+  // include commission, per the 2026-07-24 commission decision). grossOtPay must
+  // be excluded from the EPF base — grossPay (used for SOCSO/EIS bracket lookup and
+  // PCB, both of which are correct as-is) is NOT the right base for EPF specifically.
+  // An explicit statutoryBase override (commission-only employees, e.g. RM1,700
+  // instead of their RM2,538 commission — see docs/COMMISSION_PAYROLL_PLAN.md) takes
+  // priority over the OT-excluded default for every other rate type.
+  const epfBase = Math.round((input.statutoryBase ?? (grossRegularPay + commission)) * 100) / 100
 
   // Statutory deductions (only if subject + rate available)
   const statutory: StatutoryBreakdown = {
@@ -153,8 +185,8 @@ function buildResult(
   }
 
   if (structure.subject_to_epf && input.epfRate) {
-    statutory.epf_employee = Math.round(statutoryBase * input.epfRate.employee_contribution_pct) / 100
-    statutory.epf_employer = Math.round(statutoryBase * input.epfRate.employer_contribution_pct) / 100
+    statutory.epf_employee = calcEpfContribution(epfBase, input.epfRate.employee_contribution_pct)
+    statutory.epf_employer = calcEpfContribution(epfBase, input.epfRate.employer_contribution_pct)
   }
 
   if (structure.subject_to_socso && input.socsoRate) {
@@ -184,7 +216,7 @@ function buildResult(
     gross_ot_pay: Math.round(grossOtPay * 100) / 100,
     commission: Math.round(commission * 100) / 100,
     gross_pay: Math.round(grossPay * 100) / 100,
-    statutory_base: statutoryBase,
+    statutory_base: epfBase,
     statutory,
     advance_deduction: advanceDeduction,
     net_pay: netPay,

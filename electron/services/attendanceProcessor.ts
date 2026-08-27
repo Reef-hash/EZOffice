@@ -27,8 +27,18 @@ export function triggerProcessing(
   employeeIds?: number[],
 ): ProcessingRun {
   const period = db.prepare('SELECT * FROM payroll_periods WHERE id = ?').get(payrollPeriodId) as
-    { id: number; start_date: string; end_date: string; name: string } | undefined
+    { id: number; start_date: string; end_date: string; name: string; status: string } | undefined
   if (!period) throw new Error(`Payroll period ${payrollPeriodId} not found`)
+
+  // Finalizing a period locks its daily_attendance_records (is_finalized = 1) as a
+  // deliberate immutability guarantee — reprocessing must never silently overwrite
+  // that locked, audited data. Re-open the period first (Payroll Periods → Re-open).
+  if (period.status === 'finalized' || period.status === 'closed') {
+    throw new Error(
+      `Payroll period "${period.name}" is ${period.status} and its attendance records are locked. ` +
+      'Re-open the period under Payroll Periods before reprocessing.',
+    )
+  }
 
   // Create the processing run record
   const runResult = db.prepare(`
@@ -81,6 +91,21 @@ export function triggerProcessing(
 
     // Run the pipeline inside a transaction
     db.transaction(() => {
+      // Reprocessing must REPLACE, not append, this batch of employees' records for
+      // the period — daily_attendance_records has no unique key on (employee_id, date)
+      // alone (only (employee_id, date, processing_run_id)), so re-running this
+      // function without clearing first would leave the old batch's rows in place
+      // alongside the new ones, silently double-counting hours in every downstream
+      // summary/report (none of which filter by processing_run_id).
+      const employeeIdList = employees.map((e) => e.id)
+      if (employeeIdList.length > 0) {
+        db.prepare(`
+          DELETE FROM daily_attendance_records
+          WHERE payroll_period_id = ?
+            AND employee_id IN (${employeeIdList.map(() => '?').join(',')})
+        `).run(payrollPeriodId, ...employeeIdList)
+      }
+
       for (const emp of employees) {
         const records = processEmployee(db, emp.id, period.start_date, period.end_date, runId, payrollPeriodId)
         for (const record of records) {
@@ -196,7 +221,9 @@ export function getAttendanceSummaryForDateRange(
       dar.employee_id,
       COALESCE(SUM(dar.regular_hours), 0) AS total_regular_hours,
       COALESCE(SUM(dar.ot_hours), 0) AS total_ot_hours,
-      COUNT(DISTINCT CASE WHEN dar.attendance_status IN ('present', 'late', 'early_out', 'excused_late') THEN dar.date END) AS days_worked
+      COUNT(DISTINCT CASE WHEN dar.attendance_status IN ('present', 'late', 'early_out', 'excused_late')
+                             OR (dar.attendance_status = 'on_leave' AND dar.leave_type IN ('annual', 'sick'))
+                        THEN dar.date END) AS days_worked
     FROM daily_attendance_records dar
     WHERE ${conditions.join(' AND ')}
     GROUP BY dar.employee_id
@@ -421,6 +448,13 @@ function processEmployee(
     if (attendanceStatus === 'present' || attendanceStatus === 'late' || attendanceStatus === 'early_out') {
       regularHours = Math.min(totalClockedHours, threshold)
       otHours = Math.max(0, totalClockedHours - threshold)
+    } else if (attendanceStatus === 'on_leave' && (leaveType === 'annual' || leaveType === 'sick')) {
+      // Annual and sick leave are PAID leave under the Employment Act 1955 — the
+      // employee is paid as if they worked a normal day even without a punch.
+      // Unpaid leave intentionally falls through and stays at 0 hours (no pay).
+      // Previously every leave type (including annual/sick) was paid 0 for the day,
+      // silently underpaying daily/hourly-rate employees on approved paid leave.
+      regularHours = threshold
     }
 
     // Stage 10 continued: rest/lunch break — the gap between consecutive IN/OUT

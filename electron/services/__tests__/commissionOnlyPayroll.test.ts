@@ -105,7 +105,8 @@ describe('calculatePay — commission-only employee', () => {
     })
 
     expect(result.statutory_base).toBe(2538)
-    expect(result.statutory.epf_employee).toBe(Math.round(2538 * 0.11 * 100) / 100)
+    // KWSP banding: 2538 -> banded up to 2540 -> 2540 * 11% = 279.4 -> ceil -> 280.
+    expect(result.statutory.epf_employee).toBe(280)
   })
 
   it('does not change existing (non commission-only) statutory calculation behavior', () => {
