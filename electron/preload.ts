@@ -113,6 +113,7 @@ const api: EzOfficeApi = {
     getBreakReport: (year, month) => ipcRenderer.invoke('attendance:getBreakReport', { year, month }),
     // Phase C — monthly calendar / export
     getMonthlyCalendar: (employeeId, year, month) => ipcRenderer.invoke('attendance:getMonthlyCalendar', { employee_id: employeeId, year, month }),
+    getPeriodCalendar: (employeeId, payrollPeriodId) => ipcRenderer.invoke('attendance:getPeriodCalendar', { employee_id: employeeId, payroll_period_id: payrollPeriodId }),
     exportMonthly: (year, month) => ipcRenderer.invoke('attendance:exportMonthly', { year, month }),
     getOtReport: (payrollPeriodId) => ipcRenderer.invoke('attendance:getOtReport', payrollPeriodId),
     exportOtReport: (payrollPeriodId) => ipcRenderer.invoke('attendance:exportOtReport', payrollPeriodId),

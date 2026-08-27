@@ -219,6 +219,8 @@ export interface AttendanceApi {
 
   // Phase C — monthly calendar / export
   getMonthlyCalendar: (employeeId: number, year: number, month: number) => Promise<AttendanceMonthlyCalendar>
+  /** Same calendar over a payroll period's real date range — reconciles with a payroll run. */
+  getPeriodCalendar: (employeeId: number, payrollPeriodId: number) => Promise<AttendanceMonthlyCalendar>
   exportMonthly: (year: number, month: number) => Promise<{ filePath: string; filename: string }>
   /** Overtime report for one payroll period — per employee, with a per-day breakdown. */
   getOtReport: (payrollPeriodId: number) => Promise<OtReport>

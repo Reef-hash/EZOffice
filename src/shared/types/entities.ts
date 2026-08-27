@@ -247,19 +247,41 @@ export interface AttendanceSummaryDay {
   date: string // YYYY-MM-DD
   first_in: string | null // ISO timestamp of first IN punch
   last_out: string | null // ISO timestamp of last OUT punch
+  /** Raw elapsed clocked time — includes any hours that payroll treats as overtime. */
   hours_worked: number
+  /**
+   * The regular/overtime split payroll actually pays on. Carried alongside
+   * hours_worked so this screen reconciles against a payroll run instead of showing a
+   * larger "hours" figure that looks like a discrepancy (2026-08-27).
+   */
+  regular_hours: number
+  ot_hours: number
   status: AttendanceStatus | 'leave'
   leave_type: LeaveType | null
 }
 
-/** Aggregated monthly attendance for a single employee. */
+/**
+ * Aggregated attendance for one employee over a date range.
+ *
+ * The range is either a calendar month or a payroll period — `period_name` is non-null
+ * in the latter case. Payroll pays on periods, which routinely straddle two calendar
+ * months, so a month-only view cannot be reconciled against a payroll run.
+ */
 export interface AttendanceMonthlyCalendar {
   employee_id: number
   employee_name: string | null
   year: number
   month: number
+  /** Inclusive range actually covered — equals the month bounds in month mode. */
+  start_date: string
+  end_date: string
+  /** Payroll period name when viewed by period; null when viewed by calendar month. */
+  period_name: string | null
   days: AttendanceSummaryDay[]
   total_hours: number
+  /** Totals matching the payroll run's buckets. */
+  total_regular_hours: number
+  total_ot_hours: number
   days_worked: number
   days_late: number
   days_leave: number

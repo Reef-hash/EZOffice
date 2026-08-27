@@ -315,6 +315,15 @@ export function registerAttendanceHandlers(db: Database.Database): void {
     }
   })
 
+  ipcMain.handle('attendance:getPeriodCalendar', async (_event, data: unknown) => {
+    try {
+      const d = data as { employee_id: number; payroll_period_id: number }
+      return attendanceService.getPeriodCalendar(db, d.employee_id, d.payroll_period_id)
+    } catch (err) {
+      throw new Error(`Failed to get period attendance calendar: ${String(err)}`)
+    }
+  })
+
   // ── OT Report (per employee, per day, for one payroll period) ──
 
   ipcMain.handle('attendance:getOtReport', async (_event, payrollPeriodId: number) => {

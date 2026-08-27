@@ -733,6 +733,24 @@ These are common failure modes for AI coding agents specifically. Watch for them
 
   - **Not yet verified:** the app has not been launched and clicked through (period selector, expand/collapse, the Excel export opening).
 
+- **2026-08-27 — Attendance Summary viewable by payroll period, and split into Regular vs OT hours.** Requested by the project owner: "monthly summary nak tgk by period juga, taknak bulan, sebab regular pay nampak lebih sekarang." Two separate reasons the screen could not be reconciled against a payroll run, both fixed:
+
+  - **Wrong date range.** The screen only ever showed calendar months, while payroll pays on Payroll Periods that routinely straddle two months (26 Jul – 25 Aug). Comparing the two compared different sets of days — the same class of mismatch as the 2026-08-26 payroll-run bug, just on the reporting side. Added `getPeriodCalendar(db, employeeId, payrollPeriodId)`; **Payroll Period is now the default view**, calendar month kept as an option.
+
+  - **Wrong hours column.** The screen showed `total_clocked_hours` (raw elapsed time) while payroll pays `regular_hours` + `ot_hours`. With any overtime at all the clocked figure is strictly larger, so correct payroll output looked inflated. `AttendanceSummaryDay` now carries `regular_hours`/`ot_hours` alongside `hours_worked`, and the totals row exposes `total_regular_hours`/`total_ot_hours`. The stat tiles lead with Regular Hours (clocked shown underneath as secondary), and the table has separate Clocked / Regular / OT columns.
+
+  - **Rest-day and holiday hours are counted here too.** Those days carry paid hours in their own buckets (migration 0021) and are displayed with a leave-type badge, so reading only `regular_hours` from the record would have shown zero for a day payroll actually paid. The builder folds the ordinary portion into the day's regular hours and the beyond-normal portion into OT.
+
+  - **One implementation, two entry points.** `getMonthlyCalendar` and `getPeriodCalendar` both delegate to a private `buildCalendarForRange(...)` so the two views can never drift apart in how a day is classified or totalled (CLAUDE.md §4). The day loop now walks the range with a date cursor rather than `1..lastDayOfMonth`, which is what made an arbitrary range possible at all.
+
+  - **Excel export is month-only for now** — the existing `exportMonthly` covers all employees for a calendar month, and the button is hidden in period mode rather than silently exporting a different range than the one on screen. A period-scoped export is the obvious follow-up but was not part of the ask.
+
+  - **Tab renamed** "Monthly Summary" → "Summary", since it is no longer month-only.
+
+  - **Verified:** `npm run typecheck` clean (both tsconfigs), `npm run build` clean (all 3 bundles), `npm run test` — 92/92 pass (86 pre-existing + 6 new in `periodCalendar.test.ts`). The load-bearing test asserts **the period summary's `total_regular_hours`/`total_ot_hours` equal the payroll run's** for the same period — that equality is the whole point of the change, so it is pinned rather than left to inspection. Others cover: the range including the earlier month's days; clocked vs regular reported separately; rest-day work counted rather than shown as zero; the month view still scoped to its month and genuinely smaller than the period; unknown period throws.
+
+  - **Not yet verified:** the app has not been launched and clicked through (mode toggle, period dropdown, the new columns/tiles).
+
 A phase is not complete until:
 - [ ] Code follows all rules in sections 3–4 above
 - [ ] The feature has been run and manually verified, not just written

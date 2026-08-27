@@ -50,7 +50,7 @@ const TABS: Array<{ key: AttendanceTab; label: string }> = [
   { key: 'lateReport', label: 'Late Report' },
   { key: 'otReport', label: 'OT Report' },
   { key: 'breakReport', label: 'Break Report' },
-  { key: 'summary', label: 'Monthly Summary' },
+  { key: 'summary', label: 'Summary' },
   { key: 'exceptions', label: 'Exceptions' },
   { key: 'deviceSettings', label: 'Device Settings' },
 ]
@@ -529,7 +529,7 @@ function subtitleForTab(tab: AttendanceTab, logCount: number): React.ReactNode {
     case 'breakReport':
       return 'Rest/lunch break overage summary by employee'
     case 'summary':
-      return 'Per-employee monthly attendance calendar'
+      return 'Per-employee attendance calendar, by payroll period or calendar month'
     case 'exceptions':
       return 'Anomalies to resolve before running payroll'
   }
