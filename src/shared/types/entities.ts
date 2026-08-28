@@ -187,6 +187,52 @@ export interface LateReportRow {
   avg_minutes_late: number
 }
 
+/**
+ * One day's overtime detail for a single employee.
+ *
+ * `standard_hours` is the employee's shift threshold, shown alongside
+ * `total_clocked_hours` on purpose: seeing "clocked 8h against a 7h standard" is what
+ * makes a misconfigured shift — the cause of the 2026-08-27 phantom-OT incident —
+ * obvious at a glance instead of arriving as a payroll surprise.
+ */
+export interface OtReportDay {
+  date: string // YYYY-MM-DD
+  calendar_type: CalendarDayType
+  attendance_status: AttendanceDayStatus
+  first_in: string | null
+  last_out: string | null
+  total_clocked_hours: number
+  standard_hours: number | null // null when the employee has no assigned shift
+  ot_hours: number // overtime on a normal working day
+  rest_day_ot_hours: number
+  holiday_ot_hours: number
+}
+
+/** Per-employee overtime totals for a payroll period, with the day-by-day breakdown. */
+export interface OtReportRow {
+  employee_id: number
+  employee_name: string
+  days_with_ot: number
+  total_ot_hours: number
+  total_rest_day_ot_hours: number
+  total_holiday_ot_hours: number
+  /** Snapshotted OT pay from the period's payroll run; null when no run exists yet. */
+  ot_pay: number | null
+  days: OtReportDay[]
+}
+
+/** Overtime report for one payroll period — the auditable "why is OT this much" view. */
+export interface OtReport {
+  payroll_period_id: number
+  period_name: string
+  start_date: string
+  end_date: string
+  rows: OtReportRow[]
+  grand_total_ot_hours: number
+  /** Null when the period has no payroll run yet. */
+  grand_total_ot_pay: number | null
+}
+
 /** One row of the break report — who exceeds their shift's allowed rest/lunch break. */
 export interface BreakReportRow {
   employee_id: number
@@ -201,19 +247,49 @@ export interface AttendanceSummaryDay {
   date: string // YYYY-MM-DD
   first_in: string | null // ISO timestamp of first IN punch
   last_out: string | null // ISO timestamp of last OUT punch
+  /** Raw elapsed clocked time — includes any hours that payroll treats as overtime. */
   hours_worked: number
+  /**
+   * The ORDINARY regular/overtime split payroll pays on, matching
+   * payroll_run_items.total_regular_hours / total_ot_hours exactly.
+   *
+   * Rest-day and public-holiday hours are deliberately NOT folded in here — payroll
+   * rates them at premium multipliers and keeps them in their own buckets, so folding
+   * them in would make this screen report more regular hours than the payroll run
+   * (the very discrepancy this split was added to remove).
+   */
+  regular_hours: number
+  ot_hours: number
+  /** Rest-day + public-holiday hours (ordinary and overtime portions combined). */
+  premium_hours: number
   status: AttendanceStatus | 'leave'
   leave_type: LeaveType | null
 }
 
-/** Aggregated monthly attendance for a single employee. */
+/**
+ * Aggregated attendance for one employee over a date range.
+ *
+ * The range is either a calendar month or a payroll period — `period_name` is non-null
+ * in the latter case. Payroll pays on periods, which routinely straddle two calendar
+ * months, so a month-only view cannot be reconciled against a payroll run.
+ */
 export interface AttendanceMonthlyCalendar {
   employee_id: number
   employee_name: string | null
   year: number
   month: number
+  /** Inclusive range actually covered — equals the month bounds in month mode. */
+  start_date: string
+  end_date: string
+  /** Payroll period name when viewed by period; null when viewed by calendar month. */
+  period_name: string | null
   days: AttendanceSummaryDay[]
   total_hours: number
+  /** Totals matching the payroll run's buckets exactly. */
+  total_regular_hours: number
+  total_ot_hours: number
+  /** Rest-day + public-holiday hours, kept separate for the same reason payroll does. */
+  total_premium_hours: number
   days_worked: number
   days_late: number
   days_leave: number
@@ -299,6 +375,10 @@ export interface SalaryStructure {
   subject_to_eis: number
   pcb_category: 'single' | 'married_no_spouse_income' | 'married_with_spouse_income'
   pcb_children_count: number
+  // Only meaningful when rate_type = 'monthly'. 0 (default) = fixed salary regardless
+  // of attendance, unchanged since 2026-07-17. 1 = the basic is gated on actually
+  // meeting the shift's required daily hours — see migration 0022.
+  attendance_required: number // 0 or 1 (SQLite)
   created_at: string
   updated_at: string
 }
@@ -316,6 +396,12 @@ export interface PayrollSettings {
   device_last_synced_at: string | null // H1: watermark ISO timestamp; null = never synced
   default_annual_leave_days: number // company-wide default, applied via initializeYearlyLeaveEntitlements()
   default_sick_leave_days: number
+  // Premium multipliers on the ordinary hourly rate for work on non-working days.
+  // Seeded to the Employment Act 1955 minimums by migration 0021; editable by the admin.
+  rest_day_multiplier: number
+  rest_day_ot_multiplier: number
+  holiday_multiplier: number
+  holiday_ot_multiplier: number
   created_at: string
   updated_at: string
 }
@@ -435,11 +521,18 @@ export interface PayrollRunItem {
   gross_regular_pay: number
   gross_ot_pay: number
   commission: number // ad-hoc per-run commission, snapshotted at calculation time
+  rest_day_pay: number // work on rest days (ordinary + OT portions), EA 1955 s.60(3)
+  holiday_pay: number  // work on public/company holidays, EA 1955 s.60D(3)
+  // Monthly + attendance_required only (migration 0022) — 0 for every other rate type.
+  basic_salary_snapshot: number
+  attendance_shortfall_hours: number
+  attendance_shortfall_amount: number
+  // The actual wage EPF was calculated against (net of any shortfall above, before
+  // KWSP's RM20 banding) — shown on the payslip so the admin can key the same figure
+  // into KWSP's own portal/table when submitting, rather than re-deriving it by hand.
+  // 0 when the employee is not subject_to_epf.
+  epf_wage_base: number
   gross_pay: number
-  // Actual wage base used for EPF/SOCSO/EIS on this snapshot. Equals gross_pay
-  // unless a statutory base override applied (commission-only employees) — see
-  // docs/COMMISSION_PAYROLL_PLAN.md. Informational/audit only.
-  statutory_base: number
   epf_employee: number
   epf_employer: number
   socso_employee: number
@@ -493,10 +586,26 @@ export interface PayCheckResult {
   gross_regular_pay: number
   gross_ot_pay: number
   commission: number
+  // Pay for work on rest days / public holidays (ordinary + overtime portions combined)
+  rest_day_pay: number
+  holiday_pay: number
   gross_pay: number
 
-  // Actual wage base used for EPF/SOCSO/EIS (see PayrollRunItem.statutory_base)
-  statutory_base: number
+  // Monthly + attendance_required only (migration 0022) — 0 for every other case.
+  // basic_salary_snapshot is the full contracted amount BEFORE the shortfall
+  // deduction; gross_regular_pay above is already net of it. Kept separate so a
+  // payslip can show "Basic Salary: RM1,700" and "Attendance Shortfall: -RM4.09" as
+  // two lines rather than silently shrinking the basic.
+  basic_salary_snapshot: number
+  attendance_shortfall_hours: number
+  attendance_shortfall_amount: number
+
+  // The actual wage EPF was calculated against, before KWSP's RM20 banding — see
+  // PayrollRunItem.epf_wage_base for why this is surfaced. 0 when not subject_to_epf.
+  // Also doubles as the commission-only statutory-base override result (see
+  // CalculationInput.statutoryBase, docs/COMMISSION_PAYROLL_PLAN.md) — one field,
+  // not a separate duplicate column, for "the wage EPF was actually calculated against".
+  epf_wage_base: number
 
   // Statutory
   statutory: StatutoryBreakdown
@@ -514,6 +623,18 @@ export interface EmployeeMonthlySummary {
   total_regular_hours: number
   total_ot_hours: number
   days_worked: number
+  // Hours worked on non-working days, paid at premium multipliers (EA 1955 s.60(3)/s.60D(3)).
+  // Kept out of total_regular_hours/total_ot_hours so payroll can rate them separately.
+  total_rest_day_hours: number
+  total_rest_day_ot_hours: number
+  total_holiday_hours: number
+  total_holiday_ot_hours: number
+  // Sum of required_hours over working days, and the shortfall against it
+  // (required_hours - regular_hours, floored at 0 per day) — used only by a
+  // monthly + attendance_required salary structure (migration 0022); 0 for every
+  // other rate type.
+  total_required_hours: number
+  total_shortfall_hours: number
 }
 
 // Phase D1: Company Settings (singleton)
@@ -794,6 +915,16 @@ export interface DailyAttendanceRecord {
   break_minutes_over: number
   regular_hours: number
   ot_hours: number
+  // Hours worked on non-working days — paid at premium multipliers, never folded
+  // into regular_hours/ot_hours (see migration 0021).
+  rest_day_hours: number
+  rest_day_ot_hours: number
+  holiday_hours: number
+  holiday_ot_hours: number
+  // Shift threshold snapshotted for this day (0 on weekly_off/holiday/emergency days,
+  // which are never part of the attendance requirement). Used to compute pro-rata
+  // shortfall for a monthly + attendance_required salary structure (migration 0022).
+  required_hours: number
   minutes_late: number
   minutes_early_out: number
   is_finalized: boolean

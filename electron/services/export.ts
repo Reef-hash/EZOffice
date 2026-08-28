@@ -80,6 +80,10 @@ export async function exportPayrollToExcel(
       i.gross_regular_pay,
       i.gross_ot_pay,
       i.commission,
+      i.attendance_shortfall_hours,
+      i.attendance_shortfall_amount,
+      i.rest_day_pay,
+      i.holiday_pay,
       i.gross_pay,
       i.statutory_base,
       i.epf_employee,
@@ -98,6 +102,10 @@ export async function exportPayrollToExcel(
     gross_regular_pay: number
     gross_ot_pay: number
     commission: number
+    attendance_shortfall_hours: number
+    attendance_shortfall_amount: number
+    rest_day_pay: number
+    holiday_pay: number
     gross_pay: number
     statutory_base: number
     epf_employee: number
@@ -134,6 +142,10 @@ export async function exportPayrollToExcel(
     { header: 'Regular Pay', key: 'gross_regular_pay', width: 12 },
     { header: 'OT Pay', key: 'gross_ot_pay', width: 12 },
     { header: 'Commission', key: 'commission', width: 12 },
+    { header: 'Shortfall Hrs', key: 'attendance_shortfall_hours', width: 12 },
+    { header: 'Shortfall Ded', key: 'attendance_shortfall_amount', width: 12 },
+    { header: 'Rest Day', key: 'rest_day_pay', width: 12 },
+    { header: 'Holiday', key: 'holiday_pay', width: 12 },
     { header: 'Gross', key: 'gross_pay', width: 12 },
     { header: 'EPF/SOCSO/EIS Base', key: 'statutory_base', width: 16 },
     { header: 'EPF', key: 'epf_employee', width: 10 },

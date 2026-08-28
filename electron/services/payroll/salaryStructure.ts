@@ -79,12 +79,12 @@ export function createSalaryStructure(
     INSERT INTO salary_structures (
       employee_id, effective_from, rate_type, rate_amount,
       standard_hours_per_day, subject_to_epf, subject_to_socso, subject_to_eis,
-      pcb_category, pcb_children_count,
+      pcb_category, pcb_children_count, attendance_required,
       created_at, updated_at
     ) VALUES (
       @employee_id, @effective_from, @rate_type, @rate_amount,
       @standard_hours_per_day, @subject_to_epf, @subject_to_socso, @subject_to_eis,
-      @pcb_category, @pcb_children_count,
+      @pcb_category, @pcb_children_count, @attendance_required,
       @created_at, @updated_at
     )
   `).run({
@@ -98,6 +98,7 @@ export function createSalaryStructure(
     subject_to_eis: input.subject_to_eis,
     pcb_category: input.pcb_category,
     pcb_children_count: input.pcb_children_count,
+    attendance_required: input.attendance_required ?? 0,
     created_at: now,
     updated_at: now,
   })
@@ -127,6 +128,7 @@ export function updateSalaryStructure(
     subject_to_eis: input.subject_to_eis ?? existing.subject_to_eis,
     pcb_category: input.pcb_category ?? existing.pcb_category,
     pcb_children_count: input.pcb_children_count ?? existing.pcb_children_count,
+    attendance_required: input.attendance_required ?? existing.attendance_required,
   }
 
   db.prepare(`
@@ -141,6 +143,7 @@ export function updateSalaryStructure(
         subject_to_eis = @subject_to_eis,
         pcb_category = @pcb_category,
         pcb_children_count = @pcb_children_count,
+        attendance_required = @attendance_required,
         updated_at = @updated_at
     WHERE id = @id
   `).run({ ...merged, updated_at: now, id })

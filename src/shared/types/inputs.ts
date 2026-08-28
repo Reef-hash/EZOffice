@@ -142,6 +142,8 @@ export const createSalaryStructureSchema = z.object({
   subject_to_eis: z.number().int().min(0).max(1).default(1),
   pcb_category: z.enum(['single', 'married_no_spouse_income', 'married_with_spouse_income']).default('single'),
   pcb_children_count: z.number().int().min(0).default(0),
+  // Only meaningful when rate_type = 'monthly' — see migration 0022.
+  attendance_required: z.number().int().min(0).max(1).default(0),
 })
 
 export const updateSalaryStructureSchema = createSalaryStructureSchema.partial()
@@ -164,6 +166,11 @@ export const updatePayrollSettingsSchema = z.object({
   // Leave entitlement defaults (2026-07-15)
   default_annual_leave_days: z.number().min(0, 'Must be non-negative').optional(),
   default_sick_leave_days: z.number().min(0, 'Must be non-negative').optional(),
+  // Rest-day / public-holiday premium multipliers (2026-08-27, EA 1955 s.60(3)/s.60D(3))
+  rest_day_multiplier: z.number().min(0, 'Must be non-negative').optional(),
+  rest_day_ot_multiplier: z.number().min(0, 'Must be non-negative').optional(),
+  holiday_multiplier: z.number().min(0, 'Must be non-negative').optional(),
+  holiday_ot_multiplier: z.number().min(0, 'Must be non-negative').optional(),
 })
 
 export type UpdatePayrollSettingsInput = z.infer<typeof updatePayrollSettingsSchema>

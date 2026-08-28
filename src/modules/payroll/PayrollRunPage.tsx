@@ -30,13 +30,25 @@ const itemColumns: Column<PayrollRunItem>[] = [
   { key: 'regular_hours', header: 'Reg Hrs', accessor: (r) => r.total_regular_hours.toFixed(1), sortable: true, sortValue: (r) => r.total_regular_hours, align: 'right', width: '80px' },
   { key: 'ot_hours', header: 'OT Hrs', accessor: (r) => r.total_ot_hours.toFixed(1), sortable: true, sortValue: (r) => r.total_ot_hours, align: 'right', width: '80px' },
   { key: 'commission', header: 'Commission', accessor: (r) => r.commission > 0 ? formatCurrency(r.commission) : '—', sortable: true, sortValue: (r) => r.commission, align: 'right' },
+  {
+    key: 'attendance_shortfall',
+    header: 'Shortfall',
+    accessor: (r) => r.attendance_shortfall_amount > 0
+      ? `-${formatCurrency(r.attendance_shortfall_amount)} (${r.attendance_shortfall_hours.toFixed(1)}h)`
+      : '—',
+    sortable: true,
+    sortValue: (r) => r.attendance_shortfall_amount,
+    align: 'right',
+  },
+  { key: 'rest_day_pay', header: 'Rest Day', accessor: (r) => r.rest_day_pay > 0 ? formatCurrency(r.rest_day_pay) : '—', sortable: true, sortValue: (r) => r.rest_day_pay, align: 'right' },
+  { key: 'holiday_pay', header: 'Holiday', accessor: (r) => r.holiday_pay > 0 ? formatCurrency(r.holiday_pay) : '—', sortable: true, sortValue: (r) => r.holiday_pay, align: 'right' },
   { key: 'gross_pay', header: 'Gross Pay', accessor: (r) => formatCurrency(r.gross_pay), sortable: true, sortValue: (r) => r.gross_pay, align: 'right' },
   {
-    key: 'statutory_base',
+    key: 'epf_wage_base',
     header: 'EPF/SOCSO/EIS Base',
-    accessor: (r) => r.statutory_base !== r.gross_pay ? formatCurrency(r.statutory_base) : '—',
+    accessor: (r) => r.epf_wage_base > 0 && r.epf_wage_base !== r.gross_pay ? formatCurrency(r.epf_wage_base) : '—',
     sortable: true,
-    sortValue: (r) => r.statutory_base,
+    sortValue: (r) => r.epf_wage_base,
     align: 'right',
   },
   { key: 'net_pay', header: 'Net Pay', accessor: (r) => formatCurrency(r.net_pay), sortable: true, sortValue: (r) => r.net_pay, align: 'right' },

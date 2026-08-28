@@ -37,8 +37,13 @@ interface PayslipData {
   gross_regular_pay: number
   gross_ot_pay: number
   commission: number
+  rest_day_pay: number
+  holiday_pay: number
+  basic_salary_snapshot: number
+  epf_wage_base: number
+  attendance_shortfall_hours: number
+  attendance_shortfall_amount: number
   gross_pay: number
-  statutory_base: number
   epf_employee: number
   epf_employer: number
   socso_employee: number
@@ -66,7 +71,11 @@ function getRunItemWithEmployeeDetails(
       r.month,
       r.run_date,
       i.total_regular_hours, i.total_ot_hours,
-      i.gross_regular_pay, i.gross_ot_pay, i.commission, i.gross_pay, i.statutory_base,
+      i.gross_regular_pay, i.gross_ot_pay, i.commission,
+      i.rest_day_pay, i.holiday_pay,
+      i.basic_salary_snapshot, i.attendance_shortfall_hours, i.attendance_shortfall_amount,
+      i.epf_wage_base,
+      i.gross_pay,
       i.epf_employee, i.epf_employer,
       i.socso_employee, i.socso_employer,
       i.eis_employee, i.eis_employer,
@@ -208,9 +217,31 @@ export async function generatePayslipPdf(
               { text: 'Hours', style: 'tableHeader' },
               { text: 'Amount (RM)', style: 'tableHeader' },
             ],
-            ['Regular Pay', item.total_regular_hours, item.gross_regular_pay.toFixed(2)],
+            // Monthly + attendance_required (migration 0022): show the full contracted
+            // basic and the attendance shortfall as two separate lines that net to
+            // gross_regular_pay, rather than silently printing only the net figure —
+            // an employee should be able to see both what they're contracted for and
+            // what was deducted. Every other rate type/flag keeps the plain "Regular
+            // Pay" line unchanged.
+            ...(item.basic_salary_snapshot > 0
+              ? [
+                  ['Basic Salary', '', item.basic_salary_snapshot.toFixed(2)],
+                  ...(item.attendance_shortfall_amount > 0
+                    ? [[
+                        `Attendance Shortfall (${item.attendance_shortfall_hours.toFixed(1)}h)`,
+                        '',
+                        `-${item.attendance_shortfall_amount.toFixed(2)}`,
+                      ]]
+                    : []),
+                ]
+              : [['Regular Pay', item.total_regular_hours, item.gross_regular_pay.toFixed(2)]]),
             ['Overtime', item.total_ot_hours, item.gross_ot_pay.toFixed(2)],
             ...(item.commission > 0 ? [['Commission', '', item.commission.toFixed(2)]] : []),
+            // Rest-day / public-holiday work is paid at a premium and must appear as
+            // its own line — it is part of gross_pay, so omitting it would leave the
+            // payslip's lines not adding up to the stated gross.
+            ...(item.rest_day_pay > 0 ? [['Rest Day Work', '', item.rest_day_pay.toFixed(2)]] : []),
+            ...(item.holiday_pay > 0 ? [['Public Holiday Work', '', item.holiday_pay.toFixed(2)]] : []),
             [
               { text: 'Gross Pay', style: 'bold', colSpan: 2 },
               {},
@@ -223,9 +254,6 @@ export async function generatePayslipPdf(
 
       // ── Deductions ──
       { text: 'Deductions', style: 'sectionHeader' },
-      ...(item.statutory_base !== item.gross_pay
-        ? [{ text: `EPF/SOCSO/EIS calculated on RM ${item.statutory_base.toFixed(2)}`, style: 'disclaimer', margin: [0, 0, 0, 4] as [number, number, number, number] }]
-        : []),
       {
         table: {
           headerRows: 1,
@@ -236,7 +264,14 @@ export async function generatePayslipPdf(
               { text: 'Employee', style: 'tableHeader' },
               { text: 'Employer', style: 'tableHeader' },
             ],
-            ['EPF', item.epf_employee.toFixed(2), item.epf_employer.toFixed(2)],
+            // Wage base shown in the label, not a separate row — the admin can key
+            // this exact figure into KWSP's own portal/table when submitting, rather
+            // than re-deriving it from the shortfall by hand.
+            [
+              item.epf_wage_base > 0 ? `EPF (Wages: RM${item.epf_wage_base.toFixed(2)})` : 'EPF',
+              item.epf_employee.toFixed(2),
+              item.epf_employer.toFixed(2),
+            ],
             ['SOCSO', item.socso_employee.toFixed(2), item.socso_employer.toFixed(2)],
             ['EIS', item.eis_employee.toFixed(2), item.eis_employer.toFixed(2)],
             ['PCB (Income Tax)', item.pcb.toFixed(2), '-'],

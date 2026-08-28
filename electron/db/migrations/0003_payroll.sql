@@ -32,15 +32,27 @@ CREATE INDEX IF NOT EXISTS idx_salary_structures_employee_effective
 
 CREATE TABLE IF NOT EXISTS payroll_settings (
   id INTEGER PRIMARY KEY CHECK(id = 1),
-  ot_rule_type TEXT NOT NULL DEFAULT 'flat_addition' CHECK(ot_rule_type IN ('flat_addition', 'multiplier')),
-  ot_rule_value REAL NOT NULL DEFAULT 0.50 CHECK(ot_rule_value >= 0),
+  ot_rule_type TEXT NOT NULL DEFAULT 'multiplier' CHECK(ot_rule_type IN ('flat_addition', 'multiplier')),
+  ot_rule_value REAL NOT NULL DEFAULT 1.5 CHECK(ot_rule_value >= 0),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Seed default OT rule if table is empty (the singleton)
+-- Seed default OT rule if table is empty (the singleton).
+--
+-- 2026-08-27: default changed from 'flat_addition' 0.50 (hourly rate + RM0.50/hour) to
+-- 'multiplier' 1.5. The old default paid overtime far below the Employment Act 1955
+-- s.60A minimum of 1.5x the ordinary hourly rate, so a fresh install shipped with a
+-- non-compliant setting unless the admin happened to change it.
+--
+-- Edited in place rather than added as a new migration ON PURPOSE: this file has
+-- already applied successfully on every existing install, so editing it changes ONLY
+-- what a brand-new database is seeded with. An existing install's payroll_settings row
+-- is never touched — their configured OT rule (default or customized) is preserved,
+-- which is the explicitly agreed behaviour. Admins on an old install change it under
+-- Payroll -> Settings.
 INSERT OR IGNORE INTO payroll_settings (id, ot_rule_type, ot_rule_value)
-VALUES (1, 'flat_addition', 0.50);
+VALUES (1, 'multiplier', 1.5);
 
 -- ── EPF Rates ────────────────────────────────────────────
 -- Bracket table: wage range → employee/employer contribution percentages.

@@ -360,11 +360,12 @@ export function listAttendanceLogs(
 }
 
 /**
- * Returns active employees whose current salary structure is NOT monthly or
- * commission_only — i.e., employees who are expected to clock in/out
- * (attendance-tracked). Used by the Quick Clock panel to filter out
- * monthly-salaried and commission-only employees who do not need attendance
- * (docs/COMMISSION_PAYROLL_PLAN.md).
+ * Returns active employees whose current salary structure needs attendance
+ * tracking — i.e., NOT commission-only, and NOT a fixed monthly salary with
+ * attendance_required = 0. A monthly employee with attendance_required = 1
+ * (migration 0022) DOES need to clock in/out, since their basic is gated on
+ * actually meeting the shift's required hours. Used by the Quick Clock panel
+ * (docs/COMMISSION_PAYROLL_PLAN.md, CLAUDE.md 2026-08-27 "attendance_required").
  */
 export function listAttendanceEligibleEmployees(
   db: Database.Database,
@@ -375,12 +376,17 @@ export function listAttendanceEligibleEmployees(
       AND (
         NOT EXISTS (SELECT 1 FROM salary_structures ss WHERE ss.employee_id = e.id)
         OR
-        (
-          SELECT ss2.rate_type FROM salary_structures ss2
+        NOT EXISTS (
+          SELECT 1 FROM salary_structures ss2
           WHERE ss2.employee_id = e.id
-          ORDER BY ss2.effective_from DESC
-          LIMIT 1
-        ) NOT IN ('monthly', 'commission_only')
+            AND ss2.effective_from = (
+              SELECT MAX(ss3.effective_from) FROM salary_structures ss3 WHERE ss3.employee_id = e.id
+            )
+            AND (
+              ss2.rate_type = 'commission_only'
+              OR (ss2.rate_type = 'monthly' AND ss2.attendance_required = 0)
+            )
+        )
       )
     ORDER BY e.name ASC
   `).all() as Array<{ id: number; name: string; employee_code: string }>
@@ -1597,6 +1603,11 @@ export function getBreakReport(db: Database.Database, year: number, month: numbe
  * All attendance statuses, hours, and leave classification are pre-computed
  * by the processing engine — the calendar is now a simple read query.
  */
+/**
+ * Calendar month view. Kept for the existing month-based screens; payroll
+ * reconciliation should use getPeriodCalendar instead, since a payroll period rarely
+ * lines up with a calendar month.
+ */
 export function getMonthlyCalendar(
   db: Database.Database,
   employeeId: number,
@@ -1607,6 +1618,39 @@ export function getMonthlyCalendar(
   const monthStart = `${year}-${pad(month)}-01`
   const lastDay = new Date(year, month, 0).getDate()
   const monthEnd = `${year}-${pad(month)}-${pad(lastDay)}`
+  return buildCalendarForRange(db, employeeId, monthStart, monthEnd, null)
+}
+
+/**
+ * Payroll-period view — the same calendar over a payroll period's real date range.
+ *
+ * Added 2026-08-27: the month view could not be reconciled against a payroll run,
+ * because payroll pays on periods (e.g. 26 Jul - 25 Aug) while this screen only ever
+ * showed calendar months. Comparing the two made correct payroll figures look wrong.
+ */
+export function getPeriodCalendar(
+  db: Database.Database,
+  employeeId: number,
+  payrollPeriodId: number,
+): AttendanceMonthlyCalendar {
+  const period = db.prepare('SELECT id, name, start_date, end_date FROM payroll_periods WHERE id = ?')
+    .get(payrollPeriodId) as { id: number; name: string; start_date: string; end_date: string } | undefined
+  if (!period) throw new Error(`Payroll period ${payrollPeriodId} not found`)
+  return buildCalendarForRange(db, employeeId, period.start_date, period.end_date, period.name)
+}
+
+/**
+ * Shared builder for both views — one implementation so the month and period views can
+ * never drift apart in how they classify a day or total up hours (Claude.md §4).
+ */
+function buildCalendarForRange(
+  db: Database.Database,
+  employeeId: number,
+  rangeStart: string,
+  rangeEnd: string,
+  periodName: string | null,
+): AttendanceMonthlyCalendar {
+  const pad = (n: number) => String(n).padStart(2, '0')
 
   const emp = db.prepare('SELECT id, name FROM employees WHERE id = ?').get(employeeId) as
     | { id: number; name: string } | undefined
@@ -1614,17 +1658,25 @@ export function getMonthlyCalendar(
 
   const rows = db.prepare(`
     SELECT date, attendance_status, leave_type, first_in, last_out,
-           total_clocked_hours, calendar_type
+           total_clocked_hours, regular_hours, ot_hours,
+           rest_day_hours, rest_day_ot_hours, holiday_hours, holiday_ot_hours,
+           calendar_type
     FROM daily_attendance_records
     WHERE employee_id = ? AND date >= ? AND date <= ?
     ORDER BY date ASC
-  `).all(employeeId, monthStart, monthEnd) as Array<{
+  `).all(employeeId, rangeStart, rangeEnd) as Array<{
     date: string
     attendance_status: string
     leave_type: string | null
     first_in: string | null
     last_out: string | null
     total_clocked_hours: number
+    regular_hours: number
+    ot_hours: number
+    rest_day_hours: number
+    rest_day_ot_hours: number
+    holiday_hours: number
+    holiday_ot_hours: number
     calendar_type: string
   }>
 
@@ -1635,29 +1687,55 @@ export function getMonthlyCalendar(
 
   const days: AttendanceSummaryDay[] = []
   let totalHours = 0
+  let totalRegularHours = 0
+  let totalOtHours = 0
+  let totalPremiumHours = 0
   let daysWorked = 0
   let daysLate = 0
   let daysLeave = 0
 
-  for (let day = 1; day <= lastDay; day++) {
-    const dateStr = `${year}-${pad(month)}-${pad(day)}`
+  const round2 = (n: number) => Math.round(n * 100) / 100
+
+  // Walk every calendar day in the range so gaps show as rows rather than vanishing.
+  const cursor = new Date(`${rangeStart}T00:00:00`)
+  const rangeEndDate = new Date(`${rangeEnd}T00:00:00`)
+
+  while (cursor <= rangeEndDate) {
+    const dateStr = `${cursor.getFullYear()}-${pad(cursor.getMonth() + 1)}-${pad(cursor.getDate())}`
+    cursor.setDate(cursor.getDate() + 1)
+
     const rec = recordByDate.get(dateStr)
 
     if (!rec) {
       // No processed record — treat as absent (no data available)
-      days.push({ date: dateStr, first_in: null, last_out: null, hours_worked: 0, status: 'absent', leave_type: null })
+      days.push({ date: dateStr, first_in: null, last_out: null, hours_worked: 0, regular_hours: 0, ot_hours: 0, premium_hours: 0, status: 'absent', leave_type: null })
       continue
     }
 
     const status = rec.attendance_status
 
+    // Rest-day and public-holiday work is paid, so it must be visible — but in its OWN
+    // bucket, exactly as payroll stores it. Folding it into regular_hours made this
+    // screen report more regular hours than the payroll run (found 2026-08-27).
+    const premium = rec.rest_day_hours + rec.holiday_hours
+      + rec.rest_day_ot_hours + rec.holiday_ot_hours
+
     // Map processing-engine statuses to UI-compatible statuses
     if (status === 'on_leave' || status === 'holiday' || status === 'weekly_off' || status === 'emergency_closure') {
+      const regular = round2(rec.regular_hours) // paid annual/sick leave credits ordinary hours
+      const premiumHrs = round2(premium)
+      const clocked = round2(rec.total_clocked_hours)
+      totalHours += clocked
+      totalRegularHours += regular
+      totalPremiumHours += premiumHrs
       days.push({
         date: dateStr,
         first_in: rec.first_in,
         last_out: rec.last_out,
-        hours_worked: 0,
+        hours_worked: clocked,
+        regular_hours: regular,
+        ot_hours: 0,
+        premium_hours: premiumHrs,
         status: 'leave',
         leave_type: (rec.leave_type as LeaveRecord['leave_type']) ?? null,
       })
@@ -1666,13 +1744,19 @@ export function getMonthlyCalendar(
     }
 
     if (status === 'absent' || status === 'no_show') {
-      days.push({ date: dateStr, first_in: rec.first_in, last_out: rec.last_out, hours_worked: 0, status: 'absent', leave_type: null })
+      days.push({ date: dateStr, first_in: rec.first_in, last_out: rec.last_out, hours_worked: 0, regular_hours: 0, ot_hours: 0, premium_hours: 0, status: 'absent', leave_type: null })
       continue
     }
 
     // Working day statuses: present, late, excused_late, early_out
-    const hours = Math.round(rec.total_clocked_hours * 100) / 100
+    const hours = round2(rec.total_clocked_hours)
+    const regular = round2(rec.regular_hours)
+    const ot = round2(rec.ot_hours)
+    const premiumHrs = round2(premium)
     totalHours += hours
+    totalRegularHours += regular
+    totalOtHours += ot
+    totalPremiumHours += premiumHrs
     daysWorked++
 
     let dayStatus: AttendanceSummaryDay['status'] = 'on-time'
@@ -1689,18 +1773,31 @@ export function getMonthlyCalendar(
       first_in: rec.first_in,
       last_out: rec.last_out,
       hours_worked: hours,
+      regular_hours: regular,
+      ot_hours: ot,
+      premium_hours: premiumHrs,
       status: dayStatus,
       leave_type: null,
     })
   }
 
+  // year/month describe the range's END — for a period spanning two months that is the
+  // month it is paid in, matching how payroll runs label themselves.
+  const [endYear, endMonth] = rangeEnd.split('-').map(Number)
+
   return {
     employee_id: employeeId,
     employee_name: emp.name,
-    year,
-    month,
+    year: endYear,
+    month: endMonth,
+    start_date: rangeStart,
+    end_date: rangeEnd,
+    period_name: periodName,
     days,
-    total_hours: Math.round(totalHours * 100) / 100,
+    total_hours: round2(totalHours),
+    total_regular_hours: round2(totalRegularHours),
+    total_ot_hours: round2(totalOtHours),
+    total_premium_hours: round2(totalPremiumHours),
     days_worked: daysWorked,
     days_late: daysLate,
     days_leave: daysLeave,

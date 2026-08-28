@@ -251,7 +251,19 @@ export function getMonthlyAttendanceSummary(
 
     if (result.days_worked === 0 && result.total_regular_hours === 0) continue
 
-    summaries.push({ employee_id: employeeId, ...result })
+    // Legacy path (superseded by the daily-records summary used by payroll — see the
+    // Phase 5 decision). It has no concept of rest-day/holiday premium hours, so those
+    // are reported as zero rather than guessed.
+    summaries.push({
+      employee_id: employeeId,
+      ...result,
+      total_rest_day_hours: 0,
+      total_rest_day_ot_hours: 0,
+      total_holiday_hours: 0,
+      total_holiday_ot_hours: 0,
+      total_required_hours: 0,
+      total_shortfall_hours: 0,
+    })
   }
 
   return summaries

@@ -4,6 +4,7 @@
 import { ipcMain, app, shell } from 'electron'
 import path from 'node:path'
 import type Database from 'better-sqlite3'
+import * as otReportService from '../services/otReport'
 import {
   clockActionSchema,
   createAttendanceLogSchema,
@@ -311,6 +312,37 @@ export function registerAttendanceHandlers(db: Database.Database): void {
       return result
     } catch (err) {
       throw new Error(`Failed to export monthly attendance: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:getPeriodCalendar', async (_event, data: unknown) => {
+    try {
+      const d = data as { employee_id: number; payroll_period_id: number }
+      return attendanceService.getPeriodCalendar(db, d.employee_id, d.payroll_period_id)
+    } catch (err) {
+      throw new Error(`Failed to get period attendance calendar: ${String(err)}`)
+    }
+  })
+
+  // ── OT Report (per employee, per day, for one payroll period) ──
+
+  ipcMain.handle('attendance:getOtReport', async (_event, payrollPeriodId: number) => {
+    try {
+      return otReportService.getOtReport(db, payrollPeriodId)
+    } catch (err) {
+      throw new Error(`Failed to build OT report for period ${payrollPeriodId}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:exportOtReport', async (_event, payrollPeriodId: number) => {
+    try {
+      // Same Electron-path-stays-out-of-the-service pattern as exportMonthly above.
+      const outputDir = path.join(app.getPath('userData'), 'exports', 'attendance')
+      const result = await otReportService.exportOtReportExcel(db, payrollPeriodId, outputDir)
+      await shell.openPath(result.filePath)
+      return result
+    } catch (err) {
+      throw new Error(`Failed to export OT report for period ${payrollPeriodId}: ${String(err)}`)
     }
   })
 

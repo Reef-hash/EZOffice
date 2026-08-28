@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { calculatePay, type OtRule } from '../payroll/calculationEngine'
-import type { EmployeeMonthlySummary } from '../../../src/shared/types/entities'
+import { makeSummary } from './helpers/summary'
 
 const otRule: OtRule = { ot_rule_type: 'multiplier', ot_rule_value: 1.5 }
 
@@ -22,17 +22,12 @@ const dailyStruct = {
   subject_to_eis: 1,
 }
 
-const summaryWithDays: EmployeeMonthlySummary = {
-  employee_id: 1,
-  total_regular_hours: 0,
-  total_ot_hours: 5,
-  days_worked: 20,
-}
+const summaryWithDays = makeSummary({ total_ot_hours: 5, days_worked: 20 })
 
 describe('calculatePay — ad-hoc commission', () => {
   it('adds commission on top of gross pay for a monthly employee', () => {
     const result = calculatePay({
-      summary: { employee_id: 1, total_regular_hours: 0, total_ot_hours: 0, days_worked: 0 },
+      summary: makeSummary(),
       structure: monthlyStruct,
       otRule,
       epfRate: null,
@@ -50,7 +45,7 @@ describe('calculatePay — ad-hoc commission', () => {
 
   it('folds commission into the EPF/SOCSO/EIS base, not just net pay', () => {
     const result = calculatePay({
-      summary: { employee_id: 1, total_regular_hours: 0, total_ot_hours: 0, days_worked: 0 },
+      summary: makeSummary(),
       structure: monthlyStruct,
       otRule,
       epfRate: { employee_contribution_pct: 11, employer_contribution_pct: 13 },
@@ -92,7 +87,7 @@ describe('calculatePay — ad-hoc commission', () => {
 
   it('defaults to zero commission when omitted (backward-compatible)', () => {
     const result = calculatePay({
-      summary: { employee_id: 1, total_regular_hours: 0, total_ot_hours: 0, days_worked: 0 },
+      summary: makeSummary(),
       structure: monthlyStruct,
       otRule,
       epfRate: null,

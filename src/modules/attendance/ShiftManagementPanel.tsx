@@ -150,6 +150,50 @@ interface ShiftFormProps {
   shift?: Shift | null
 }
 
+/** Minutes between two "HH:MM" times, wrapping past midnight for night shifts. */
+function shiftSpanMinutes(start: string, end: string): number | null {
+  if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) return null
+  const [sh, sm] = start.split(':').map(Number)
+  const [eh, em] = end.split(':').map(Number)
+  const span = (eh * 60 + em) - (sh * 60 + sm)
+  return span > 0 ? span : span + 24 * 60
+}
+
+/**
+ * Standard Hours is what the processing engine compares CLOCKED hours against to
+ * decide overtime — it is not derived from the times above, so a wrong value silently
+ * generates the same amount of phantom OT for every employee, every single day.
+ *
+ * Which value is correct depends on whether employees punch out for lunch:
+ *   - they DO punch out  -> break time is already excluded from clocked hours,
+ *                           so Standard Hours = span - break
+ *   - they do NOT punch  -> the break sits inside one long punch,
+ *                           so Standard Hours = the full span
+ * Anything below the lower of those two is guaranteed daily phantom OT, which is what
+ * this warns about. Returns null when the value looks defensible.
+ */
+function standardHoursWarning(
+  start: string, end: string, standardHours: string, breakMinutes: string,
+): string | null {
+  const span = shiftSpanMinutes(start, end)
+  const hrs = Number(standardHours)
+  const brk = Number(breakMinutes)
+  if (span === null || !Number.isFinite(hrs) || hrs <= 0 || !Number.isFinite(brk) || brk < 0) return null
+
+  const spanHours = span / 60
+  const netHours = (span - brk) / 60
+  if (hrs >= netHours) return null
+
+  const perDay = (netHours - hrs).toFixed(2)
+  return (
+    `This shift spans ${spanHours}h and allows a ${brk}-minute break, so employees work ` +
+    `${netHours}h once the break is excluded — but Standard Hours is set to ${hrs}h. ` +
+    `Every employee will be credited about ${perDay}h of overtime on a normal full day, ` +
+    `even if nobody stayed back. Use ${netHours} if employees punch out for lunch, or ` +
+    `${spanHours} if they clock one continuous punch and the break is never recorded.`
+  )
+}
+
 function ShiftForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleting, shift }: ShiftFormProps) {
   const isEdit = !!shift
 
@@ -189,6 +233,8 @@ function ShiftForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleti
     if (!Number.isInteger(brk) || brk < 0) { setValidationError('Break minutes must be zero or a positive whole number'); return false }
     return true
   }
+
+  const hoursWarning = standardHoursWarning(startTime, endTime, standardHours, breakMinutes)
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -264,6 +310,7 @@ function ShiftForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleti
             value={standardHours}
             onChange={(e) => setStandardHours(e.target.value)}
             placeholder="8"
+            helperText="Hours before overtime starts, compared against clocked time."
           />
           <Input
             label="Allowed Break (minutes)"
@@ -275,6 +322,12 @@ function ShiftForm({ isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleti
             helperText="Rest/lunch time this shift allows, for employees who clock out/in for break."
           />
         </div>
+
+        {hoursWarning && (
+          <div className="rounded-md border border-warning-600 bg-warning-50 px-4 py-3 text-sm text-warning-700">
+            <strong>Check Standard Hours.</strong> {hoursWarning}
+          </div>
+        )}
       </form>
     </Modal>
   )

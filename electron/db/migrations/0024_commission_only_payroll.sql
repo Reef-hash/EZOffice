@@ -1,4 +1,4 @@
--- Migration 0021: Commission-only employees + separate payroll pay-groups/pay-dates.
+-- Migration 0024: Commission-only employees + separate payroll pay-groups/pay-dates.
 --
 -- Background: some employees are paid purely from commission (e.g. RM12,690 trip
 -- total x 20% = RM2,538) with NO base salary, and are paid on a different day of
@@ -7,8 +7,10 @@
 -- must be calculated off an explicit contribution base (e.g. RM1,700) instead of
 -- the commission amount itself. See docs/COMMISSION_PAYROLL_PLAN.md.
 --
--- Builds on top of migration 0020 (payroll_runs.payroll_period_id) — that migration
--- claimed the "0020" number first, hence this one is 0021, not 0020.
+-- Builds on top of migrations 0020-0023 (payroll_period linking, rest-day/holiday
+-- pay, monthly attendance gating, EPF wage base snapshot) — this migration runs
+-- after all of them, so the salary_structures recreate below must carry the
+-- attendance_required column (added by 0022) forward, not silently drop it.
 --
 -- 1. salary_structures.rate_type gains 'commission_only'. For this rate_type,
 --    rate_amount is repurposed (same overloading pattern as 0017's 'monthly') to
@@ -25,9 +27,10 @@
 -- 3. payroll_run_commissions gains statutory_base_override (nullable) — a per-run
 --    override of the employee's recurring default base.
 --
--- 4. payroll_run_items gains statutory_base — the actual wage base that was used
---    for EPF/SOCSO/EIS calculation on this snapshot (informational/audit column;
---    it does not change how epf/socso/eis/net_pay were already computed).
+-- Note: an earlier draft of this migration also added payroll_run_items.statutory_base
+-- for the same "wage EPF was calculated against" purpose — dropped in favor of reusing
+-- 0023's payroll_run_items.epf_wage_base, which already serves that exact purpose, to
+-- avoid two columns meaning the same thing.
 
 -- ── salary_structures: widen rate_type CHECK ────────────────────────────────
 -- Table recreate required (SQLite can't ALTER an existing CHECK constraint).
@@ -48,6 +51,7 @@ CREATE TABLE IF NOT EXISTS salary_structures_new (
   subject_to_eis INTEGER NOT NULL DEFAULT 1 CHECK(subject_to_eis IN (0, 1)),
   pcb_category TEXT NOT NULL DEFAULT 'single' CHECK(pcb_category IN ('single', 'married_no_spouse_income', 'married_with_spouse_income')),
   pcb_children_count INTEGER NOT NULL DEFAULT 0 CHECK(pcb_children_count >= 0),
+  attendance_required INTEGER NOT NULL DEFAULT 0 CHECK(attendance_required IN (0, 1)),
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -55,12 +59,12 @@ CREATE TABLE IF NOT EXISTS salary_structures_new (
 INSERT INTO salary_structures_new (
   id, employee_id, effective_from, rate_type, rate_amount, standard_hours_per_day,
   subject_to_epf, subject_to_socso, subject_to_eis, pcb_category, pcb_children_count,
-  created_at, updated_at
+  attendance_required, created_at, updated_at
 )
 SELECT
   id, employee_id, effective_from, rate_type, rate_amount, standard_hours_per_day,
   subject_to_epf, subject_to_socso, subject_to_eis, pcb_category, pcb_children_count,
-  created_at, updated_at
+  attendance_required, created_at, updated_at
 FROM salary_structures;
 
 DROP TABLE salary_structures;
@@ -108,8 +112,3 @@ CREATE INDEX IF NOT EXISTS idx_payroll_runs_period ON payroll_runs(payroll_perio
 -- Plain ADD COLUMN is safe (no CHECK constraint change, nullable, no recreate needed).
 ALTER TABLE payroll_run_commissions ADD COLUMN statutory_base_override REAL
   CHECK(statutory_base_override IS NULL OR statutory_base_override >= 0);
-
--- ── payroll_run_items: snapshot the actual statutory base used ──────────────
--- Informational/audit column only — does not change how epf/socso/eis/net_pay
--- were already computed. Defaults to 0 for historical rows (never recalculated).
-ALTER TABLE payroll_run_items ADD COLUMN statutory_base REAL NOT NULL DEFAULT 0;

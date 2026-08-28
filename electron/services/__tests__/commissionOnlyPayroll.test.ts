@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { calculatePay, type OtRule } from '../payroll/calculationEngine'
-import type { EmployeeMonthlySummary } from '../../../src/shared/types/entities'
+import { makeSummary } from './helpers/summary'
 
 // Real client scenario (docs/COMMISSION_PAYROLL_PLAN.md):
 //   Trip total RM12,690 x 20% = RM2,538 commission, no base salary.
@@ -19,12 +19,7 @@ const commissionOnlyStruct = {
   subject_to_eis: 1,
 }
 
-const zeroSummary: EmployeeMonthlySummary = {
-  employee_id: 1,
-  total_regular_hours: 0,
-  total_ot_hours: 0,
-  days_worked: 0,
-}
+const zeroSummary = makeSummary()
 
 describe('calculatePay — commission-only employee', () => {
   it('gross pay is the commission amount only, no base salary added', () => {
@@ -48,7 +43,7 @@ describe('calculatePay — commission-only employee', () => {
 
   it('ignores hours/OT entirely, even if attendance data is present', () => {
     const result = calculatePay({
-      summary: { employee_id: 1, total_regular_hours: 160, total_ot_hours: 10, days_worked: 22 },
+      summary: makeSummary({ total_regular_hours: 160, total_ot_hours: 10, days_worked: 22 }),
       structure: commissionOnlyStruct,
       otRule,
       epfRate: null,
@@ -79,7 +74,7 @@ describe('calculatePay — commission-only employee', () => {
     })
 
     // EPF employee = 1700 * 11% = 187, NOT 2538 * 11% = 279.18
-    expect(result.statutory_base).toBe(1700)
+    expect(result.epf_wage_base).toBe(1700)
     expect(result.statutory.epf_employee).toBe(187)
     expect(result.statutory.epf_employer).toBe(221)
     // SOCSO/EIS come from the already-resolved bracket (fixed amounts), unaffected
@@ -104,7 +99,7 @@ describe('calculatePay — commission-only employee', () => {
       // no statutoryBase override supplied
     })
 
-    expect(result.statutory_base).toBe(2538)
+    expect(result.epf_wage_base).toBe(2538)
     // KWSP banding: 2538 -> banded up to 2540 -> 2540 * 11% = 279.4 -> ceil -> 280.
     expect(result.statutory.epf_employee).toBe(280)
   })
@@ -120,7 +115,7 @@ describe('calculatePay — commission-only employee', () => {
     }
 
     const result = calculatePay({
-      summary: { employee_id: 1, total_regular_hours: 0, total_ot_hours: 0, days_worked: 20 },
+      summary: makeSummary({ days_worked: 20 }),
       structure: dailyStruct,
       otRule,
       epfRate: { employee_contribution_pct: 11, employer_contribution_pct: 13 },
@@ -135,7 +130,7 @@ describe('calculatePay — commission-only employee', () => {
 
     // gross = 80 * 20 = 1600; EPF = 1600 * 11% = 176 (unchanged pre-existing behavior)
     expect(result.gross_pay).toBe(1600)
-    expect(result.statutory_base).toBe(1600)
+    expect(result.epf_wage_base).toBe(1600)
     expect(result.statutory.epf_employee).toBe(176)
   })
 })

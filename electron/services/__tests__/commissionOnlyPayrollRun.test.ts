@@ -95,7 +95,7 @@ describe('commission-only payroll run + pay-group separation', () => {
     // Gross pay is the commission itself — RM1,700 must NOT be added (not RM4,238).
     expect(item.gross_pay).toBe(2538)
     // No override supplied → recurring default (salary_structures.rate_amount) is used.
-    expect(item.statutory_base).toBe(1700)
+    expect(item.epf_wage_base).toBe(1700)
     // EPF = 1700 * 11% = 187, NOT 2538 * 11% = 279.18.
     expect(item.epf_employee).toBe(187)
     // PCB uses the full gross wage (RM2,538) per the locked decision — seeded PCB
@@ -111,7 +111,7 @@ describe('commission-only payroll run + pay-group separation', () => {
     calculatePayrollRun(db, run.id)
     const item = getPayrollRunItems(db, run.id)[0]
 
-    expect(item.statutory_base).toBe(1800)
+    expect(item.epf_wage_base).toBe(1800)
     expect(item.epf_employee).toBe(198) // 1800 * 11%
     expect(item.gross_pay).toBe(2538) // gross pay is unaffected by the override
   })

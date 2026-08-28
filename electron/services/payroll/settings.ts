@@ -31,6 +31,10 @@ export function updatePayrollSettings(
         max_session_hours = @max_session_hours,
         default_annual_leave_days = @default_annual_leave_days,
         default_sick_leave_days = @default_sick_leave_days,
+        rest_day_multiplier = @rest_day_multiplier,
+        rest_day_ot_multiplier = @rest_day_ot_multiplier,
+        holiday_multiplier = @holiday_multiplier,
+        holiday_ot_multiplier = @holiday_ot_multiplier,
         updated_at = @updated_at
     WHERE id = 1
   `).run({
@@ -43,6 +47,10 @@ export function updatePayrollSettings(
     max_session_hours: input.max_session_hours ?? existing.max_session_hours,
     default_annual_leave_days: input.default_annual_leave_days ?? existing.default_annual_leave_days,
     default_sick_leave_days: input.default_sick_leave_days ?? existing.default_sick_leave_days,
+    rest_day_multiplier: input.rest_day_multiplier ?? existing.rest_day_multiplier,
+    rest_day_ot_multiplier: input.rest_day_ot_multiplier ?? existing.rest_day_ot_multiplier,
+    holiday_multiplier: input.holiday_multiplier ?? existing.holiday_multiplier,
+    holiday_ot_multiplier: input.holiday_ot_multiplier ?? existing.holiday_ot_multiplier,
     updated_at: now,
   })
 
