@@ -113,9 +113,13 @@ export function PayrollListPage() {
     () => window.api.payroll.periods.list(),
   )
 
-  // A payroll run can only be created against a period whose attendance has already
-  // been processed — an 'open' period has no daily_attendance_records yet to summarize.
-  const eligiblePeriods = periods.filter((p) => p.status !== 'open')
+  // An 'attendance' run needs daily_attendance_records, which only exist once the
+  // period has been processed — so it requires status !== 'open' (mirrors the same
+  // gate in payrollRun.ts's createPayrollRun). A 'commission_only' run has no
+  // attendance dependency at all (commission-only employees are excluded from
+  // attendance processing entirely), so it can target a period that was never
+  // processed — no reason to force an unrelated "Process Attendance" click first.
+  const eligiblePeriods = periods.filter((p) => newPayGroup === 'commission_only' || p.status !== 'open')
   const periodOptions = eligiblePeriods.map((p) => ({
     value: String(p.id),
     label: `${p.name} (${p.start_date} – ${p.end_date})`,
@@ -233,8 +237,14 @@ export function PayrollListPage() {
                       label="Pay Group"
                       options={PAYROLL_RUN_PAY_GROUP_OPTIONS}
                       value={newPayGroup}
-                      onChange={(e) => setNewPayGroup(e.target.value as 'attendance' | 'commission_only')}
-                      helperText="Commission-only employees are always excluded from an Attendance run, and vice versa."
+                      onChange={(e) => {
+                        // Switching to 'attendance' can make the currently-selected
+                        // open period ineligible — clear it rather than silently
+                        // submitting a stale, no-longer-visible selection.
+                        setNewPayGroup(e.target.value as 'attendance' | 'commission_only')
+                        setSelectedPeriodId('')
+                      }}
+                      helperText="Commission-only employees are always excluded from an Attendance run, and vice versa. Commission-only runs don't need the period to be processed first."
                     />
                     <Input
                       label="Pay Date"
@@ -246,9 +256,9 @@ export function PayrollListPage() {
                 </>
               ) : (
                 <p className="text-sm text-neutral-500">
-                  No processed Payroll Periods yet. Go to the Payroll Periods tab, create a
-                  period with the correct date range, and click &quot;Process Attendance&quot;
-                  before creating a payroll run.
+                  {newPayGroup === 'commission_only'
+                    ? 'No Payroll Periods yet. Go to the Payroll Periods tab and create one with the correct date range — commission-only runs don\'t need "Process Attendance" first.'
+                    : 'No processed Payroll Periods yet. Go to the Payroll Periods tab, create a period with the correct date range, and click "Process Attendance" before creating an attendance payroll run.'}
                 </p>
               )}
               {createRunMutation.error && (
