@@ -46,6 +46,7 @@ import type {
   ResolvedCalendarDay,
   PayrollPeriod,
   PayrollRunCommission,
+  PayrollRunAllowance,
   RecomputeStatusResult,
 } from './entities'
 import type {
@@ -84,6 +85,7 @@ import type {
   UpdateSalaryAdvanceInput,
   CreatePayrollRunInput,
   UpsertPayrollRunCommissionInput,
+  UpsertPayrollRunAllowanceInput,
   CreateShiftInput,
   UpdateShiftInput,
   CreateLeaveRequestInput,
@@ -292,6 +294,12 @@ export interface PayrollRunCommissionApi {
   delete: (runId: number, employeeId: number) => Promise<void>
 }
 
+export interface PayrollRunAllowanceApi {
+  list: (runId: number) => Promise<PayrollRunAllowance[]>
+  create: (runId: number, data: UpsertPayrollRunAllowanceInput) => Promise<PayrollRunAllowance>
+  delete: (runId: number, allowanceId: number) => Promise<void>
+}
+
 export interface PayrollRunApi {
   list: () => Promise<PayrollRun[]>
   getById: (id: number) => Promise<PayrollRun | null>
@@ -304,6 +312,7 @@ export interface PayrollRunApi {
   unfinalize: (id: number) => Promise<UnfinalizeResult>
   printPayslip: (runId: number, employeeId: number) => Promise<{ filePath: string; filename: string }>
   commissions: PayrollRunCommissionApi
+  allowances: PayrollRunAllowanceApi
 }
 
 export interface PayrollPeriodApi {

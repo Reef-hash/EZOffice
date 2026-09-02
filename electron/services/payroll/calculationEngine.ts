@@ -114,6 +114,13 @@ export interface CalculationInput {
    * director's fee, and retrenchment/termination benefits are excluded).
    */
   commission?: number
+  /**
+   * Sum of this run's ad-hoc, per-entry allowances (migration 0026, e.g. "Buka
+   * Pagar" = 35 trips x RM5 — see adhocAllowances.ts). Unlike commission, these
+   * are EXCLUDED from the EPF/SOCSO/EIS base, same treatment as the recurring
+   * fixed_allowance below.
+   */
+  adhocAllowanceTotal?: number
   /** Rest-day / public-holiday premium multipliers. Defaults to the EA 1955 minimums. */
   premiumRates?: PremiumRates
   /** Number of working days in the month (for daily rate → monthly conversion) */
@@ -279,8 +286,11 @@ function buildResult(
   // type, excluded from the EPF/SOCSO/EIS base below (not folded into
   // epfWageBaseDefault), included in PCB (via payrollRun.ts's monthlyWage estimate).
   const allowance = Math.round((structure.fixed_allowance ?? 0) * 100) / 100
+  // Ad-hoc, per-entry allowances (migration 0026) — same treatment as the
+  // recurring one above: added to gross, excluded from the EPF/SOCSO/EIS base.
+  const adhocAllowanceTotal = Math.round((input.adhocAllowanceTotal ?? 0) * 100) / 100
   const grossPay = Math.round(
-    (grossRegularPay + grossOtPay + commission + restDayPay + holidayPay + allowance) * 100,
+    (grossRegularPay + grossOtPay + commission + restDayPay + holidayPay + allowance + adhocAllowanceTotal) * 100,
   ) / 100
 
   // EPF Act 1991 Third Schedule: EPF "wages" excludes overtime payments (also
@@ -366,6 +376,7 @@ function buildResult(
     attendance_shortfall_amount: attendanceExtras?.shortfallAmount ?? 0,
     epf_wage_base: structure.subject_to_epf ? epfBase : 0,
     allowance,
+    adhoc_allowance_total: adhocAllowanceTotal,
     gross_pay: Math.round(grossPay * 100) / 100,
     statutory,
     advance_deduction: advanceDeduction,

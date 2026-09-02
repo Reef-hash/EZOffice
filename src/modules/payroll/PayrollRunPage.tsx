@@ -15,6 +15,7 @@ import type { Column } from '@/shared/components/Table'
 import type { PayrollRun, PayrollRunItem, UnfinalizeResult } from '@/shared/types/entities'
 import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE, PAYROLL_RUN_PAY_GROUP_LABEL } from './constants'
 import { CommissionPanel } from './CommissionPanel'
+import { AdhocAllowancePanel } from './AdhocAllowancePanel'
 
 interface PayrollRunPageProps {
   runId: number
@@ -62,7 +63,17 @@ const itemColumns: Column<PayrollRunItem>[] = [
     sortValue: (r) => r.attendance_shortfall_amount,
     align: 'right',
   },
-  { key: 'allowance', header: 'Allowance', accessor: (r) => r.allowance > 0 ? formatCurrency(r.allowance) : '—', sortable: true, sortValue: (r) => r.allowance, align: 'right' },
+  {
+    key: 'allowance',
+    header: 'Allowance',
+    // Combined total of the recurring fixed allowance + this run's ad-hoc entries —
+    // the itemized breakdown is shown in the Ad-hoc Allowances panel above and on
+    // the payslip PDF.
+    accessor: (r) => (r.allowance + r.adhoc_allowance_total) > 0 ? formatCurrency(r.allowance + r.adhoc_allowance_total) : '—',
+    sortable: true,
+    sortValue: (r) => r.allowance + r.adhoc_allowance_total,
+    align: 'right',
+  },
   { key: 'rest_day_pay', header: 'Rest Day', accessor: (r) => r.rest_day_pay > 0 ? formatCurrency(r.rest_day_pay) : '—', sortable: true, sortValue: (r) => r.rest_day_pay, align: 'right' },
   { key: 'holiday_pay', header: 'Holiday', accessor: (r) => r.holiday_pay > 0 ? formatCurrency(r.holiday_pay) : '—', sortable: true, sortValue: (r) => r.holiday_pay, align: 'right' },
   { key: 'gross_pay', header: 'Gross Pay', accessor: (r) => formatCurrency(r.gross_pay), sortable: true, sortValue: (r) => r.gross_pay, align: 'right' },
@@ -264,6 +275,8 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
       )}
 
       <CommissionPanel runId={runId} disabled={!isDraft} />
+
+      <AdhocAllowancePanel runId={runId} disabled={!isDraft} />
 
       {/* Actions bar */}
       <div className="flex items-center gap-3">

@@ -85,6 +85,7 @@ export async function exportPayrollToExcel(
       i.attendance_shortfall_hours,
       i.attendance_shortfall_amount,
       i.allowance,
+      i.adhoc_allowance_total,
       i.rest_day_pay,
       i.holiday_pay,
       i.gross_pay,
@@ -110,6 +111,7 @@ export async function exportPayrollToExcel(
     attendance_shortfall_hours: number
     attendance_shortfall_amount: number
     allowance: number
+    adhoc_allowance_total: number
     rest_day_pay: number
     holiday_pay: number
     gross_pay: number
@@ -130,6 +132,9 @@ export async function exportPayrollToExcel(
     commission: item.snapshot_rate_type === 'commission_only'
       ? Math.round((item.commission - item.basic_salary_snapshot) * 100) / 100
       : item.commission,
+    // Combined total of the recurring fixed allowance + this run's ad-hoc entries
+    // — same combined-column convention as the run items table (PayrollRunPage.tsx).
+    allowance: Math.round((item.allowance + item.adhoc_allowance_total) * 100) / 100,
     statutory_base: item.epf_wage_base,
   }))
 

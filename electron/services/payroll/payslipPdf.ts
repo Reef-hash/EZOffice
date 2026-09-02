@@ -94,6 +94,25 @@ function getRunItemWithEmployeeDetails(
   return row ?? null
 }
 
+/**
+ * Itemized ad-hoc allowance entries (migration 0026, e.g. "Buka Pagar") for this
+ * employee on this run — read directly from payroll_run_allowances rather than a
+ * payroll_run_items snapshot, since that table is itself frozen from edits once
+ * finalized (assertRunIsDraft), the same convention payroll_run_commissions uses.
+ */
+function getAdhocAllowancesForPayslip(
+  db: Database.Database,
+  runId: number,
+  employeeId: number,
+): Array<{ description: string; amount: number }> {
+  return db.prepare(`
+    SELECT description, amount
+    FROM payroll_run_allowances
+    WHERE payroll_run_id = ? AND employee_id = ?
+    ORDER BY id ASC
+  `).all(runId, employeeId) as Array<{ description: string; amount: number }>
+}
+
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -114,6 +133,7 @@ export async function generatePayslipPdf(
   if (!item) {
     throw new Error(`No payslip found for employee ${employeeId} in run ${runId}`)
   }
+  const adhocAllowances = getAdhocAllowancesForPayslip(db, runId, employeeId)
 
   // Fetch company settings (Phase D1)
   const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get() as {
@@ -252,6 +272,9 @@ export async function generatePayslipPdf(
             ...(item.allowance > 0
               ? [[item.allowance_description ? `Allowance (${item.allowance_description})` : 'Allowance', '', item.allowance.toFixed(2)]]
               : []),
+            // Ad-hoc allowances (migration 0026) — one line per entry, e.g. "Buka
+            // Pagar" — itemized rather than shown as a single lump sum.
+            ...adhocAllowances.map((a) => [a.description, '', a.amount.toFixed(2)]),
             // Rest-day / public-holiday work is paid at a premium and must appear as
             // its own line — it is part of gross_pay, so omitting it would leave the
             // payslip's lines not adding up to the stated gross.

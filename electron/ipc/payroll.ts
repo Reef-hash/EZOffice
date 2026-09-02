@@ -20,6 +20,7 @@ import {
   updateSalaryAdvanceSchema,
   createPayrollRunSchema,
   upsertPayrollRunCommissionSchema,
+  upsertPayrollRunAllowanceSchema,
   createPayrollPeriodSchema,
   updatePayrollPeriodStatusSchema,
 } from '../../src/shared/types/inputs'
@@ -31,6 +32,7 @@ import { checkRateTablesForRun } from '../services/payroll/statutoryRates'
 import * as salaryAdvancesService from '../services/payroll/salaryAdvances'
 import * as payrollRunService from '../services/payroll/payrollRun'
 import * as commissionsService from '../services/payroll/commissions'
+import * as adhocAllowancesService from '../services/payroll/adhocAllowances'
 import { generatePayslipPdf } from '../services/payroll/payslipPdf'
 import * as payrollPeriodService from '../services/payroll/payrollPeriod'
 
@@ -366,6 +368,29 @@ export function registerPayrollHandlers(db: Database.Database): void {
   ipcMain.handle('payroll:runs:commissions:delete', async (_event, runId: number, employeeId: number) => {
     try { return commissionsService.deleteCommission(db, runId, employeeId) } catch (err) {
       throw new Error(`Failed to delete commission for payroll run ${runId}: ${String(err)}`)
+    }
+  })
+
+  // ── Payroll Run Ad-hoc Allowances (variable, multiple per employee, per run) ──
+
+  ipcMain.handle('payroll:runs:allowances:list', async (_event, runId: number) => {
+    try { return adhocAllowancesService.listAllowancesForRun(db, runId) } catch (err) {
+      throw new Error(`Failed to list allowances for payroll run ${runId}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:runs:allowances:create', async (_event, runId: number, data: unknown) => {
+    try {
+      const input = upsertPayrollRunAllowanceSchema.parse(data)
+      return adhocAllowancesService.createAllowance(db, runId, input)
+    } catch (err) {
+      throw new Error(`Failed to save allowance for payroll run ${runId}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:runs:allowances:delete', async (_event, runId: number, allowanceId: number) => {
+    try { return adhocAllowancesService.deleteAllowance(db, runId, allowanceId) } catch (err) {
+      throw new Error(`Failed to delete allowance ${allowanceId} for payroll run ${runId}: ${String(err)}`)
     }
   })
 

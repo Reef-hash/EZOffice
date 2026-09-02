@@ -549,6 +549,10 @@ export interface PayrollRunItem {
   // calculation time (migration 0025). Excluded from the EPF/SOCSO/EIS base.
   allowance: number
   allowance_description: string | null
+  // Sum of this run's ad-hoc, per-entry allowances (migration 0026, e.g. "Buka
+  // Pagar" = 35 trips x RM5) — the itemized breakdown lives in
+  // payroll_run_allowances, not duplicated here. Also excluded from EPF/SOCSO/EIS.
+  adhoc_allowance_total: number
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -581,6 +585,31 @@ export interface PayrollRunCommission {
   // (salary_structures.rate_amount for commission_only employees). Null means
   // "use the employee's recurring default". Ignored for non-commission_only employees.
   statutory_base_override: number | null
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Admin-entered ad-hoc allowance line for one employee on one payroll run
+ * (migration 0026). Unlike PayrollRunCommission (one per employee per run), an
+ * employee can have SEVERAL of these in the same run, each with its own
+ * description (e.g. "Buka Pagar" = 35 trips x RM5, plus a separate "Elaun
+ * Lain"). Mutable only while the run is draft (see assertRunIsDraft).
+ */
+export interface PayrollRunAllowance {
+  id: number
+  payroll_run_id: number
+  employee_id: number
+  employee_name?: string // populated via JOIN
+  description: string
+  // Optional quantity x rate_per_unit basis. When both set, `amount` is
+  // SERVER-COMPUTED (quantity x rate_per_unit) — never trust a client-supplied
+  // amount alongside this basis. When null, `amount` is a flat figure entered
+  // directly.
+  quantity: number | null
+  rate_per_unit: number | null
+  amount: number
+  note: string | null
   created_at: string
   updated_at: string
 }
@@ -637,6 +666,10 @@ export interface PayCheckResult {
   // Recurring fixed allowance (migration 0025) — added to gross pay, excluded from
   // the EPF/SOCSO/EIS base. 0 when the structure has none configured.
   allowance: number
+
+  // Sum of this run's ad-hoc, per-entry allowances (migration 0026) — same
+  // EPF/SOCSO/EIS exclusion as the recurring allowance above.
+  adhoc_allowance_total: number
 
   // Statutory
   statutory: StatutoryBreakdown

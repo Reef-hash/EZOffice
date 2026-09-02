@@ -287,6 +287,25 @@ export const upsertPayrollRunCommissionSchema = z.object({
 
 export type UpsertPayrollRunCommissionInput = z.infer<typeof upsertPayrollRunCommissionSchema>
 
+// --- Payroll: Run Ad-hoc Allowances (variable, multiple per employee per run) ---
+
+// Either quantity + rate_per_unit (amount computed server-side, migration 0026 —
+// same "never trust a client-computed amount" rule as commission's sales basis)
+// or a flat `amount` directly must be supplied.
+export const upsertPayrollRunAllowanceSchema = z.object({
+  employee_id: z.number().int().positive('Employee is required'),
+  description: z.string().trim().min(1, 'Description is required'),
+  amount: z.number().min(0, 'Amount must be non-negative').optional(),
+  quantity: z.number().min(0, 'Quantity must be non-negative').optional(),
+  rate_per_unit: z.number().min(0, 'Rate must be non-negative').optional(),
+  note: z.string().trim().min(1).nullable().optional(),
+}).refine(
+  (data) => data.amount != null || (data.quantity != null && data.rate_per_unit != null),
+  { message: 'Enter either a flat amount or a quantity and rate per unit', path: ['amount'] },
+)
+
+export type UpsertPayrollRunAllowanceInput = z.infer<typeof upsertPayrollRunAllowanceSchema>
+
 // --- Phase C: Shifts ---
 
 export const createShiftSchema = z.object({

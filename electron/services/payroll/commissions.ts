@@ -6,7 +6,9 @@ import type Database from 'better-sqlite3'
 import type { PayrollRunCommission } from '../../../src/shared/types/entities'
 import type { UpsertPayrollRunCommissionInput } from '../../../src/shared/types/inputs'
 
-function assertRunIsDraft(db: Database.Database, runId: number): void {
+// Shared with adhocAllowances.ts — same "locked once finalized" rule applies to
+// every admin-entered, per-run input (commission, ad-hoc allowances).
+export function assertRunIsDraft(db: Database.Database, runId: number): void {
   const run = db.prepare('SELECT status FROM payroll_runs WHERE id = ?').get(runId) as { status: string } | undefined
   if (!run) throw new Error(`Payroll run ${runId} not found`)
   if (run.status === 'finalized') {

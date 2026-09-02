@@ -19,6 +19,7 @@ import { getPayrollSettings } from './settings'
 import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
 import { getActiveAdvancesForEmployee, applyAdvanceDeduction } from './salaryAdvances'
 import { getCommissionMapForRun } from './commissions'
+import { getAllowanceTotalsForRun } from './adhocAllowances'
 import { calculatePay, type OtRule, type PremiumRates } from './calculationEngine'
 
 // ── Helpers ──────────────────────────────────────────────
@@ -307,6 +308,11 @@ export function calculatePayrollRun(
   // calculating, folded into gross pay + statutory base below.
   const commissionMap = getCommissionMapForRun(db, runId)
 
+  // Ad-hoc per-run allowance entries (see adhocAllowances.ts) — summed per employee,
+  // folded into gross pay below, excluded from the EPF/SOCSO/EIS base (like the
+  // recurring fixed_allowance) but included in the PCB wage estimate.
+  const allowanceTotalsMap = getAllowanceTotalsForRun(db, runId)
+
   // Assigned shift's standard hours per employee — needed only for the
   // monthly + attendance_required derived hourly rate below, but cheap to batch for
   // everyone up front rather than querying per-employee inside the loop.
@@ -359,6 +365,7 @@ export function calculatePayrollRun(
 
       const commissionEntry = commissionMap.get(employeeId)
       const commission = commissionEntry?.amount ?? 0
+      const adhocAllowanceTotal = allowanceTotalsMap.get(employeeId) ?? 0
 
       // Scheduled working days for THIS employee — resolved through the Company
       // Calendar (honours a six-day week and per-employee overrides), not a hardcoded
@@ -383,10 +390,11 @@ export function calculatePayrollRun(
                 ? structure.rate_amount * workingDays
                 : structure.rate_amount * structure.standard_hours_per_day * workingDays) + commission
 
-      // PCB bracket lookup uses full gross wage including the fixed allowance (PCB
-      // always uses full gross, per docs/COMMISSION_PAYROLL_PLAN.md and migration 0025 —
-      // allowance is EPF-excluded but not confirmed PCB-exempt, so it's taxed like OT is).
-      const monthlyWageForPcb = monthlyWage + (structure.fixed_allowance ?? 0)
+      // PCB bracket lookup uses full gross wage including both allowances (PCB
+      // always uses full gross, per docs/COMMISSION_PAYROLL_PLAN.md and migrations
+      // 0025/0026 — allowances are EPF-excluded but not confirmed PCB-exempt, so
+      // they're taxed like OT is).
+      const monthlyWageForPcb = monthlyWage + (structure.fixed_allowance ?? 0) + adhocAllowanceTotal
 
       // EPF/SOCSO/EIS bracket lookup + calculation base. Commission-only employees
       // use an explicit contribution base (per-run override, else the employee's
@@ -444,6 +452,7 @@ export function calculatePayrollRun(
         pcbBracket,
         advanceDeduction,
         commission,
+        adhocAllowanceTotal,
         statutoryBase,
         workingDaysInMonth: workingDays,
         monthlyHourlyRate,
@@ -460,7 +469,7 @@ export function calculatePayrollRun(
           rest_day_pay, holiday_pay,
           basic_salary_snapshot, attendance_shortfall_hours, attendance_shortfall_amount,
           epf_wage_base,
-          allowance, allowance_description,
+          allowance, allowance_description, adhoc_allowance_total,
           gross_pay,
           epf_employee, epf_employer,
           socso_employee, socso_employer,
@@ -476,7 +485,7 @@ export function calculatePayrollRun(
           @rest_day_pay, @holiday_pay,
           @basic_salary_snapshot, @attendance_shortfall_hours, @attendance_shortfall_amount,
           @epf_wage_base,
-          @allowance, @allowance_description,
+          @allowance, @allowance_description, @adhoc_allowance_total,
           @gross_pay,
           @epf_employee, @epf_employer,
           @socso_employee, @socso_employer,
@@ -507,6 +516,7 @@ export function calculatePayrollRun(
         epf_wage_base: payResult.epf_wage_base,
         allowance: payResult.allowance,
         allowance_description: structure.allowance_description,
+        adhoc_allowance_total: payResult.adhoc_allowance_total,
         gross_pay: payResult.gross_pay,
         epf_employee: payResult.statutory.epf_employee,
         epf_employer: payResult.statutory.epf_employer,
