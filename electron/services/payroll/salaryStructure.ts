@@ -80,11 +80,13 @@ export function createSalaryStructure(
       employee_id, effective_from, rate_type, rate_amount,
       standard_hours_per_day, subject_to_epf, subject_to_socso, subject_to_eis,
       pcb_category, pcb_children_count, attendance_required,
+      fixed_allowance, allowance_description,
       created_at, updated_at
     ) VALUES (
       @employee_id, @effective_from, @rate_type, @rate_amount,
       @standard_hours_per_day, @subject_to_epf, @subject_to_socso, @subject_to_eis,
       @pcb_category, @pcb_children_count, @attendance_required,
+      @fixed_allowance, @allowance_description,
       @created_at, @updated_at
     )
   `).run({
@@ -99,6 +101,8 @@ export function createSalaryStructure(
     pcb_category: input.pcb_category,
     pcb_children_count: input.pcb_children_count,
     attendance_required: input.attendance_required ?? 0,
+    fixed_allowance: input.fixed_allowance ?? 0,
+    allowance_description: input.allowance_description ?? null,
     created_at: now,
     updated_at: now,
   })
@@ -129,6 +133,8 @@ export function updateSalaryStructure(
     pcb_category: input.pcb_category ?? existing.pcb_category,
     pcb_children_count: input.pcb_children_count ?? existing.pcb_children_count,
     attendance_required: input.attendance_required ?? existing.attendance_required,
+    fixed_allowance: input.fixed_allowance ?? existing.fixed_allowance,
+    allowance_description: input.allowance_description !== undefined ? input.allowance_description : existing.allowance_description,
   }
 
   db.prepare(`
@@ -144,6 +150,8 @@ export function updateSalaryStructure(
         pcb_category = @pcb_category,
         pcb_children_count = @pcb_children_count,
         attendance_required = @attendance_required,
+        fixed_allowance = @fixed_allowance,
+        allowance_description = @allowance_description,
         updated_at = @updated_at
     WHERE id = @id
   `).run({ ...merged, updated_at: now, id })

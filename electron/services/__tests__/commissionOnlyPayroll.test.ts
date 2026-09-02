@@ -104,6 +104,50 @@ describe('calculatePay — commission-only employee', () => {
     expect(result.statutory.epf_employee).toBe(280)
   })
 
+  it('caps the Basic/EPF base at the actual commission earned when it is less than the statutory base', () => {
+    // A low-sales month: commission (RM800) is LESS than the recurring statutory
+    // base (RM1,700) — "Basic" can't be bigger than what was actually paid.
+    const result = calculatePay({
+      summary: zeroSummary,
+      structure: commissionOnlyStruct,
+      otRule,
+      epfRate: { employee_contribution_pct: 11, employer_contribution_pct: 13 },
+      socsoRate: null,
+      eisRate: null,
+      pcbBracket: null,
+      advanceDeduction: 0,
+      commission: 800,
+      statutoryBase: 1700,
+    })
+
+    expect(result.epf_wage_base).toBe(800)
+    expect(result.basic_salary_snapshot).toBe(800)
+    // 800 -> banded to 800 -> 800 * 11% = 88
+    expect(result.statutory.epf_employee).toBe(88)
+    expect(result.gross_pay).toBe(800)
+  })
+
+  it('reports basic_salary_snapshot equal to epf_wage_base, so Basic + Commission sum to the true commission', () => {
+    const result = calculatePay({
+      summary: zeroSummary,
+      structure: commissionOnlyStruct,
+      otRule,
+      epfRate: { employee_contribution_pct: 11, employer_contribution_pct: 13 },
+      socsoRate: null,
+      eisRate: null,
+      pcbBracket: null,
+      advanceDeduction: 0,
+      commission: 2400, // RM12,000 x 20% — this session's reported scenario
+      statutoryBase: 1700,
+    })
+
+    expect(result.basic_salary_snapshot).toBe(1700)
+    expect(result.epf_wage_base).toBe(1700)
+    const commissionRemainder = result.commission - result.basic_salary_snapshot
+    expect(commissionRemainder).toBe(700)
+    expect(result.basic_salary_snapshot + commissionRemainder).toBe(result.commission)
+  })
+
   it('does not change existing (non commission-only) statutory calculation behavior', () => {
     const dailyStruct = {
       rate_type: 'daily' as const,
@@ -132,5 +176,88 @@ describe('calculatePay — commission-only employee', () => {
     expect(result.gross_pay).toBe(1600)
     expect(result.epf_wage_base).toBe(1600)
     expect(result.statutory.epf_employee).toBe(176)
+  })
+})
+
+describe('calculatePay — fixed_allowance (migration 0025)', () => {
+  it('adds the allowance to gross pay but excludes it from the EPF base, for a daily-rate employee', () => {
+    const dailyStruct = {
+      rate_type: 'daily' as const,
+      rate_amount: 80,
+      standard_hours_per_day: 8,
+      subject_to_epf: 1,
+      subject_to_socso: 0,
+      subject_to_eis: 0,
+      fixed_allowance: 200,
+    }
+
+    const result = calculatePay({
+      summary: makeSummary({ days_worked: 20 }),
+      structure: dailyStruct,
+      otRule,
+      epfRate: { employee_contribution_pct: 11, employer_contribution_pct: 13 },
+      socsoRate: null,
+      eisRate: null,
+      pcbBracket: null,
+      advanceDeduction: 0,
+      commission: 0,
+      workingDaysInMonth: 22,
+    })
+
+    // gross = (80 * 20) + 200 allowance = 1800
+    expect(result.gross_pay).toBe(1800)
+    expect(result.allowance).toBe(200)
+    // EPF base excludes the allowance: 1600 * 11% = 176, not 1800 * 11% = 198.
+    expect(result.epf_wage_base).toBe(1600)
+    expect(result.statutory.epf_employee).toBe(176)
+  })
+
+  it('defaults to 0 and is fully backward-compatible when omitted', () => {
+    const dailyStruct = {
+      rate_type: 'daily' as const,
+      rate_amount: 80,
+      standard_hours_per_day: 8,
+      subject_to_epf: 1,
+      subject_to_socso: 0,
+      subject_to_eis: 0,
+    }
+
+    const result = calculatePay({
+      summary: makeSummary({ days_worked: 20 }),
+      structure: dailyStruct,
+      otRule,
+      epfRate: null,
+      socsoRate: null,
+      eisRate: null,
+      pcbBracket: null,
+      advanceDeduction: 0,
+      commission: 0,
+      workingDaysInMonth: 22,
+    })
+
+    expect(result.allowance).toBe(0)
+    expect(result.gross_pay).toBe(1600)
+  })
+
+  it('adds on top of a commission-only employee\'s split commission too', () => {
+    const result = calculatePay({
+      summary: zeroSummary,
+      structure: { ...commissionOnlyStruct, fixed_allowance: 100 },
+      otRule,
+      epfRate: { employee_contribution_pct: 11, employer_contribution_pct: 13 },
+      socsoRate: null,
+      eisRate: null,
+      pcbBracket: null,
+      advanceDeduction: 0,
+      commission: 2400,
+      statutoryBase: 1700,
+    })
+
+    // gross = 2400 commission + 100 allowance = 2500
+    expect(result.gross_pay).toBe(2500)
+    expect(result.allowance).toBe(100)
+    // Basic/EPF base is still capped off the commission alone, unaffected by the allowance.
+    expect(result.basic_salary_snapshot).toBe(1700)
+    expect(result.epf_wage_base).toBe(1700)
   })
 })

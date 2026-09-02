@@ -379,6 +379,11 @@ export interface SalaryStructure {
   // of attendance, unchanged since 2026-07-17. 1 = the basic is gated on actually
   // meeting the shift's required daily hours — see migration 0022.
   attendance_required: number // 0 or 1 (SQLite)
+  // Recurring fixed allowance, added to gross pay every run for ANY rate_type
+  // (e.g. transport/meal allowance). Excluded from the EPF/SOCSO/EIS base but
+  // included in PCB/gross/net — see migration 0025 and calculationEngine.ts.
+  fixed_allowance: number
+  allowance_description: string | null
   created_at: string
   updated_at: string
 }
@@ -523,7 +528,15 @@ export interface PayrollRunItem {
   commission: number // ad-hoc per-run commission, snapshotted at calculation time
   rest_day_pay: number // work on rest days (ordinary + OT portions), EA 1955 s.60(3)
   holiday_pay: number  // work on public/company holidays, EA 1955 s.60D(3)
-  // Monthly + attendance_required only (migration 0022) — 0 for every other rate type.
+  // Reused for TWO mutually-exclusive rate_type scenarios (never both, since a
+  // structure has exactly one rate_type):
+  //  - monthly + attendance_required (migration 0022): the full contracted basic
+  //    before the attendance shortfall deduction.
+  //  - commission_only (migration 0025): the portion of this run's commission
+  //    treated as "Basic" for display and given full EPF/SOCSO/EIS treatment —
+  //    min(statutory base, actual commission). The "Commission" remainder shown
+  //    on the payslip is commission - basic_salary_snapshot, not a separate column.
+  // 0 for every other rate type.
   basic_salary_snapshot: number
   attendance_shortfall_hours: number
   attendance_shortfall_amount: number
@@ -532,6 +545,10 @@ export interface PayrollRunItem {
   // into KWSP's own portal/table when submitting, rather than re-deriving it by hand.
   // 0 when the employee is not subject_to_epf.
   epf_wage_base: number
+  // Recurring fixed allowance snapshotted from salary_structures.fixed_allowance at
+  // calculation time (migration 0025). Excluded from the EPF/SOCSO/EIS base.
+  allowance: number
+  allowance_description: string | null
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -552,7 +569,13 @@ export interface PayrollRunCommission {
   payroll_run_id: number
   employee_id: number
   employee_name?: string // populated via JOIN
+  // Final commission dollar amount. When sales_amount is set, this is SERVER-COMPUTED
+  // (sales_amount x commission_rate / 100) — never trust a client-supplied amount
+  // alongside a sales basis. When sales_amount is null, this is the flat amount
+  // entered directly (a one-off bonus not tied to a sales percentage).
   amount: number
+  sales_amount: number | null
+  commission_rate: number | null // percentage, 0-100. Null (with sales_amount set) means 100%.
   note: string | null
   // Per-run override of the employee's recurring default statutory base
   // (salary_structures.rate_amount for commission_only employees). Null means
@@ -605,7 +628,15 @@ export interface PayCheckResult {
   // Also doubles as the commission-only statutory-base override result (see
   // CalculationInput.statutoryBase, docs/COMMISSION_PAYROLL_PLAN.md) — one field,
   // not a separate duplicate column, for "the wage EPF was actually calculated against".
+  // For commission_only specifically, this is capped at the actual commission earned
+  // (Math.min(statutoryBase, commission)) — see buildResult — and is the same value
+  // used for basic_salary_snapshot, so the payslip's Basic + Commission lines always
+  // sum to the true commission amount.
   epf_wage_base: number
+
+  // Recurring fixed allowance (migration 0025) — added to gross pay, excluded from
+  // the EPF/SOCSO/EIS base. 0 when the structure has none configured.
+  allowance: number
 
   // Statutory
   statutory: StatutoryBreakdown

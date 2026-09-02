@@ -89,7 +89,7 @@ function calcPcb(bracket: PcbBracket | null): number {
 export interface CalculationInput {
   summary: EmployeeMonthlySummary
   structure: Pick<SalaryStructure, 'rate_type' | 'rate_amount' | 'standard_hours_per_day' | 'subject_to_epf' | 'subject_to_socso' | 'subject_to_eis'>
-    & { attendance_required?: number }
+    & { attendance_required?: number; fixed_allowance?: number }
   otRule: OtRule
   /**
    * Hourly rate derived from the monthly wage for a rate_type='monthly' AND
@@ -207,6 +207,9 @@ export function calculatePay(input: CalculationInput): PayCheckResult {
   // ── Commission-only branch ──
   // No base salary at all — gross pay is the commission itself. Attendance/hours
   // are irrelevant (these employees are excluded from attendance processing).
+  // buildResult splits the commission into a "Basic" portion (up to the statutory
+  // base, given full EPF/SOCSO/EIS treatment like a normal wage) + a "Commission"
+  // remainder — see the epfBase/basicSalarySnapshot logic below.
   if (structure.rate_type === 'commission_only') {
     return buildResult(summary.employee_id, 0, 0, 0, 0, commission, NO_PREMIUM_PAY, input)
   }
@@ -272,8 +275,12 @@ function buildResult(
   const { structure, advanceDeduction } = input
   const restDayPay = premiumPay.restDayOrdinary + premiumPay.restDayOt
   const holidayPay = premiumPay.holidayOrdinary + premiumPay.holidayOt
+  // Recurring fixed allowance (migration 0025) — added to gross pay for every rate
+  // type, excluded from the EPF/SOCSO/EIS base below (not folded into
+  // epfWageBaseDefault), included in PCB (via payrollRun.ts's monthlyWage estimate).
+  const allowance = Math.round((structure.fixed_allowance ?? 0) * 100) / 100
   const grossPay = Math.round(
-    (grossRegularPay + grossOtPay + commission + restDayPay + holidayPay) * 100,
+    (grossRegularPay + grossOtPay + commission + restDayPay + holidayPay + allowance) * 100,
   ) / 100
 
   // EPF Act 1991 Third Schedule: EPF "wages" excludes overtime payments (also
@@ -294,7 +301,21 @@ function buildResult(
   const epfWageBaseDefault = Math.round(
     (grossRegularPay + commission + premiumPay.restDayOrdinary + premiumPay.holidayOrdinary) * 100,
   ) / 100
-  const epfBase = Math.round((input.statutoryBase ?? epfWageBaseDefault) * 100) / 100
+  // For commission-only employees (input.statutoryBase set), the base is capped at
+  // the commission actually earned this run — a low-sales month can't fund a "Basic"
+  // larger than what was paid. payrollRun.ts applies the same cap to the bracket
+  // LOOKUP wage before this function is even called, so the % rate selected and the
+  // amount it's applied to always agree.
+  const epfBase = input.statutoryBase !== undefined
+    ? Math.round(Math.min(input.statutoryBase, commission) * 100) / 100
+    : Math.round(epfWageBaseDefault * 100) / 100
+
+  // commission_only: the payslip shows this same capped figure as "Basic Salary" —
+  // reusing basic_salary_snapshot (see its doc comment) rather than a new column.
+  // The "Commission" remainder line is commission - basic_salary_snapshot.
+  const basicSalarySnapshot = structure.rate_type === 'commission_only'
+    ? epfBase
+    : attendanceExtras?.basicSalarySnapshot ?? 0
 
   // Statutory deductions (only if subject + rate available)
   const statutory: StatutoryBreakdown = {
@@ -340,10 +361,11 @@ function buildResult(
     commission: Math.round(commission * 100) / 100,
     rest_day_pay: Math.round(restDayPay * 100) / 100,
     holiday_pay: Math.round(holidayPay * 100) / 100,
-    basic_salary_snapshot: attendanceExtras?.basicSalarySnapshot ?? 0,
+    basic_salary_snapshot: basicSalarySnapshot,
     attendance_shortfall_hours: attendanceExtras?.shortfallHours ?? 0,
     attendance_shortfall_amount: attendanceExtras?.shortfallAmount ?? 0,
     epf_wage_base: structure.subject_to_epf ? epfBase : 0,
+    allowance,
     gross_pay: Math.round(grossPay * 100) / 100,
     statutory,
     advance_deduction: advanceDeduction,

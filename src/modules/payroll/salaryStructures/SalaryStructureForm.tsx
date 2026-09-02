@@ -37,6 +37,8 @@ export function SalaryStructureForm({
   const [pcbCategory, setPcbCategory] = useState<'single' | 'married_no_spouse_income' | 'married_with_spouse_income'>('single')
   const [pcbChildrenCount, setPcbChildrenCount] = useState('0')
   const [attendanceRequired, setAttendanceRequired] = useState(false)
+  const [fixedAllowance, setFixedAllowance] = useState('0')
+  const [allowanceDescription, setAllowanceDescription] = useState('')
   const [validationError, setValidationError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -53,6 +55,8 @@ export function SalaryStructureForm({
       setPcbCategory(structure.pcb_category)
       setPcbChildrenCount(String(structure.pcb_children_count))
       setAttendanceRequired(!!structure.attendance_required)
+      setFixedAllowance(String(structure.fixed_allowance))
+      setAllowanceDescription(structure.allowance_description ?? '')
     } else {
       setEmployeeId('')
       setEffectiveFrom(new Date().toISOString().slice(0, 10))
@@ -65,6 +69,8 @@ export function SalaryStructureForm({
       setPcbCategory('single')
       setPcbChildrenCount('0')
       setAttendanceRequired(false)
+      setFixedAllowance('0')
+      setAllowanceDescription('')
     }
     setValidationError(null)
   }, [isOpen, structure])
@@ -77,6 +83,7 @@ export function SalaryStructureForm({
       return false
     }
     if (rateType !== 'monthly' && rateType !== 'commission_only' && (!standardHoursPerDay || Number(standardHoursPerDay) <= 0)) { setValidationError('Standard hours must be a positive number'); return false }
+    if (fixedAllowance !== '' && Number(fixedAllowance) < 0) { setValidationError('Allowance must be non-negative'); return false }
     return true
   }
 
@@ -97,6 +104,8 @@ export function SalaryStructureForm({
       pcb_category: pcbCategory,
       pcb_children_count: Number(pcbChildrenCount),
       attendance_required: rateType === 'monthly' && attendanceRequired ? 1 : 0,
+      fixed_allowance: fixedAllowance === '' ? 0 : Number(fixedAllowance),
+      allowance_description: allowanceDescription.trim() ? allowanceDescription.trim() : null,
     }
 
     await onSubmit(data)
@@ -183,6 +192,25 @@ export function SalaryStructureForm({
           helperText="Hours worked beyond this per day count as OT, per the Payroll Settings OT rule."
         />
         )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            label="Fixed Allowance (RM)"
+            type="number"
+            step="0.01"
+            min="0"
+            value={fixedAllowance}
+            onChange={(e) => setFixedAllowance(e.target.value)}
+            placeholder="0.00"
+            helperText="Recurring, added every run. Excluded from EPF/SOCSO/EIS."
+          />
+          <Input
+            label="Allowance Description (optional)"
+            value={allowanceDescription}
+            onChange={(e) => setAllowanceDescription(e.target.value)}
+            placeholder="e.g. Transport Allowance"
+          />
+        </div>
 
         {rateType === 'monthly' && (
           <label className="flex items-start gap-2 rounded-lg border border-neutral-200 p-3 text-sm text-neutral-700">

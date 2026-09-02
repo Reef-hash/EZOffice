@@ -366,8 +366,9 @@ export function calculatePayrollRun(
       // cap a daily-rate employee's paid days in the calculation engine.
       const workingDays = workingDaysForEmployeeInRange(db, employeeId, periodStart, periodEnd)
 
-      // Monthly wage estimate (for PCB bracket lookup — PCB always uses full gross
-      // wage including commission, per docs/COMMISSION_PAYROLL_PLAN.md).
+      // Monthly wage estimate — the EPF/SOCSO/EIS bracket-lookup base. Deliberately
+      // excludes fixed_allowance (excluded from EPF/SOCSO/EIS, migration 0025), same
+      // as it already excludes actual OT hours.
       // For monthly-rate employees: the fixed monthly salary itself
       // For daily-rate employees: daily_rate × working_days_in_month
       // For hourly-rate employees: hourly_rate × standard_hours × working_days
@@ -382,6 +383,11 @@ export function calculatePayrollRun(
                 ? structure.rate_amount * workingDays
                 : structure.rate_amount * structure.standard_hours_per_day * workingDays) + commission
 
+      // PCB bracket lookup uses full gross wage including the fixed allowance (PCB
+      // always uses full gross, per docs/COMMISSION_PAYROLL_PLAN.md and migration 0025 —
+      // allowance is EPF-excluded but not confirmed PCB-exempt, so it's taxed like OT is).
+      const monthlyWageForPcb = monthlyWage + (structure.fixed_allowance ?? 0)
+
       // EPF/SOCSO/EIS bracket lookup + calculation base. Commission-only employees
       // use an explicit contribution base (per-run override, else the employee's
       // recurring default) instead of their commission amount. Every other rate
@@ -390,7 +396,13 @@ export function calculatePayrollRun(
       const statutoryBase: number | undefined = structure.rate_type === 'commission_only'
         ? (commissionEntry?.statutoryBaseOverride ?? structure.rate_amount)
         : undefined
-      const statutoryBaseForBrackets = statutoryBase ?? monthlyWage
+      // For commission-only employees, cap the bracket-lookup wage at the commission
+      // actually earned this run — a low-sales month can't fund a "Basic" bigger than
+      // what was paid. calculationEngine.ts applies the identical cap to the amount
+      // the rate is then applied to, so the % rate selected and its base always agree.
+      const statutoryBaseForBrackets = statutoryBase !== undefined
+        ? Math.min(statutoryBase, commission)
+        : monthlyWage
 
       // Look up statutory rates
       const epfRate = structure.subject_to_epf ? lookupEpfRate(db, statutoryBaseForBrackets, asOfDate) : null
@@ -398,7 +410,7 @@ export function calculatePayrollRun(
       const eisRate = structure.subject_to_eis ? lookupEisRate(db, statutoryBaseForBrackets, asOfDate) : null
 
       // PCB: use per-employee category and children count from salary_structures (migration 0005)
-      const pcbBracket = lookupPcbBracket(db, monthlyWage, structure.pcb_category, structure.pcb_children_count, asOfDate)
+      const pcbBracket = lookupPcbBracket(db, monthlyWageForPcb, structure.pcb_category, structure.pcb_children_count, asOfDate)
 
       // Preview the advance deduction for this employee — NOT applied yet.
       // Balances are only mutated when the run is finalized (see finalizePayrollRun).
@@ -422,6 +434,7 @@ export function calculatePayrollRun(
           subject_to_socso: structure.subject_to_socso,
           subject_to_eis: structure.subject_to_eis,
           attendance_required: structure.attendance_required,
+          fixed_allowance: structure.fixed_allowance,
         },
         otRule,
         premiumRates,
@@ -447,6 +460,7 @@ export function calculatePayrollRun(
           rest_day_pay, holiday_pay,
           basic_salary_snapshot, attendance_shortfall_hours, attendance_shortfall_amount,
           epf_wage_base,
+          allowance, allowance_description,
           gross_pay,
           epf_employee, epf_employer,
           socso_employee, socso_employer,
@@ -462,6 +476,7 @@ export function calculatePayrollRun(
           @rest_day_pay, @holiday_pay,
           @basic_salary_snapshot, @attendance_shortfall_hours, @attendance_shortfall_amount,
           @epf_wage_base,
+          @allowance, @allowance_description,
           @gross_pay,
           @epf_employee, @epf_employer,
           @socso_employee, @socso_employer,
@@ -490,6 +505,8 @@ export function calculatePayrollRun(
         attendance_shortfall_hours: payResult.attendance_shortfall_hours,
         attendance_shortfall_amount: payResult.attendance_shortfall_amount,
         epf_wage_base: payResult.epf_wage_base,
+        allowance: payResult.allowance,
+        allowance_description: structure.allowance_description,
         gross_pay: payResult.gross_pay,
         epf_employee: payResult.statutory.epf_employee,
         epf_employer: payResult.statutory.epf_employer,

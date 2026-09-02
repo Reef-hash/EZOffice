@@ -73,19 +73,22 @@ export async function exportPayrollToExcel(
   db: Database.Database,
   runId: number,
 ): Promise<{ filePath: string; filename: string }> {
-  const items = db.prepare(`
+  const rawItems = db.prepare(`
     SELECT
       e.name AS employee_name,
       e.employee_code,
+      i.snapshot_rate_type,
       i.gross_regular_pay,
       i.gross_ot_pay,
       i.commission,
+      i.basic_salary_snapshot,
       i.attendance_shortfall_hours,
       i.attendance_shortfall_amount,
+      i.allowance,
       i.rest_day_pay,
       i.holiday_pay,
       i.gross_pay,
-      i.statutory_base,
+      i.epf_wage_base,
       i.epf_employee,
       i.socso_employee,
       i.eis_employee,
@@ -99,15 +102,18 @@ export async function exportPayrollToExcel(
   `).all(runId) as Array<{
     employee_name: string
     employee_code: string
+    snapshot_rate_type: string
     gross_regular_pay: number
     gross_ot_pay: number
     commission: number
+    basic_salary_snapshot: number
     attendance_shortfall_hours: number
     attendance_shortfall_amount: number
+    allowance: number
     rest_day_pay: number
     holiday_pay: number
     gross_pay: number
-    statutory_base: number
+    epf_wage_base: number
     epf_employee: number
     socso_employee: number
     eis_employee: number
@@ -115,6 +121,17 @@ export async function exportPayrollToExcel(
     advance_deduction: number
     net_pay: number
   }>
+
+  // commission_only: basic_salary_snapshot already covers part of the commission —
+  // export only the remainder so the Basic Salary + Commission columns sum to the
+  // true commission earned, same convention as the payslip PDF and run items table.
+  const items = rawItems.map((item) => ({
+    ...item,
+    commission: item.snapshot_rate_type === 'commission_only'
+      ? Math.round((item.commission - item.basic_salary_snapshot) * 100) / 100
+      : item.commission,
+    statutory_base: item.epf_wage_base,
+  }))
 
   const run = db.prepare('SELECT year, month, run_date FROM payroll_runs WHERE id = ?').get(runId) as {
     year: number
@@ -141,9 +158,11 @@ export async function exportPayrollToExcel(
     { header: 'Name', key: 'employee_name', width: 20 },
     { header: 'Regular Pay', key: 'gross_regular_pay', width: 12 },
     { header: 'OT Pay', key: 'gross_ot_pay', width: 12 },
+    { header: 'Basic Salary', key: 'basic_salary_snapshot', width: 12 },
     { header: 'Commission', key: 'commission', width: 12 },
     { header: 'Shortfall Hrs', key: 'attendance_shortfall_hours', width: 12 },
     { header: 'Shortfall Ded', key: 'attendance_shortfall_amount', width: 12 },
+    { header: 'Allowance', key: 'allowance', width: 12 },
     { header: 'Rest Day', key: 'rest_day_pay', width: 12 },
     { header: 'Holiday', key: 'holiday_pay', width: 12 },
     { header: 'Gross', key: 'gross_pay', width: 12 },
@@ -166,8 +185,8 @@ export async function exportPayrollToExcel(
     worksheet.addRow(item)
   })
 
-  // Format currency columns
-  const currencyColumns = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+  // Format every numeric column (3 = Regular Pay through the last, Net Pay) as currency.
+  const currencyColumns = Array.from({ length: worksheet.columns.length - 2 }, (_, i) => i + 3)
   worksheet.eachRow((row) => {
     currencyColumns.forEach((col) => {
       const cell = row.getCell(col)

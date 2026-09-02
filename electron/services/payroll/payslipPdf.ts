@@ -32,6 +32,7 @@ interface PayslipData {
   year: number
   month: number
   run_date: string
+  snapshot_rate_type: string
   total_regular_hours: number
   total_ot_hours: number
   gross_regular_pay: number
@@ -43,6 +44,8 @@ interface PayslipData {
   epf_wage_base: number
   attendance_shortfall_hours: number
   attendance_shortfall_amount: number
+  allowance: number
+  allowance_description: string | null
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -70,11 +73,13 @@ function getRunItemWithEmployeeDetails(
       r.year,
       r.month,
       r.run_date,
+      i.snapshot_rate_type,
       i.total_regular_hours, i.total_ot_hours,
       i.gross_regular_pay, i.gross_ot_pay, i.commission,
       i.rest_day_pay, i.holiday_pay,
       i.basic_salary_snapshot, i.attendance_shortfall_hours, i.attendance_shortfall_amount,
       i.epf_wage_base,
+      i.allowance, i.allowance_description,
       i.gross_pay,
       i.epf_employee, i.epf_employer,
       i.socso_employee, i.socso_employer,
@@ -217,12 +222,11 @@ export async function generatePayslipPdf(
               { text: 'Hours', style: 'tableHeader' },
               { text: 'Amount (RM)', style: 'tableHeader' },
             ],
-            // Monthly + attendance_required (migration 0022): show the full contracted
-            // basic and the attendance shortfall as two separate lines that net to
-            // gross_regular_pay, rather than silently printing only the net figure —
-            // an employee should be able to see both what they're contracted for and
-            // what was deducted. Every other rate type/flag keeps the plain "Regular
-            // Pay" line unchanged.
+            // Monthly + attendance_required (migration 0022) OR commission_only
+            // (migration 0025): show a "Basic Salary" line instead of the plain
+            // "Regular Pay" line — see basic_salary_snapshot's doc comment in
+            // entities.ts for why one column covers both (mutually exclusive by
+            // rate_type). Every other rate type/flag keeps "Regular Pay" unchanged.
             ...(item.basic_salary_snapshot > 0
               ? [
                   ['Basic Salary', '', item.basic_salary_snapshot.toFixed(2)],
@@ -236,7 +240,18 @@ export async function generatePayslipPdf(
                 ]
               : [['Regular Pay', item.total_regular_hours, item.gross_regular_pay.toFixed(2)]]),
             ['Overtime', item.total_ot_hours, item.gross_ot_pay.toFixed(2)],
-            ...(item.commission > 0 ? [['Commission', '', item.commission.toFixed(2)]] : []),
+            // For commission_only, the Basic Salary line above already accounts for
+            // part of the commission — show only the remainder here so the two lines
+            // sum to the true commission earned instead of double-counting it.
+            ...(() => {
+              const commissionDisplay = item.snapshot_rate_type === 'commission_only'
+                ? Math.round((item.commission - item.basic_salary_snapshot) * 100) / 100
+                : item.commission
+              return commissionDisplay > 0 ? [['Commission', '', commissionDisplay.toFixed(2)]] : []
+            })(),
+            ...(item.allowance > 0
+              ? [[item.allowance_description ? `Allowance (${item.allowance_description})` : 'Allowance', '', item.allowance.toFixed(2)]]
+              : []),
             // Rest-day / public-holiday work is paid at a premium and must appear as
             // its own line — it is part of gross_pay, so omitting it would leave the
             // payslip's lines not adding up to the stated gross.

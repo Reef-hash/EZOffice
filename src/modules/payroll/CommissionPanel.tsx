@@ -44,10 +44,17 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
   )
 
   const [employeeId, setEmployeeId] = useState('')
-  const [amount, setAmount] = useState('')
+  const [salesAmount, setSalesAmount] = useState('')
+  const [commissionRate, setCommissionRate] = useState('')
   const [note, setNote] = useState('')
   const [statutoryBaseOverride, setStatutoryBaseOverride] = useState('')
   const [pendingDelete, setPendingDelete] = useState<PayrollRunCommission | null>(null)
+
+  // Live preview only — the authoritative amount is always recomputed server-side
+  // (see commissions.ts upsertCommission) from the same sales_amount/commission_rate.
+  const computedAmount = salesAmount !== '' && !Number.isNaN(Number(salesAmount))
+    ? Number(salesAmount) * (commissionRate !== '' ? Number(commissionRate) / 100 : 1)
+    : null
 
   const upsertMutation = useIpcMutation<PayrollRunCommission, UpsertPayrollRunCommissionInput>(
     (data) => window.api.payroll.runs.commissions.upsert(runId, data),
@@ -62,15 +69,17 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
   )
 
   async function handleAdd() {
-    if (!employeeId || amount === '' || Number(amount) < 0) return
+    if (!employeeId || salesAmount === '' || Number(salesAmount) < 0) return
     await upsertMutation.mutateAsync({
       employee_id: Number(employeeId),
-      amount: Number(amount),
+      sales_amount: Number(salesAmount),
+      commission_rate: commissionRate.trim() ? Number(commissionRate) : undefined,
       note: note.trim() ? note.trim() : null,
       statutory_base_override: statutoryBaseOverride.trim() ? Number(statutoryBaseOverride) : null,
     })
     setEmployeeId('')
-    setAmount('')
+    setSalesAmount('')
+    setCommissionRate('')
     setNote('')
     setStatutoryBaseOverride('')
   }
@@ -85,10 +94,12 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
     <Card>
       <h3 className="mb-1 text-sm font-semibold text-neutral-800 dark:text-white">Commission (this run only)</h3>
       <p className="mb-4 text-xs text-neutral-500">
-        One-off sales commission for selected employees, this payroll period only — included in the
-        EPF/SOCSO/EIS/PCB base same as basic wages, unless a Statutory Base Override is set below
-        (used for commission-only employees, e.g. RM12,690 trip × 20% = RM2,538 commission with
-        EPF/SOCSO/EIS calculated off RM1,700 instead). {disabled
+        Enter the total sales amount and a commission rate — the commission is computed as
+        Sales × Rate (e.g. RM12,690 × 20% = RM2,538). Leave Rate blank to use the sales figure
+        directly as the commission. For a commission-only employee, the EPF/SOCSO/EIS Base below
+        (default: the employee's recurring base) is shown as "Basic Salary" on the payslip and
+        given full EPF/SOCSO/EIS treatment; the remainder is shown as "Commission". For any other
+        employee, the full commission is added on top of their normal pay. {disabled
           ? 'This run is finalized — commission entries are locked.'
           : 'Add entries below, then click Calculate/Recalculate to apply them.'}
       </p>
@@ -104,6 +115,11 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
                 <span className="font-medium text-neutral-800 dark:text-white">
                   {c.employee_name || `ID ${c.employee_id}`}
                 </span>
+                {c.sales_amount != null && (
+                  <span className="ml-2 text-xs text-neutral-500">
+                    ({formatCurrency(c.sales_amount)} × {c.commission_rate ?? 100}%)
+                  </span>
+                )}
                 {c.note && <span className="ml-2 text-xs text-neutral-500">{c.note}</span>}
                 {c.statutory_base_override != null && (
                   <span className="ml-2 text-xs text-neutral-500">
@@ -125,7 +141,7 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
       )}
 
       {!disabled && (
-        <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_2fr_auto]">
+        <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[2fr_1fr_1fr_1fr_2fr_auto]">
           <Select
             label="Employee"
             value={employeeId}
@@ -134,12 +150,23 @@ export function CommissionPanel({ runId, disabled }: CommissionPanelProps) {
             placeholder="Select an employee"
           />
           <Input
-            label="Amount (RM)"
+            label="Sales Amount (RM)"
             type="number"
             step="0.01"
             min="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            value={salesAmount}
+            onChange={(e) => setSalesAmount(e.target.value)}
+          />
+          <Input
+            label="Commission Rate (%)"
+            type="number"
+            step="0.01"
+            min="0"
+            max="100"
+            value={commissionRate}
+            onChange={(e) => setCommissionRate(e.target.value)}
+            placeholder="100"
+            helperText={computedAmount != null ? `= ${formatCurrency(computedAmount)}` : undefined}
           />
           <Input
             label="EPF/SOCSO/EIS Base (RM)"

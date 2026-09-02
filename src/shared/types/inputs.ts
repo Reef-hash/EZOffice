@@ -144,6 +144,9 @@ export const createSalaryStructureSchema = z.object({
   pcb_children_count: z.number().int().min(0).default(0),
   // Only meaningful when rate_type = 'monthly' — see migration 0022.
   attendance_required: z.number().int().min(0).max(1).default(0),
+  // Recurring fixed allowance, any rate_type — see migration 0025.
+  fixed_allowance: z.number().min(0, 'Allowance must be non-negative').default(0),
+  allowance_description: z.string().trim().min(1).nullable().optional(),
 })
 
 export const updateSalaryStructureSchema = createSalaryStructureSchema.partial()
@@ -263,15 +266,24 @@ export type CreatePayrollRunInput = z.infer<typeof createPayrollRunSchema>
 
 // --- Payroll: Run Commission (ad-hoc, per employee, per run) ---
 
+// Either sales_amount (+ optional commission_rate, computed server-side into `amount`
+// by commissions.ts — never trust a client-computed amount alongside a sales basis)
+// or a flat `amount` directly (a one-off bonus not tied to a sales percentage) must
+// be supplied. Migration 0025 / this session's chat.
 export const upsertPayrollRunCommissionSchema = z.object({
   employee_id: z.number().int().positive('Employee is required'),
-  amount: z.number().min(0, 'Amount must be non-negative'),
+  amount: z.number().min(0, 'Amount must be non-negative').optional(),
+  sales_amount: z.number().min(0, 'Sales amount must be non-negative').optional(),
+  commission_rate: z.number().min(0, 'Rate must be between 0 and 100').max(100, 'Rate must be between 0 and 100').optional(),
   note: z.string().trim().min(1).nullable().optional(),
   // Overrides the employee's recurring default EPF/SOCSO/EIS contribution base
   // for this run only. Null/omitted = use the employee's recurring default
   // (salary_structures.rate_amount for commission_only employees).
   statutory_base_override: z.number().min(0, 'Statutory base must be non-negative').nullable().optional(),
-})
+}).refine(
+  (data) => data.amount != null || data.sales_amount != null,
+  { message: 'Enter either a sales amount or a flat commission amount', path: ['amount'] },
+)
 
 export type UpsertPayrollRunCommissionInput = z.infer<typeof upsertPayrollRunCommissionSchema>
 

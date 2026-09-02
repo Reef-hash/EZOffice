@@ -29,7 +29,29 @@ const itemColumns: Column<PayrollRunItem>[] = [
   { key: 'employee_name', header: 'Employee', accessor: (r) => r.employee_name || `ID ${r.employee_id}`, sortable: true, sortValue: (r) => r.employee_name || '' },
   { key: 'regular_hours', header: 'Reg Hrs', accessor: (r) => r.total_regular_hours.toFixed(1), sortable: true, sortValue: (r) => r.total_regular_hours, align: 'right', width: '80px' },
   { key: 'ot_hours', header: 'OT Hrs', accessor: (r) => r.total_ot_hours.toFixed(1), sortable: true, sortValue: (r) => r.total_ot_hours, align: 'right', width: '80px' },
-  { key: 'commission', header: 'Commission', accessor: (r) => r.commission > 0 ? formatCurrency(r.commission) : '—', sortable: true, sortValue: (r) => r.commission, align: 'right' },
+  {
+    key: 'basic_salary_snapshot',
+    header: 'Basic Salary',
+    accessor: (r) => r.basic_salary_snapshot > 0 ? formatCurrency(r.basic_salary_snapshot) : '—',
+    sortable: true,
+    sortValue: (r) => r.basic_salary_snapshot,
+    align: 'right',
+  },
+  {
+    key: 'commission',
+    header: 'Commission',
+    // commission_only: basic_salary_snapshot already covers part of the commission —
+    // show only the remainder so this column + Basic Salary sum to the true commission.
+    accessor: (r) => {
+      const display = r.snapshot_rate_type === 'commission_only'
+        ? Math.round((r.commission - r.basic_salary_snapshot) * 100) / 100
+        : r.commission
+      return display > 0 ? formatCurrency(display) : '—'
+    },
+    sortable: true,
+    sortValue: (r) => r.commission,
+    align: 'right',
+  },
   {
     key: 'attendance_shortfall',
     header: 'Shortfall',
@@ -40,6 +62,7 @@ const itemColumns: Column<PayrollRunItem>[] = [
     sortValue: (r) => r.attendance_shortfall_amount,
     align: 'right',
   },
+  { key: 'allowance', header: 'Allowance', accessor: (r) => r.allowance > 0 ? formatCurrency(r.allowance) : '—', sortable: true, sortValue: (r) => r.allowance, align: 'right' },
   { key: 'rest_day_pay', header: 'Rest Day', accessor: (r) => r.rest_day_pay > 0 ? formatCurrency(r.rest_day_pay) : '—', sortable: true, sortValue: (r) => r.rest_day_pay, align: 'right' },
   { key: 'holiday_pay', header: 'Holiday', accessor: (r) => r.holiday_pay > 0 ? formatCurrency(r.holiday_pay) : '—', sortable: true, sortValue: (r) => r.holiday_pay, align: 'right' },
   { key: 'gross_pay', header: 'Gross Pay', accessor: (r) => formatCurrency(r.gross_pay), sortable: true, sortValue: (r) => r.gross_pay, align: 'right' },

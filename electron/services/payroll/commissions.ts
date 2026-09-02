@@ -43,6 +43,14 @@ export function getCommissionMapForRun(
  * Add or update the commission amount for one employee on a draft run.
  * UNIQUE(payroll_run_id, employee_id) makes this a true upsert — re-entering an
  * amount for the same employee replaces the previous one rather than erroring.
+ *
+ * When `sales_amount` is supplied, the final `amount` is ALWAYS computed here
+ * server-side as sales_amount x (commission_rate ?? 100) / 100 — a client-supplied
+ * `amount` is ignored in that case, never trusted, per CLAUDE.md §3 input validation.
+ * `commission_rate` omitted (with sales_amount set) means "the sales figure IS the
+ * commission" (100%). When `sales_amount` is omitted, `amount` is used directly as
+ * a flat one-off entry (Zod's refine on upsertPayrollRunCommissionSchema requires at
+ * least one of the two).
  */
 export function upsertCommission(
   db: Database.Database,
@@ -51,19 +59,33 @@ export function upsertCommission(
 ): PayrollRunCommission {
   assertRunIsDraft(db, runId)
 
+  const amount = input.sales_amount != null
+    ? Math.round(input.sales_amount * (input.commission_rate ?? 100) / 100 * 100) / 100
+    : input.amount!
+
   const now = new Date().toISOString()
   db.prepare(`
-    INSERT INTO payroll_run_commissions (payroll_run_id, employee_id, amount, note, statutory_base_override, created_at, updated_at)
-    VALUES (@payroll_run_id, @employee_id, @amount, @note, @statutory_base_override, @created_at, @updated_at)
+    INSERT INTO payroll_run_commissions (
+      payroll_run_id, employee_id, amount, sales_amount, commission_rate,
+      note, statutory_base_override, created_at, updated_at
+    )
+    VALUES (
+      @payroll_run_id, @employee_id, @amount, @sales_amount, @commission_rate,
+      @note, @statutory_base_override, @created_at, @updated_at
+    )
     ON CONFLICT(payroll_run_id, employee_id) DO UPDATE SET
       amount = excluded.amount,
+      sales_amount = excluded.sales_amount,
+      commission_rate = excluded.commission_rate,
       note = excluded.note,
       statutory_base_override = excluded.statutory_base_override,
       updated_at = excluded.updated_at
   `).run({
     payroll_run_id: runId,
     employee_id: input.employee_id,
-    amount: input.amount,
+    amount,
+    sales_amount: input.sales_amount ?? null,
+    commission_rate: input.commission_rate ?? null,
     note: input.note ?? null,
     statutory_base_override: input.statutory_base_override ?? null,
     created_at: now,

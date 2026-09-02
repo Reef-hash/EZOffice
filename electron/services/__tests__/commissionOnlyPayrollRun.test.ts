@@ -115,4 +115,87 @@ describe('commission-only payroll run + pay-group separation', () => {
     expect(item.epf_employee).toBe(198) // 1800 * 11%
     expect(item.gross_pay).toBe(2538) // gross pay is unaffected by the override
   })
+
+  // This session's reported bug: HR entered the raw sales total (RM12,000) directly
+  // into the old flat "Amount" field, which was treated as the final commission —
+  // producing a wildly overstated gross pay. sales_amount + commission_rate fixes
+  // this by computing the commission server-side instead of trusting a flat entry.
+  it('computes commission from sales_amount x commission_rate, not the raw sales figure', () => {
+    const run = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'commission_only', pay_date: '2026-09-01' })
+    const saved = upsertCommission(db, run.id, {
+      employee_id: 2,
+      sales_amount: 12000,
+      commission_rate: 20,
+      note: null,
+      statutory_base_override: null,
+    })
+
+    expect(saved.amount).toBe(2400) // NOT 12000
+    expect(saved.sales_amount).toBe(12000)
+    expect(saved.commission_rate).toBe(20)
+
+    calculatePayrollRun(db, run.id)
+    const item = getPayrollRunItems(db, run.id)[0]
+
+    // Gross pay is the computed commission (2400), not the raw sales total (12000).
+    expect(item.gross_pay).toBe(2400)
+    // Basic (capped at the recurring default RM1,700) + Commission remainder sum to 2400.
+    expect(item.basic_salary_snapshot).toBe(1700)
+    expect(item.commission - item.basic_salary_snapshot).toBe(700)
+    expect(item.epf_wage_base).toBe(1700)
+    expect(item.epf_employee).toBe(187) // 1700 * 11%, not 2400 * 11% and not 12000 * 11%
+  })
+
+  it('ignores a client-supplied amount when a sales basis is given (never trusts it)', () => {
+    const run = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'commission_only', pay_date: '2026-09-01' })
+    const saved = upsertCommission(db, run.id, {
+      employee_id: 2,
+      amount: 99999, // must be ignored/overwritten
+      sales_amount: 12000,
+      commission_rate: 20,
+      note: null,
+      statutory_base_override: null,
+    })
+
+    expect(saved.amount).toBe(2400)
+  })
+
+  it('treats sales_amount as the commission directly when commission_rate is omitted', () => {
+    const run = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'commission_only', pay_date: '2026-09-01' })
+    const saved = upsertCommission(db, run.id, {
+      employee_id: 2,
+      sales_amount: 500,
+      note: null,
+      statutory_base_override: null,
+    })
+
+    expect(saved.amount).toBe(500)
+    expect(saved.commission_rate).toBeNull()
+  })
+
+  it('still supports a flat amount entry with no sales basis (a one-off bonus)', () => {
+    const run = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'commission_only', pay_date: '2026-09-01' })
+    const saved = upsertCommission(db, run.id, {
+      employee_id: 2,
+      amount: 300,
+      note: 'One-off bonus',
+      statutory_base_override: null,
+    })
+
+    expect(saved.amount).toBe(300)
+    expect(saved.sales_amount).toBeNull()
+  })
+
+  it('applies a fixed allowance on top of an ordinary attendance employee\'s pay, excluded from EPF', () => {
+    db.prepare(`UPDATE salary_structures SET fixed_allowance = 150, allowance_description = 'Transport' WHERE employee_id = 1`).run()
+
+    const run = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'attendance', pay_date: '2026-08-26' })
+    calculatePayrollRun(db, run.id)
+    const item = getPayrollRunItems(db, run.id)[0]
+
+    expect(item.allowance).toBe(150)
+    expect(item.allowance_description).toBe('Transport')
+    // Gross pay includes the allowance; EPF base (used for the % calc) does not.
+    expect(item.gross_pay).toBe(item.epf_wage_base + 150)
+  })
 })
