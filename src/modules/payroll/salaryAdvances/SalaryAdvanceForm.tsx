@@ -150,7 +150,7 @@ export function SalaryAdvanceForm({
 
         <div className="grid grid-cols-2 gap-4">
           <Input
-            label="Amount (RM)"
+            label={isEdit ? "Total Issued (RM)" : "Amount (RM)"}
             type="number"
             step="0.01"
             required

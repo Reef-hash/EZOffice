@@ -39,10 +39,14 @@ export function SalaryAdvanceHistory({ advanceId }: SalaryAdvanceHistoryProps) {
       key: `a${a.id}`,
       sortKey: a.created_at,
       label: `${a.created_at.slice(0, 10)} — Adjustment: ${a.reason}`,
+      // Balance first, and said plainly when it did not move: a line reading
+      // "RM 500 → RM 500, total 2,000 → 1,500" was misread as the balance becoming 1,500.
       detail:
-        `Balance ${formatRm(a.balance_before)} → ${formatRm(a.balance_after)}` +
+        (a.balance_before !== a.balance_after
+          ? `Balance outstanding ${formatRm(a.balance_before)} → ${formatRm(a.balance_after)}`
+          : `Balance outstanding unchanged (${formatRm(a.balance_after)})`) +
         (a.amount_before !== a.amount_after
-          ? `, total issued ${formatRm(a.amount_before)} → ${formatRm(a.amount_after)}`
+          ? ` · Total issued ${formatRm(a.amount_before)} → ${formatRm(a.amount_after)}`
           : ''),
     }))
     return [...fromTopUps, ...fromAdjustments].sort((x, y) => x.sortKey.localeCompare(y.sortKey))

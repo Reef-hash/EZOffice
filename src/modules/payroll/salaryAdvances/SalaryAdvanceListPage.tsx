@@ -22,7 +22,7 @@ type StatusFilter = '' | SalaryAdvance['status']
 const columns: Column<SalaryAdvance>[] = [
   { key: 'employee_name', header: 'Employee', accessor: (r) => r.employee_name || `ID ${r.employee_id}`, sortable: true, sortValue: (r) => r.employee_name || '' },
   { key: 'date_issued', header: 'Date Issued', accessor: (r) => r.date_issued, sortable: true, sortValue: (r) => r.date_issued },
-  { key: 'amount', header: 'Amount', accessor: (r) => `RM ${r.amount.toFixed(2)}`, sortable: true, sortValue: (r) => r.amount, align: 'right' },
+  { key: 'amount', header: 'Total Issued', accessor: (r) => `RM ${r.amount.toFixed(2)}`, sortable: true, sortValue: (r) => r.amount, align: 'right' },
   { key: 'balance', header: 'Balance Outstanding', accessor: (r) => `RM ${r.balance_outstanding.toFixed(2)}`, sortable: true, sortValue: (r) => r.balance_outstanding, align: 'right' },
   { key: 'deduction_mode', header: 'Deduction Mode', accessor: (r) => DEDUCTION_MODE_LABEL[r.deduction_mode], sortable: true, sortValue: (r) => r.deduction_mode },
   {
