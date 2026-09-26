@@ -879,6 +879,7 @@ These are common failure modes for AI coding agents specifically. Watch for them
   - **Payroll interaction:** nothing new. Finalized runs are unchanged because their deduction is already snapshotted. A draft run picks up the new balance on Recalculate, and at Finalize `finalizePayrollRun` re-resolves the balances anyway.
   - **IPC/UI:** `payroll:salaryAdvances:topUp` / `:listTopUps`. New `SalaryAdvanceTopUpSection.tsx` inside the edit modal shows top-up history plus a Top Up form with a live preview of the new total and balance. The Amount field's helper text now points to Top Up.
   - **Verified:** `npm run typecheck` clean (both tsconfigs), `vite build` clean. `npm run test` passed 153/153: the 146 existing tests plus 7 new ones in `salaryAdvanceTopUp.test.ts`, covering the exact RM500 + RM1,000 case, history, installment re-size, the limit refusal leaving state untouched, the settled refusal, and the update delta and floor.
+  - **Salary Advances list filters (same day):** the list showed active, settled and cancelled advances mixed together, which made live ones hard to find. `SalaryAdvanceListPage.tsx` now has a Status filter that **defaults to Active** and shows a count on each option, plus an Employee filter that lists only employees who have an advance. Filtering happens client-side because the list is small and the `list` IPC already returns everything, so no backend change was needed.
   - **Not yet verified:** the app has not been launched and clicked through.
 
 A phase is not complete until:
