@@ -18,6 +18,7 @@ import {
   updatePcbBracketSchema,
   createSalaryAdvanceSchema,
   updateSalaryAdvanceSchema,
+  topUpSalaryAdvanceSchema,
   createPayrollRunSchema,
   upsertPayrollRunCommissionSchema,
   upsertPayrollRunAllowanceSchema,
@@ -282,6 +283,21 @@ export function registerPayrollHandlers(db: Database.Database): void {
   ipcMain.handle('payroll:salaryAdvances:delete', async (_event, id: number) => {
     try { return salaryAdvancesService.deleteSalaryAdvance(db, id) } catch (err) {
       throw new Error(`Failed to delete salary advance ${id}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:salaryAdvances:topUp', async (_event, id: number, data: unknown) => {
+    try {
+      const input = topUpSalaryAdvanceSchema.parse(data)
+      return salaryAdvancesService.topUpSalaryAdvance(db, id, input)
+    } catch (err) {
+      throw new Error(`Failed to top up salary advance ${id}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:salaryAdvances:listTopUps', async (_event, id: number) => {
+    try { return salaryAdvancesService.listSalaryAdvanceTopUps(db, id) } catch (err) {
+      throw new Error(`Failed to list top-ups for salary advance ${id}: ${String(err)}`)
     }
   })
 

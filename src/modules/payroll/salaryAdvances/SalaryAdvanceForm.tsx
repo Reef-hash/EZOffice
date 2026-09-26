@@ -11,6 +11,7 @@ import type { SelectOption } from '@/shared/components/Input'
 import type { SalaryAdvance } from '@/shared/types/entities'
 import type { CreateSalaryAdvanceInput, UpdateSalaryAdvanceInput } from '@/shared/types/inputs'
 import { DEDUCTION_MODE_OPTIONS, ADVANCE_STATUS_LABEL, ADVANCE_STATUS_TONE } from '../constants'
+import { SalaryAdvanceTopUpSection } from './SalaryAdvanceTopUpSection'
 
 interface SalaryAdvanceFormProps {
   isOpen: boolean
@@ -142,6 +143,7 @@ export function SalaryAdvanceForm({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             disabled={isLocked}
+            helperText={isEdit ? 'For corrections. To lend more, use Top Up below.' : undefined}
           />
           <Input
             label="Date Issued"
@@ -183,6 +185,12 @@ export function SalaryAdvanceForm({
           />
         </div>
       </form>
+
+      {isEdit && (
+        <div className="mt-4">
+          <SalaryAdvanceTopUpSection advance={advance} onToppedUp={onClose} />
+        </div>
+      )}
     </Modal>
   )
 }

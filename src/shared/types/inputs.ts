@@ -254,6 +254,19 @@ export const updateSalaryAdvanceSchema = salaryAdvanceBaseSchema.partial()
 export type CreateSalaryAdvanceInput = z.infer<typeof createSalaryAdvanceSchema>
 export type UpdateSalaryAdvanceInput = z.infer<typeof updateSalaryAdvanceSchema>
 
+// Top-up: adds `amount` to an active advance's principal AND its outstanding balance.
+// limit_max / installment_amount are optional so the admin can raise the approved
+// ceiling or re-size the monthly installment in the same step.
+export const topUpSalaryAdvanceSchema = z.object({
+  amount: z.number().positive('Top-up amount must be positive'),
+  date_issued: z.string().min(1, 'Date issued is required'),
+  limit_max: z.number().min(0, 'Limit must be non-negative').optional(),
+  installment_amount: z.number().positive('Installment must be positive').optional(),
+  note: z.string().trim().max(500).optional(),
+})
+
+export type TopUpSalaryAdvanceInput = z.infer<typeof topUpSalaryAdvanceSchema>
+
 // --- Payroll: Run ---
 
 export const createPayrollRunSchema = z.object({

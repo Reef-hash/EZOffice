@@ -483,6 +483,16 @@ export interface SalaryAdvance {
   updated_at: string
 }
 
+/** One "add more money to this advance" event (migration 0027). */
+export interface SalaryAdvanceTopUp {
+  id: number
+  salary_advance_id: number
+  amount: number
+  date_issued: string
+  note: string | null
+  created_at: string
+}
+
 export interface PayrollRun {
   id: number
   payroll_period_id: number | null

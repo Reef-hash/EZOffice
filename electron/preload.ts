@@ -167,6 +167,8 @@ const api: EzOfficeApi = {
       create: (data) => ipcRenderer.invoke('payroll:salaryAdvances:create', data),
       update: (id, data) => ipcRenderer.invoke('payroll:salaryAdvances:update', id, data),
       delete: (id) => ipcRenderer.invoke('payroll:salaryAdvances:delete', id),
+      topUp: (id, data) => ipcRenderer.invoke('payroll:salaryAdvances:topUp', id, data),
+      listTopUps: (id) => ipcRenderer.invoke('payroll:salaryAdvances:listTopUps', id),
     },
     runs: {
       list: () => ipcRenderer.invoke('payroll:runs:list'),
