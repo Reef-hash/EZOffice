@@ -206,7 +206,8 @@ describe('working-day count follows the Company Calendar, not a hardcoded Mon-Fr
     `).run()
 
     // Work Mon-Sat every week; skip Sundays. 2026-08-31 (Merdeka) is a public holiday
-    // and is deliberately NOT worked here so this test isolates the working-day count.
+    // and is deliberately NOT worked here — it's paid anyway (EA 1955 s.60D(1), same
+    // as paid annual/sick leave), so it counts as one more paid day on top of workedDays.
     let workedDays = 0
     for (let d = 1; d <= 30; d++) {
       const date = `2026-08-${String(d).padStart(2, '0')}`
@@ -220,16 +221,16 @@ describe('working-day count follows the Company Calendar, not a hardcoded Mon-Fr
     const summary = getAttendanceSummaryForDateRange(db, {
       employeeIds: [2], startDate: '2026-08-01', endDate: '2026-08-31',
     })[0]
-    expect(summary.days_worked).toBe(workedDays)
+    expect(summary.days_worked).toBe(workedDays + 1) // + the unworked, paid Merdeka Day
 
     db.prepare(`UPDATE payroll_periods SET status='processing' WHERE id=1`).run()
     const run = createPayrollRun(db, { payroll_period_id: 1, pay_group: 'attendance', pay_date: '2026-08-26' })
     calculatePayrollRun(db, run.id)
     const item = getPayrollRunItems(db, run.id)[0]
 
-    // Every worked day is paid. The bug capped this at the Mon-Fri count (21 days,
-    // RM1,680) and silently dropped the Saturdays.
-    expect(item.gross_regular_pay).toBe(workedDays * 80)
+    // Every worked day is paid, plus the unworked-but-paid Merdeka Day. The bug capped
+    // this at the Mon-Fri count (21 days, RM1,680) and silently dropped the Saturdays.
+    expect(item.gross_regular_pay).toBe((workedDays + 1) * 80)
     expect(item.gross_regular_pay).toBeGreaterThan(21 * 80)
   })
 

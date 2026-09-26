@@ -244,6 +244,13 @@ export function getAttendanceSummaryForDateRange(
       COALESCE(SUM(MAX(0, dar.required_hours - dar.regular_hours)), 0) AS total_shortfall_hours,
       COUNT(DISTINCT CASE WHEN dar.attendance_status IN ('present', 'late', 'early_out', 'excused_late')
                              OR (dar.attendance_status = 'on_leave' AND dar.leave_type IN ('annual', 'sick'))
+                             -- An unworked public/company holiday is a paid day off (regular_hours > 0,
+                             -- credited by Stage 10 below). A WORKED holiday sets holiday_hours instead
+                             -- and leaves regular_hours at 0 — it must NOT also count here, or it would
+                             -- be paid twice: once via holiday_hours' premium, again via this day count
+                             -- inflating the daily-rate cap (caught by a pre-existing test asserting a
+                             -- worked Merdeka Day is paid as holiday work, not as an ordinary day too).
+                             OR (dar.attendance_status = 'holiday' AND dar.regular_hours > 0)
                         THEN dar.date END) AS days_worked
     FROM daily_attendance_records dar
     WHERE ${conditions.join(' AND ')}
@@ -520,6 +527,16 @@ function processEmployee(
       // there is no half-day tier as there is for rest days.
       holidayHours = threshold
       holidayOtHours = Math.max(0, payHours - threshold)
+    } else if (attendanceStatus === 'holiday' && payHours === 0) {
+      // EA 1955 s.60D(1): a gazetted (or company) holiday is a PAID day off, same as
+      // paid annual/sick leave above — the employee is paid a normal day even without
+      // a punch. Credited as ordinary regularHours, not a holiday-premium bucket,
+      // since no work was actually performed (the premium above is specifically for
+      // WORK done on the holiday). Until this fix an unworked public/company holiday
+      // paid RM0 for daily/hourly-rate employees, which is what a client reported
+      // (Merdeka Day marked correctly on the calendar, but the day showed 0 hours) —
+      // reported 2026-09-26, see CLAUDE.md decision log.
+      regularHours = threshold
     }
 
     // Stage 10 continued: rest/lunch break, for the break_hours/break_minutes_over

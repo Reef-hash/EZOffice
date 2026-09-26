@@ -62,7 +62,17 @@ function getPayrollPeriodOrThrow(db: Database.Database, payrollPeriodId: number)
 }
 
 /**
- * Counts the working days an employee is scheduled for within an inclusive date range.
+ * Counts the days an employee is entitled to a normal day's pay for within an
+ * inclusive date range — scheduled working days plus unworked public/company
+ * holidays (EA 1955 s.60D(1) — a gazetted holiday is a PAID day off, same as paid
+ * annual/sick leave; see attendanceProcessor.ts Stage 10). This is deliberately the
+ * same count `days_worked` (getAttendanceSummaryForDateRange) now includes an
+ * unworked holiday in — if this function didn't also count it, a daily-rate
+ * employee who worked every scheduled day would have days_worked one higher than
+ * workingDays, and calculationEngine.ts's `Math.min(days_worked, workingDays)` cap
+ * would silently discard the holiday pay, reproducing the exact 2026-08-27 six-day-
+ * week bug in a new shape. A holiday actually WORKED is paid separately via the
+ * holiday-premium bucket (holiday_hours), not through this day count.
  *
  * Delegates every day to the Company Calendar's own resolver (`resolveCalendarDay`)
  * rather than deciding for itself — that resolver already honours the configured
@@ -89,7 +99,8 @@ function workingDaysForEmployeeInRange(
   while (cursor <= end) {
     const dateStr = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`
     const dayType = resolveCalendarDay(db, employeeId, dateStr).day_type
-    if (dayType === 'working_day' || dayType === 'special_working_day' || dayType === 'company_event') {
+    if (dayType === 'working_day' || dayType === 'special_working_day' || dayType === 'company_event'
+      || dayType === 'public_holiday' || dayType === 'company_holiday') {
       count++
     }
     cursor.setDate(cursor.getDate() + 1)
