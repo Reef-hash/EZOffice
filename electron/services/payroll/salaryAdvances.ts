@@ -4,8 +4,12 @@
 // this file keeps advance CRUD and balance queries.
 
 import type Database from 'better-sqlite3'
-import type { SalaryAdvance } from '../../../src/shared/types/entities'
-import type { CreateSalaryAdvanceInput, UpdateSalaryAdvanceInput } from '../../../src/shared/types/inputs'
+import type { SalaryAdvance, SalaryAdvanceTopUp } from '../../../src/shared/types/entities'
+import type {
+  CreateSalaryAdvanceInput,
+  UpdateSalaryAdvanceInput,
+  TopUpSalaryAdvanceInput,
+} from '../../../src/shared/types/inputs'
 
 // ── Shared ───────────────────────────────────────────────
 
@@ -113,21 +117,34 @@ export function updateSalaryAdvance(
   }
 
   const now = new Date().toISOString()
+  const amount = input.amount ?? existing.amount
+  // balance_outstanding is never reset by edits — it tracks repayments made through
+  // payroll runs. Resetting it would silently erase partial repayments already applied.
+  // A changed principal shifts the balance by the same delta instead, so the amount
+  // already repaid (amount − balance) is preserved. Before this, raising the amount
+  // left the balance untouched — the extra money was never deducted.
+  const balanceOutstanding = existing.balance_outstanding + (amount - existing.amount)
+  if (balanceOutstanding < 0) {
+    const repaid = existing.amount - existing.balance_outstanding
+    throw new Error(
+      `Amount cannot be lower than what has already been repaid (RM ${repaid.toFixed(2)})`,
+    )
+  }
   const merged = {
     employee_id: input.employee_id ?? existing.employee_id,
-    amount: input.amount ?? existing.amount,
+    amount,
     date_issued: input.date_issued ?? existing.date_issued,
     limit_max: input.limit_max ?? existing.limit_max,
-    // balance_outstanding is never reset by edits — it tracks repayments made through
-    // payroll runs and is only mutated by applyAdvanceDeduction / status transitions.
-    // Resetting it here would silently erase partial repayments already applied.
-    balance_outstanding: existing.balance_outstanding,
+    balance_outstanding: balanceOutstanding,
     deduction_mode: input.deduction_mode ?? existing.deduction_mode,
     installment_amount: input.installment_amount !== undefined ? input.installment_amount : existing.installment_amount,
   }
 
   if (merged.deduction_mode === 'fixed_installment' && !merged.installment_amount) {
     throw new Error('installment_amount is required when deduction_mode is fixed_installment')
+  }
+  if (merged.limit_max < merged.amount) {
+    throw new Error('limit_max must be greater than or equal to the advance amount')
   }
 
   db.prepare(`
@@ -140,6 +157,78 @@ export function updateSalaryAdvance(
   `).run({ ...merged, updated_at: now, id })
 
   return queryById(db, id)!
+}
+
+/**
+ * Adds more money to an existing ACTIVE advance instead of opening a second one.
+ *
+ * Why: each active advance contributes its own installment to a payroll run
+ * (previewAdvanceDeductions sums one per advance), so a second advance doubles the
+ * monthly deduction. Topping up keeps one balance and one installment.
+ *
+ * Principal and balance_outstanding both grow by the top-up amount, so the amount
+ * already repaid is unchanged. The event is recorded in salary_advance_topups.
+ * A finalized payroll run is unaffected — its deduction is already snapshotted — and
+ * a draft run picks up the new balance on its next Recalculate / at Finalize.
+ */
+export function topUpSalaryAdvance(
+  db: Database.Database,
+  id: number,
+  input: TopUpSalaryAdvanceInput,
+): SalaryAdvance {
+  const existing = queryById(db, id)
+  if (!existing) throw new Error(`Salary advance with id ${id} not found`)
+  if (existing.status !== 'active') {
+    throw new Error(`Cannot top up a ${existing.status} advance — create a new advance instead`)
+  }
+
+  const newAmount = existing.amount + input.amount
+  const newBalance = existing.balance_outstanding + input.amount
+  const newLimit = input.limit_max ?? existing.limit_max
+  if (newLimit < newAmount) {
+    throw new Error(
+      `New total RM ${newAmount.toFixed(2)} exceeds the approved limit of RM ${newLimit.toFixed(2)} — ` +
+      'raise the approved limit in the same top-up',
+    )
+  }
+  const newInstallment = input.installment_amount ?? existing.installment_amount
+
+  const now = new Date().toISOString()
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE salary_advances
+      SET amount = @amount, balance_outstanding = @balance_outstanding, limit_max = @limit_max,
+          installment_amount = @installment_amount, updated_at = @updated_at
+      WHERE id = @id
+    `).run({
+      amount: newAmount,
+      balance_outstanding: newBalance,
+      limit_max: newLimit,
+      installment_amount: newInstallment,
+      updated_at: now,
+      id,
+    })
+    db.prepare(`
+      INSERT INTO salary_advance_topups (salary_advance_id, amount, date_issued, note, created_at)
+      VALUES (@salary_advance_id, @amount, @date_issued, @note, @created_at)
+    `).run({
+      salary_advance_id: id,
+      amount: input.amount,
+      date_issued: input.date_issued,
+      note: input.note || null,
+      created_at: now,
+    })
+  })()
+
+  return queryById(db, id)!
+}
+
+export function listSalaryAdvanceTopUps(db: Database.Database, id: number): SalaryAdvanceTopUp[] {
+  return db.prepare(`
+    SELECT * FROM salary_advance_topups
+    WHERE salary_advance_id = ?
+    ORDER BY date_issued ASC, id ASC
+  `).all(id) as SalaryAdvanceTopUp[]
 }
 
 export function deleteSalaryAdvance(db: Database.Database, id: number): void {

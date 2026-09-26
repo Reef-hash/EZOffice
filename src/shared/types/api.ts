@@ -15,6 +15,7 @@ import type {
   EisRate,
   PcbBracket,
   SalaryAdvance,
+  SalaryAdvanceTopUp,
   PayrollRun,
   PayrollRunItem,
   UnfinalizeResult,
@@ -83,6 +84,7 @@ import type {
   UpdatePcbBracketInput,
   CreateSalaryAdvanceInput,
   UpdateSalaryAdvanceInput,
+  TopUpSalaryAdvanceInput,
   CreatePayrollRunInput,
   UpsertPayrollRunCommissionInput,
   UpsertPayrollRunAllowanceInput,
@@ -286,6 +288,8 @@ export interface SalaryAdvanceApi {
   create: (data: CreateSalaryAdvanceInput) => Promise<SalaryAdvance>
   update: (id: number, data: UpdateSalaryAdvanceInput) => Promise<SalaryAdvance>
   delete: (id: number) => Promise<void>
+  topUp: (id: number, data: TopUpSalaryAdvanceInput) => Promise<SalaryAdvance>
+  listTopUps: (id: number) => Promise<SalaryAdvanceTopUp[]>
 }
 
 export interface PayrollRunCommissionApi {

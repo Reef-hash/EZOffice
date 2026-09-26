@@ -5,12 +5,17 @@ import { Table } from '@/shared/components/Table'
 import { Button } from '@/shared/components/Button'
 import { StatusBadge } from '@/shared/components/StatusBadge'
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
+import { Select } from '@/shared/components/Input'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { SalaryAdvanceForm } from './SalaryAdvanceForm'
 import type { Column } from '@/shared/components/Table'
 import type { Employee, SalaryAdvance } from '@/shared/types/entities'
 import type { CreateSalaryAdvanceInput, UpdateSalaryAdvanceInput } from '@/shared/types/inputs'
 import { ADVANCE_STATUS_LABEL, ADVANCE_STATUS_TONE, DEDUCTION_MODE_LABEL } from '../constants'
+
+// Empty string = no filter. Active is the default: it is what HR works with day to day,
+// and settled/cancelled advances pile up over time and bury the live ones.
+type StatusFilter = '' | SalaryAdvance['status']
 
 const columns: Column<SalaryAdvance>[] = [
   { key: 'employee_name', header: 'Employee', accessor: (r) => r.employee_name || `ID ${r.employee_id}`, sortable: true, sortValue: (r) => r.employee_name || '' },
@@ -43,6 +48,38 @@ export function SalaryAdvanceListPage() {
   const employeeOptions = useMemo(
     () => employees.map((e) => ({ value: String(e.id), label: `${e.name} (${e.employee_code})` })),
     [employees],
+  )
+
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
+  const [employeeFilter, setEmployeeFilter] = useState('')
+
+  const statusFilterOptions = useMemo(() => {
+    const count = (status: SalaryAdvance['status']) => advances.filter((a) => a.status === status).length
+    return [
+      { value: 'active', label: `Active (${count('active')})` },
+      { value: 'settled', label: `Settled (${count('settled')})` },
+      { value: 'cancelled', label: `Cancelled (${count('cancelled')})` },
+      { value: '', label: `All (${advances.length})` },
+    ]
+  }, [advances])
+
+  // Only employees who actually have an advance — a full staff list here is just noise.
+  const employeeFilterOptions = useMemo(() => {
+    const byId = new Map<number, string>()
+    for (const a of advances) byId.set(a.employee_id, a.employee_name || `ID ${a.employee_id}`)
+    return [
+      { value: '', label: 'All employees' },
+      ...[...byId.entries()]
+        .sort((x, y) => x[1].localeCompare(y[1]))
+        .map(([id, name]) => ({ value: String(id), label: name })),
+    ]
+  }, [advances])
+
+  const filteredAdvances = useMemo(
+    () => advances.filter((a) =>
+      (!statusFilter || a.status === statusFilter) &&
+      (!employeeFilter || String(a.employee_id) === employeeFilter)),
+    [advances, statusFilter, employeeFilter],
   )
 
   const [isFormOpen, setIsFormOpen] = useState(false)
@@ -109,20 +146,38 @@ export function SalaryAdvanceListPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <p className="text-sm text-neutral-500">
-          {advances.length} advance{advances.length !== 1 ? 's' : ''}
-        </p>
+      <div className="mb-4 flex items-end justify-between gap-3">
+        <div className="flex items-end gap-3">
+          <div className="w-48">
+            <Select
+              label="Status"
+              options={statusFilterOptions}
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+            />
+          </div>
+          <div className="w-56">
+            <Select
+              label="Employee"
+              options={employeeFilterOptions}
+              value={employeeFilter}
+              onChange={(e) => setEmployeeFilter(e.target.value)}
+            />
+          </div>
+          <p className="pb-2 text-sm text-neutral-500">
+            {filteredAdvances.length} advance{filteredAdvances.length !== 1 ? 's' : ''}
+          </p>
+        </div>
         <Button onClick={handleCreate}>Add Salary Advance</Button>
       </div>
 
       <Table
         columns={columns}
-        data={advances}
+        data={filteredAdvances}
         rowKey={(r) => String(r.id)}
         isLoading={isLoading}
         emptyState={{
-          title: 'No salary advances yet',
+          title: advances.length === 0 ? 'No salary advances yet' : 'No advances match these filters',
           action: (
             <div className="mt-3 flex justify-center">
               <Button size="sm" onClick={handleCreate}>Add Salary Advance</Button>
