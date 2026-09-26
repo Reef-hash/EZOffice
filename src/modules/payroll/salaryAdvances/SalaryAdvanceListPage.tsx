@@ -9,6 +9,7 @@ import { Select } from '@/shared/components/Input'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { SalaryAdvanceForm } from './SalaryAdvanceForm'
 import { SalaryAdvanceTopUpDialog } from './SalaryAdvanceTopUpDialog'
+import { SalaryAdvanceAdjustDialog } from './SalaryAdvanceAdjustDialog'
 import type { Column } from '@/shared/components/Table'
 import type { Employee, SalaryAdvance } from '@/shared/types/entities'
 import type { CreateSalaryAdvanceInput, UpdateSalaryAdvanceInput } from '@/shared/types/inputs'
@@ -87,6 +88,7 @@ export function SalaryAdvanceListPage() {
   const [editingAdvance, setEditingAdvance] = useState<SalaryAdvance | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [topUpAdvance, setTopUpAdvance] = useState<SalaryAdvance | null>(null)
+  const [adjustAdvance, setAdjustAdvance] = useState<SalaryAdvance | null>(null)
 
   const createMutation = useIpcMutation<SalaryAdvance, CreateSalaryAdvanceInput>(
     (data) => window.api.payroll.salaryAdvances.create(data),
@@ -127,6 +129,17 @@ export function SalaryAdvanceListPage() {
       setEditingAdvance(null)
     },
     [editingAdvance, createMutation, updateMutation],
+  )
+
+  // Close the edit modal before opening a top-up/correction dialog: its unsaved field
+  // values must not look like part of that action, and only one modal is ever on screen.
+  const switchFromEditTo = useCallback(
+    (open: (advance: SalaryAdvance | null) => void) => {
+      open(editingAdvance)
+      setIsFormOpen(false)
+      setEditingAdvance(null)
+    },
+    [editingAdvance],
   )
 
   const handleDelete = useCallback(async () => {
@@ -198,16 +211,12 @@ export function SalaryAdvanceListPage() {
         isDeleting={deleteMutation.isPending}
         advance={editingAdvance}
         employeeOptions={employeeOptions}
-        onTopUp={() => {
-          // Close the edit modal first: its unsaved field values must not look like part
-          // of the top-up, and only one modal is ever on screen.
-          setTopUpAdvance(editingAdvance)
-          setIsFormOpen(false)
-          setEditingAdvance(null)
-        }}
+        onTopUp={() => switchFromEditTo(setTopUpAdvance)}
+        onAdjust={() => switchFromEditTo(setAdjustAdvance)}
       />
 
       <SalaryAdvanceTopUpDialog advance={topUpAdvance} onClose={() => setTopUpAdvance(null)} />
+      <SalaryAdvanceAdjustDialog advance={adjustAdvance} onClose={() => setAdjustAdvance(null)} />
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}

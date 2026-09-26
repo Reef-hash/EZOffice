@@ -13,14 +13,11 @@ import { Modal } from '@/shared/components/Modal'
 import { useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import type { SalaryAdvance } from '@/shared/types/entities'
 import type { TopUpSalaryAdvanceInput } from '@/shared/types/inputs'
+import { formatRm } from './formatRm'
 
 interface SalaryAdvanceTopUpDialogProps {
   advance: SalaryAdvance | null
   onClose: () => void
-}
-
-function formatRm(value: number): string {
-  return `RM ${value.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
 export function SalaryAdvanceTopUpDialog({ advance, onClose }: SalaryAdvanceTopUpDialogProps) {

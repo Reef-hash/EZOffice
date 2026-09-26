@@ -11,7 +11,7 @@ import type { SelectOption } from '@/shared/components/Input'
 import type { SalaryAdvance } from '@/shared/types/entities'
 import type { CreateSalaryAdvanceInput, UpdateSalaryAdvanceInput } from '@/shared/types/inputs'
 import { DEDUCTION_MODE_OPTIONS, ADVANCE_STATUS_LABEL, ADVANCE_STATUS_TONE } from '../constants'
-import { SalaryAdvanceTopUpHistory } from './SalaryAdvanceTopUpHistory'
+import { SalaryAdvanceHistory } from './SalaryAdvanceHistory'
 
 interface SalaryAdvanceFormProps {
   isOpen: boolean
@@ -23,10 +23,11 @@ interface SalaryAdvanceFormProps {
   advance?: SalaryAdvance | null
   employeeOptions: SelectOption[]
   onTopUp?: () => void
+  onAdjust?: () => void
 }
 
 export function SalaryAdvanceForm({
-  isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleting, advance, employeeOptions, onTopUp,
+  isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleting, advance, employeeOptions, onTopUp, onAdjust,
 }: SalaryAdvanceFormProps) {
   const isEdit = !!advance
   const isLocked = isEdit && advance.status !== 'active'
@@ -103,9 +104,6 @@ export function SalaryAdvanceForm({
           )}
           <div className="flex-1" />
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          {isEdit && !isLocked && onTopUp && (
-            <Button variant="secondary" onClick={onTopUp}>Top Up…</Button>
-          )}
           {!isLocked && (
             <Button isLoading={isSubmitting} onClick={handleSubmit}>
               {isEdit ? 'Save Changes' : 'Add Advance'}
@@ -120,11 +118,23 @@ export function SalaryAdvanceForm({
         )}
 
         {isEdit && (
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-neutral-500">Status:</span>
-            <StatusBadge tone={ADVANCE_STATUS_TONE[advance.status]}>{ADVANCE_STATUS_LABEL[advance.status]}</StatusBadge>
-            <span className="text-neutral-500">Balance outstanding (to be deducted):</span>
-            <span className="font-medium text-neutral-900">RM {advance.balance_outstanding.toFixed(2)}</span>
+          <div className="flex flex-col gap-3 rounded-md bg-neutral-50 px-3 py-3 text-sm">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-neutral-500">Status:</span>
+              <StatusBadge tone={ADVANCE_STATUS_TONE[advance.status]}>{ADVANCE_STATUS_LABEL[advance.status]}</StatusBadge>
+              <span className="text-neutral-500">Balance outstanding (to be deducted):</span>
+              <span className="font-semibold text-neutral-900">RM {advance.balance_outstanding.toFixed(2)}</span>
+            </div>
+            {!isLocked && (
+              <div className="flex gap-2">
+                {onTopUp && (
+                  <Button type="button" size="sm" variant="secondary" onClick={onTopUp}>Top Up (lend more)…</Button>
+                )}
+                {onAdjust && (
+                  <Button type="button" size="sm" variant="secondary" onClick={onAdjust}>Correct Balance…</Button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -192,7 +202,7 @@ export function SalaryAdvanceForm({
 
       {isEdit && (
         <div className="mt-4">
-          <SalaryAdvanceTopUpHistory advanceId={advance.id} />
+          <SalaryAdvanceHistory advanceId={advance.id} />
         </div>
       )}
     </Modal>

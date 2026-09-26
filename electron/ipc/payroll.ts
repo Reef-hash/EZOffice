@@ -19,6 +19,7 @@ import {
   createSalaryAdvanceSchema,
   updateSalaryAdvanceSchema,
   topUpSalaryAdvanceSchema,
+  adjustSalaryAdvanceSchema,
   createPayrollRunSchema,
   upsertPayrollRunCommissionSchema,
   upsertPayrollRunAllowanceSchema,
@@ -298,6 +299,21 @@ export function registerPayrollHandlers(db: Database.Database): void {
   ipcMain.handle('payroll:salaryAdvances:listTopUps', async (_event, id: number) => {
     try { return salaryAdvancesService.listSalaryAdvanceTopUps(db, id) } catch (err) {
       throw new Error(`Failed to list top-ups for salary advance ${id}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:salaryAdvances:adjust', async (_event, id: number, data: unknown) => {
+    try {
+      const input = adjustSalaryAdvanceSchema.parse(data)
+      return salaryAdvancesService.adjustSalaryAdvance(db, id, input)
+    } catch (err) {
+      throw new Error(`Failed to adjust salary advance ${id}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:salaryAdvances:listAdjustments', async (_event, id: number) => {
+    try { return salaryAdvancesService.listSalaryAdvanceAdjustments(db, id) } catch (err) {
+      throw new Error(`Failed to list adjustments for salary advance ${id}: ${String(err)}`)
     }
   })
 
