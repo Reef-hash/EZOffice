@@ -493,6 +493,18 @@ export interface SalaryAdvanceTopUp {
   created_at: string
 }
 
+/** A manual correction to an advance's balance / total issued (migration 0028). */
+export interface SalaryAdvanceAdjustment {
+  id: number
+  salary_advance_id: number
+  balance_before: number
+  balance_after: number
+  amount_before: number
+  amount_after: number
+  reason: string
+  created_at: string
+}
+
 export interface PayrollRun {
   id: number
   payroll_period_id: number | null

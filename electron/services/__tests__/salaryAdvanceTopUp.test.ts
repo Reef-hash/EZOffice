@@ -12,6 +12,9 @@ import {
   updateSalaryAdvance,
   applyAdvanceDeduction,
   getActiveAdvancesForEmployee,
+  adjustSalaryAdvance,
+  listSalaryAdvanceAdjustments,
+  getSalaryAdvanceById,
 } from '../payroll/salaryAdvances'
 
 let db: Database.Database
@@ -97,5 +100,52 @@ describe('updateSalaryAdvance — amount change', () => {
   it('refuses an amount lower than what has already been repaid', () => {
     const id = advanceWith500Outstanding()
     expect(() => updateSalaryAdvance(db, id, { amount: 400 })).toThrow(/already been repaid/)
+  })
+})
+
+describe('adjustSalaryAdvance (migration 0028)', () => {
+  it('fixes a double top-up by setting the correct values and records before/after', () => {
+    const id = advanceWith500Outstanding()
+    topUpSalaryAdvance(db, id, { amount: 1000, date_issued: '2026-09-01', limit_max: 3000 })
+    topUpSalaryAdvance(db, id, { amount: 1000, date_issued: '2026-09-01' }) // the mistake
+
+    const fixed = adjustSalaryAdvance(db, id, {
+      balance_outstanding: 1500, amount: 2000, reason: 'Top-up entered twice',
+    })
+
+    expect(fixed.balance_outstanding).toBe(1500)
+    expect(fixed.amount).toBe(2000)
+    expect(listSalaryAdvanceAdjustments(db, id)[0]).toMatchObject({
+      balance_before: 2500, balance_after: 1500, amount_before: 3000, amount_after: 2000,
+      reason: 'Top-up entered twice',
+    })
+  })
+
+  it('sets the balance directly, independent of the (possibly wrong) current values', () => {
+    const id = advanceWith500Outstanding()
+    const fixed = adjustSalaryAdvance(db, id, { balance_outstanding: 300, reason: 'Paid RM200 in cash' })
+    expect(fixed.balance_outstanding).toBe(300)
+    expect(fixed.amount).toBe(1000)
+  })
+
+  it('settles the advance when the corrected balance is zero', () => {
+    const id = advanceWith500Outstanding()
+    adjustSalaryAdvance(db, id, { balance_outstanding: 0, reason: 'Repaid in cash' })
+    expect(getSalaryAdvanceById(db, id)!.status).toBe('settled')
+    expect(getActiveAdvancesForEmployee(db, 1)).toHaveLength(0)
+  })
+
+  it('refuses a balance above the total issued and leaves everything untouched', () => {
+    const id = advanceWith500Outstanding()
+    expect(() => adjustSalaryAdvance(db, id, { balance_outstanding: 1200, reason: 'x' }))
+      .toThrow(/cannot exceed the total issued/)
+    expect(getSalaryAdvanceById(db, id)!.balance_outstanding).toBe(500)
+    expect(listSalaryAdvanceAdjustments(db, id)).toHaveLength(0)
+  })
+
+  it('refuses a no-op correction', () => {
+    const id = advanceWith500Outstanding()
+    expect(() => adjustSalaryAdvance(db, id, { balance_outstanding: 500, reason: 'x' }))
+      .toThrow(/Nothing to adjust/)
   })
 })

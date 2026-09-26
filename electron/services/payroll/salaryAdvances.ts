@@ -4,11 +4,12 @@
 // this file keeps advance CRUD and balance queries.
 
 import type Database from 'better-sqlite3'
-import type { SalaryAdvance, SalaryAdvanceTopUp } from '../../../src/shared/types/entities'
+import type { SalaryAdvance, SalaryAdvanceTopUp, SalaryAdvanceAdjustment } from '../../../src/shared/types/entities'
 import type {
   CreateSalaryAdvanceInput,
   UpdateSalaryAdvanceInput,
   TopUpSalaryAdvanceInput,
+  AdjustSalaryAdvanceInput,
 } from '../../../src/shared/types/inputs'
 
 // ── Shared ───────────────────────────────────────────────
@@ -229,6 +230,85 @@ export function listSalaryAdvanceTopUps(db: Database.Database, id: number): Sala
     WHERE salary_advance_id = ?
     ORDER BY date_issued ASC, id ASC
   `).all(id) as SalaryAdvanceTopUp[]
+}
+
+/**
+ * Manually corrects an active advance's outstanding balance (and optionally its total
+ * issued) to the values the admin states are correct, recording before/after and a
+ * mandatory reason in salary_advance_adjustments.
+ *
+ * Unlike updateSalaryAdvance, the balance is set directly rather than shifted by the
+ * amount's delta — this is the escape hatch for data that is already wrong, so it must
+ * not derive the new balance from the (possibly wrong) current values.
+ * A balance of 0 settles the advance, same as a final payroll deduction would.
+ */
+export function adjustSalaryAdvance(
+  db: Database.Database,
+  id: number,
+  input: AdjustSalaryAdvanceInput,
+): SalaryAdvance {
+  const existing = queryById(db, id)
+  if (!existing) throw new Error(`Salary advance with id ${id} not found`)
+  if (existing.status !== 'active') {
+    throw new Error(`Cannot adjust a ${existing.status} advance`)
+  }
+
+  const newAmount = input.amount ?? existing.amount
+  const newBalance = input.balance_outstanding
+  if (newBalance > newAmount) {
+    throw new Error(
+      `Balance outstanding (RM ${newBalance.toFixed(2)}) cannot exceed the total issued (RM ${newAmount.toFixed(2)})`,
+    )
+  }
+  if (newAmount > existing.limit_max) {
+    throw new Error(
+      `Total issued (RM ${newAmount.toFixed(2)}) exceeds the approved limit of RM ${existing.limit_max.toFixed(2)} — ` +
+      'raise the approved limit first',
+    )
+  }
+  if (newBalance === existing.balance_outstanding && newAmount === existing.amount) {
+    throw new Error('Nothing to adjust — the values are unchanged')
+  }
+
+  const now = new Date().toISOString()
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE salary_advances
+      SET amount = @amount, balance_outstanding = @balance_outstanding, status = @status, updated_at = @updated_at
+      WHERE id = @id
+    `).run({
+      amount: newAmount,
+      balance_outstanding: newBalance,
+      status: newBalance === 0 ? 'settled' : 'active',
+      updated_at: now,
+      id,
+    })
+    db.prepare(`
+      INSERT INTO salary_advance_adjustments (
+        salary_advance_id, balance_before, balance_after, amount_before, amount_after, reason, created_at
+      ) VALUES (
+        @salary_advance_id, @balance_before, @balance_after, @amount_before, @amount_after, @reason, @created_at
+      )
+    `).run({
+      salary_advance_id: id,
+      balance_before: existing.balance_outstanding,
+      balance_after: newBalance,
+      amount_before: existing.amount,
+      amount_after: newAmount,
+      reason: input.reason,
+      created_at: now,
+    })
+  })()
+
+  return queryById(db, id)!
+}
+
+export function listSalaryAdvanceAdjustments(db: Database.Database, id: number): SalaryAdvanceAdjustment[] {
+  return db.prepare(`
+    SELECT * FROM salary_advance_adjustments
+    WHERE salary_advance_id = ?
+    ORDER BY created_at ASC, id ASC
+  `).all(id) as SalaryAdvanceAdjustment[]
 }
 
 export function deleteSalaryAdvance(db: Database.Database, id: number): void {

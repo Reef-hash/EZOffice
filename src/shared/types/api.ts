@@ -16,6 +16,7 @@ import type {
   PcbBracket,
   SalaryAdvance,
   SalaryAdvanceTopUp,
+  SalaryAdvanceAdjustment,
   PayrollRun,
   PayrollRunItem,
   UnfinalizeResult,
@@ -85,6 +86,7 @@ import type {
   CreateSalaryAdvanceInput,
   UpdateSalaryAdvanceInput,
   TopUpSalaryAdvanceInput,
+  AdjustSalaryAdvanceInput,
   CreatePayrollRunInput,
   UpsertPayrollRunCommissionInput,
   UpsertPayrollRunAllowanceInput,
@@ -290,6 +292,8 @@ export interface SalaryAdvanceApi {
   delete: (id: number) => Promise<void>
   topUp: (id: number, data: TopUpSalaryAdvanceInput) => Promise<SalaryAdvance>
   listTopUps: (id: number) => Promise<SalaryAdvanceTopUp[]>
+  adjust: (id: number, data: AdjustSalaryAdvanceInput) => Promise<SalaryAdvance>
+  listAdjustments: (id: number) => Promise<SalaryAdvanceAdjustment[]>
 }
 
 export interface PayrollRunCommissionApi {

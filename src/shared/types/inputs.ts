@@ -267,6 +267,17 @@ export const topUpSalaryAdvanceSchema = z.object({
 
 export type TopUpSalaryAdvanceInput = z.infer<typeof topUpSalaryAdvanceSchema>
 
+// Manual correction: the admin enters the CORRECT values (targets), not a delta —
+// entering a delta is exactly the kind of ambiguity that caused the bad data this
+// exists to fix. amount (total issued) is optional; omitted means unchanged.
+export const adjustSalaryAdvanceSchema = z.object({
+  balance_outstanding: z.number().min(0, 'Balance cannot be negative'),
+  amount: z.number().positive('Total issued must be positive').optional(),
+  reason: z.string().trim().min(1, 'A reason is required').max(500),
+})
+
+export type AdjustSalaryAdvanceInput = z.infer<typeof adjustSalaryAdvanceSchema>
+
 // --- Payroll: Run ---
 
 export const createPayrollRunSchema = z.object({
