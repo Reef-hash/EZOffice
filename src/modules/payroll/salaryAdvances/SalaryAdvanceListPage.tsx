@@ -8,6 +8,7 @@ import { ConfirmDialog } from '@/shared/components/ConfirmDialog'
 import { Select } from '@/shared/components/Input'
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { SalaryAdvanceForm } from './SalaryAdvanceForm'
+import { SalaryAdvanceTopUpDialog } from './SalaryAdvanceTopUpDialog'
 import type { Column } from '@/shared/components/Table'
 import type { Employee, SalaryAdvance } from '@/shared/types/entities'
 import type { CreateSalaryAdvanceInput, UpdateSalaryAdvanceInput } from '@/shared/types/inputs'
@@ -85,6 +86,7 @@ export function SalaryAdvanceListPage() {
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [editingAdvance, setEditingAdvance] = useState<SalaryAdvance | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [topUpAdvance, setTopUpAdvance] = useState<SalaryAdvance | null>(null)
 
   const createMutation = useIpcMutation<SalaryAdvance, CreateSalaryAdvanceInput>(
     (data) => window.api.payroll.salaryAdvances.create(data),
@@ -196,7 +198,16 @@ export function SalaryAdvanceListPage() {
         isDeleting={deleteMutation.isPending}
         advance={editingAdvance}
         employeeOptions={employeeOptions}
+        onTopUp={() => {
+          // Close the edit modal first: its unsaved field values must not look like part
+          // of the top-up, and only one modal is ever on screen.
+          setTopUpAdvance(editingAdvance)
+          setIsFormOpen(false)
+          setEditingAdvance(null)
+        }}
       />
+
+      <SalaryAdvanceTopUpDialog advance={topUpAdvance} onClose={() => setTopUpAdvance(null)} />
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}

@@ -11,7 +11,7 @@ import type { SelectOption } from '@/shared/components/Input'
 import type { SalaryAdvance } from '@/shared/types/entities'
 import type { CreateSalaryAdvanceInput, UpdateSalaryAdvanceInput } from '@/shared/types/inputs'
 import { DEDUCTION_MODE_OPTIONS, ADVANCE_STATUS_LABEL, ADVANCE_STATUS_TONE } from '../constants'
-import { SalaryAdvanceTopUpSection } from './SalaryAdvanceTopUpSection'
+import { SalaryAdvanceTopUpHistory } from './SalaryAdvanceTopUpHistory'
 
 interface SalaryAdvanceFormProps {
   isOpen: boolean
@@ -22,10 +22,11 @@ interface SalaryAdvanceFormProps {
   isDeleting?: boolean
   advance?: SalaryAdvance | null
   employeeOptions: SelectOption[]
+  onTopUp?: () => void
 }
 
 export function SalaryAdvanceForm({
-  isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleting, advance, employeeOptions,
+  isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleting, advance, employeeOptions, onTopUp,
 }: SalaryAdvanceFormProps) {
   const isEdit = !!advance
   const isLocked = isEdit && advance.status !== 'active'
@@ -102,6 +103,9 @@ export function SalaryAdvanceForm({
           )}
           <div className="flex-1" />
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
+          {isEdit && !isLocked && onTopUp && (
+            <Button variant="secondary" onClick={onTopUp}>Top Up…</Button>
+          )}
           {!isLocked && (
             <Button isLoading={isSubmitting} onClick={handleSubmit}>
               {isEdit ? 'Save Changes' : 'Add Advance'}
@@ -119,7 +123,7 @@ export function SalaryAdvanceForm({
           <div className="flex items-center gap-3 text-sm">
             <span className="text-neutral-500">Status:</span>
             <StatusBadge tone={ADVANCE_STATUS_TONE[advance.status]}>{ADVANCE_STATUS_LABEL[advance.status]}</StatusBadge>
-            <span className="text-neutral-500">Balance outstanding:</span>
+            <span className="text-neutral-500">Balance outstanding (to be deducted):</span>
             <span className="font-medium text-neutral-900">RM {advance.balance_outstanding.toFixed(2)}</span>
           </div>
         )}
@@ -143,7 +147,7 @@ export function SalaryAdvanceForm({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             disabled={isLocked}
-            helperText={isEdit ? 'For corrections. To lend more, use Top Up below.' : undefined}
+            helperText={isEdit ? 'For corrections only. To lend more money, use Top Up.' : undefined}
           />
           <Input
             label="Date Issued"
@@ -188,7 +192,7 @@ export function SalaryAdvanceForm({
 
       {isEdit && (
         <div className="mt-4">
-          <SalaryAdvanceTopUpSection advance={advance} onToppedUp={onClose} />
+          <SalaryAdvanceTopUpHistory advanceId={advance.id} />
         </div>
       )}
     </Modal>
