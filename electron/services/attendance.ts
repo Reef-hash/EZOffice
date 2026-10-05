@@ -937,6 +937,89 @@ export async function syncFromDeviceEthernet(
 }
 
 /**
+ * One-time repair for device-synced logs typed wrong by the old batch-position
+ * rule (see assignDevicePunchTypes): re-walks each employee-day that has device
+ * logs, in time order. Manual logs are anchors — their type is never changed —
+ * and each device log takes the opposite type of the punch before it that day
+ * (first punch of the day = IN). That is exactly the rule a fresh sync now uses,
+ * so this brings old data in line without purging and re-pulling from the device.
+ *
+ * A device log an admin already corrected by hand is safe: if the day's timeline
+ * already alternates, walking it reproduces the same types and nothing changes.
+ *
+ * When a type flips, `status` is recomputed (IN → late/on-time from the log's own
+ * shift snapshot; OUT → 'on-time', same as sync). Days inside a closed payroll
+ * period are skipped and counted, never rewritten. `dryRun` reports what would
+ * change without writing, for the UI's preview step.
+ */
+export function retypeDeviceLogs(
+  db: Database.Database,
+  options: { dateFrom?: string; dateTo?: string; dryRun?: boolean } = {},
+): { updated: number; unchanged: number; skippedClosedPeriod: number } {
+  const { dateFrom, dateTo, dryRun = false } = options
+  const rangeClause = dateFrom && dateTo ? 'AND date(timestamp) >= @dateFrom AND date(timestamp) <= @dateTo' : ''
+  const days = db.prepare(`
+    SELECT DISTINCT employee_id, date(timestamp) AS day
+    FROM attendance_logs
+    WHERE source = 'device'
+    ${rangeClause}
+    ORDER BY employee_id, day
+  `).all({ dateFrom: dateFrom ?? '', dateTo: dateTo ?? '' }) as { employee_id: number; day: string }[]
+
+  const dayLogsStmt = db.prepare(`
+    SELECT id, type, timestamp, source, shift_id, status
+    FROM attendance_logs
+    WHERE employee_id = ? AND date(timestamp) = ?
+    ORDER BY timestamp, id
+  `)
+  const closedStmt = db.prepare(`
+    SELECT COUNT(*) AS cnt FROM payroll_periods
+    WHERE status = 'closed' AND start_date <= ? AND end_date >= ?
+  `)
+  const shiftStmt = db.prepare('SELECT * FROM shifts WHERE id = ?')
+  const updateStmt = db.prepare('UPDATE attendance_logs SET type = ?, status = ?, updated_at = ? WHERE id = ?')
+  const now = new Date().toISOString()
+
+  let updated = 0
+  let unchanged = 0
+  let skippedClosedPeriod = 0
+
+  db.transaction(() => {
+    for (const { employee_id, day } of days) {
+      const logs = dayLogsStmt.all(employee_id, day) as {
+        id: number
+        type: 'in' | 'out'
+        timestamp: string
+        source: 'manual' | 'device'
+        shift_id: number | null
+        status: string
+      }[]
+
+      if ((closedStmt.get(day, day) as { cnt: number }).cnt > 0) {
+        skippedClosedPeriod += logs.filter((l) => l.source === 'device').length
+        continue
+      }
+
+      let prevType: 'in' | 'out' | null = null
+      for (const log of logs) {
+        if (log.source !== 'device') { prevType = log.type; continue }
+
+        const correctType: 'in' | 'out' = prevType === 'in' ? 'out' : 'in'
+        prevType = correctType
+        if (correctType === log.type) { unchanged++; continue }
+
+        const shift = log.shift_id ? (shiftStmt.get(log.shift_id) as Shift | undefined) ?? null : null
+        const status = correctType === 'in' ? computeClockInStatus(db, shift, log.timestamp) : 'on-time'
+        if (!dryRun) updateStmt.run(correctType, status, now, log.id)
+        updated++
+      }
+    }
+  })()
+
+  return { updated, unchanged, skippedClosedPeriod }
+}
+
+/**
  * One-time correction for device-synced IN punches whose `status` was baked in
  * wrong by the old M2 blanket "historical → on-time" rule removed above (see the
  * comment on the insert loop in syncFromDeviceEthernet). Recomputes `status` from

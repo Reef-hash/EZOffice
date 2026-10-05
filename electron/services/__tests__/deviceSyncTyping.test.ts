@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
 import path from 'node:path'
 import { runMigrations } from '../../db/migrate'
-import { assignDevicePunchTypes } from '../attendance'
+import { assignDevicePunchTypes, retypeDeviceLogs } from '../attendance'
 
 function makeDb(): Database.Database {
   const db = new Database(':memory:')
@@ -72,5 +72,60 @@ describe('assignDevicePunchTypes', () => {
     insertLog(db, 'in', '2026-10-04T09:00:00', 'manual')
     const { typed } = assignDevicePunchTypes(db, [punch('2026-10-05T09:00:00'), punch('2026-10-05T18:00:00')])
     expect(typed.map((p) => p.type)).toEqual(['in', 'out'])
+  })
+})
+
+describe('retypeDeviceLogs (repair of logs typed by the old batch-position rule)', () => {
+  let db: Database.Database
+  beforeEach(() => { db = makeDb() })
+
+  const types = () =>
+    (db.prepare(`SELECT type, source FROM attendance_logs WHERE employee_id = 2 ORDER BY timestamp`).all() as
+      { type: string; source: string }[]).map((r) => `${r.source}:${r.type}`)
+
+  it('repairs the reported day: manual IN then device punches typed IN/OUT/IN', () => {
+    insertLog(db, 'in', '2026-10-05T09:00:00', 'manual')
+    insertLog(db, 'in', '2026-10-05T13:00:00', 'device')
+    insertLog(db, 'out', '2026-10-05T14:00:00', 'device')
+    insertLog(db, 'in', '2026-10-05T18:00:00', 'device')
+
+    const result = retypeDeviceLogs(db)
+    expect(result).toEqual({ updated: 3, unchanged: 0, skippedClosedPeriod: 0 })
+    expect(types()).toEqual(['manual:in', 'device:out', 'device:in', 'device:out'])
+  })
+
+  it('dry run reports without writing', () => {
+    insertLog(db, 'in', '2026-10-05T09:00:00', 'manual')
+    insertLog(db, 'in', '2026-10-05T13:00:00', 'device')
+    expect(retypeDeviceLogs(db, { dryRun: true }).updated).toBe(1)
+    expect(types()).toEqual(['manual:in', 'device:in'])
+  })
+
+  it('never changes manual logs and leaves an already-alternating day alone', () => {
+    insertLog(db, 'in', '2026-10-06T09:00:00', 'device')
+    insertLog(db, 'out', '2026-10-06T13:00:00', 'manual')
+    insertLog(db, 'in', '2026-10-06T14:00:00', 'device')
+    insertLog(db, 'out', '2026-10-06T18:00:00', 'device')
+    expect(retypeDeviceLogs(db)).toEqual({ updated: 0, unchanged: 3, skippedClosedPeriod: 0 })
+  })
+
+  it('only touches the given date range', () => {
+    insertLog(db, 'in', '2026-10-05T09:00:00', 'manual')
+    insertLog(db, 'in', '2026-10-05T13:00:00', 'device')
+    insertLog(db, 'in', '2026-10-07T09:00:00', 'manual')
+    insertLog(db, 'in', '2026-10-07T13:00:00', 'device')
+    expect(retypeDeviceLogs(db, { dateFrom: '2026-10-07', dateTo: '2026-10-07' }).updated).toBe(1)
+    expect(types()).toEqual(['manual:in', 'device:in', 'manual:in', 'device:out'])
+  })
+
+  it('skips days inside a closed payroll period', () => {
+    db.prepare(`
+      INSERT INTO payroll_periods (name, start_date, end_date, status)
+      VALUES ('Oct', '2026-10-01', '2026-10-31', 'closed')
+    `).run()
+    insertLog(db, 'in', '2026-10-05T09:00:00', 'manual')
+    insertLog(db, 'in', '2026-10-05T13:00:00', 'device')
+    expect(retypeDeviceLogs(db)).toEqual({ updated: 0, unchanged: 0, skippedClosedPeriod: 1 })
+    expect(types()).toEqual(['manual:in', 'device:in'])
   })
 })

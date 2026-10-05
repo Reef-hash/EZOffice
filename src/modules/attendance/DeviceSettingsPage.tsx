@@ -16,7 +16,7 @@ import { useIpcMutation, useIpcQuery } from '@/shared/hooks/useIpcQuery'
 import { useToast } from '@/shared/components/Toast'
 import { DeviceUserMappingPanel } from './DeviceUserMappingPanel'
 import type { PayrollSettings, DeviceTestResult, DeviceSyncLog, RecomputeStatusResult } from '@/shared/types/entities'
-import type { SyncFromDeviceInput, RecomputeDeviceStatusesInput } from '@/shared/types/inputs'
+import type { SyncFromDeviceInput, RecomputeDeviceStatusesInput, RetypeDeviceLogsInput } from '@/shared/types/inputs'
 
 interface SyncResult {
   inserted: number
@@ -40,6 +40,12 @@ export function DeviceSettingsPage() {
   const [recomputeDateFrom, setRecomputeDateFrom] = useState('')
   const [recomputeDateTo, setRecomputeDateTo] = useState('')
   const [recomputeResult, setRecomputeResult] = useState<RecomputeStatusResult | null>(null)
+  const [retypeDateFrom, setRetypeDateFrom] = useState('')
+  const [retypeDateTo, setRetypeDateTo] = useState('')
+  // Preview result for the current date range; cleared whenever the range changes,
+  // so "Apply" can only ever act on a range the admin has just previewed.
+  const [retypePreview, setRetypePreview] = useState<RecomputeStatusResult | null>(null)
+  const [retypeApplied, setRetypeApplied] = useState<RecomputeStatusResult | null>(null)
 
   // Fetch current settings on load
   const { data: settings } = useIpcQuery<PayrollSettings>(
@@ -83,6 +89,11 @@ export function DeviceSettingsPage() {
 
   const recomputeStatusesMutation = useIpcMutation<RecomputeStatusResult, RecomputeDeviceStatusesInput>(
     (data) => window.api.attendance.recomputeDeviceStatuses(data),
+    [['attendance']],
+  )
+
+  const retypeMutation = useIpcMutation<RecomputeStatusResult, RetypeDeviceLogsInput>(
+    (data) => window.api.attendance.retypeDeviceLogs(data),
     [['attendance']],
   )
 
@@ -165,6 +176,41 @@ export function DeviceSettingsPage() {
       addToast(`Recompute failed: ${String(err)}`, 'error')
     }
   }, [recomputeDateFrom, recomputeDateTo, recomputeStatusesMutation, addToast])
+
+  const retypeShown = retypePreview ?? retypeApplied
+
+  const retypeRange = useCallback((): RetypeDeviceLogsInput | null => {
+    if ((retypeDateFrom && !retypeDateTo) || (!retypeDateFrom && retypeDateTo)) {
+      addToast('Provide both a from and to date, or leave both blank to cover all history.', 'error')
+      return null
+    }
+    return retypeDateFrom && retypeDateTo ? { dateFrom: retypeDateFrom, dateTo: retypeDateTo } : {}
+  }, [retypeDateFrom, retypeDateTo, addToast])
+
+  const handleRetypePreview = useCallback(async () => {
+    const range = retypeRange()
+    if (!range) return
+    try {
+      setRetypeApplied(null)
+      setRetypePreview(await retypeMutation.mutateAsync({ ...range, dryRun: true }))
+    } catch (err) {
+      addToast(`Preview failed: ${String(err)}`, 'error')
+    }
+  }, [retypeRange, retypeMutation, addToast])
+
+  const handleRetypeApply = useCallback(async () => {
+    const range = retypeRange()
+    if (!range || !retypePreview) return
+    if (!confirm(`Change the IN/OUT type of ${retypePreview.updated} device log(s)? Manual logs are not changed.`)) return
+    try {
+      const result = await retypeMutation.mutateAsync(range)
+      setRetypePreview(null)
+      setRetypeApplied(result)
+      addToast(`${result.updated} device log(s) corrected`, 'success')
+    } catch (err) {
+      addToast(`Repair failed: ${String(err)}`, 'error')
+    }
+  }, [retypeRange, retypePreview, retypeMutation, addToast])
 
   const handleSetDeviceTime = useCallback(async () => {
     if (!confirm('This will set the device clock to match this PC\'s current time. Continue?')) return
@@ -326,6 +372,75 @@ export function DeviceSettingsPage() {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <Card className="mt-6">
+        <div className="mb-4">
+          <h3 className="text-base font-semibold text-neutral-900">Fix Device IN/OUT Order</h3>
+          <p className="mt-1 text-sm text-neutral-600">
+            Repairs device-synced logs whose IN/OUT was assigned wrong by older versions — for
+            example a device punch recorded as IN right after a manual IN. For each day, logs are
+            re-ordered by time: manual logs keep their type, and each device log becomes the
+            opposite of the punch before it (first punch of the day = IN). Nothing is deleted and
+            the device is not contacted. Days inside a closed payroll period are skipped. After
+            applying, run Reprocess Attendance on any affected payroll period.
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-3">
+            <div className="max-w-xs">
+              <Input
+                label="From date (optional)"
+                type="date"
+                value={retypeDateFrom}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => { setRetypeDateFrom(e.target.value); setRetypePreview(null) }}
+              />
+            </div>
+            <div className="max-w-xs">
+              <Input
+                label="To date (optional)"
+                type="date"
+                value={retypeDateTo}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => { setRetypeDateTo(e.target.value); setRetypePreview(null) }}
+                helperText="Leave both blank to check all device-synced history."
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="secondary"
+              disabled={retypeMutation.isPending}
+              isLoading={retypeMutation.isPending && !retypePreview}
+              onClick={handleRetypePreview}
+            >
+              Preview
+            </Button>
+            <Button
+              variant="primary"
+              disabled={retypeMutation.isPending || !retypePreview || retypePreview.updated === 0}
+              isLoading={retypeMutation.isPending && !!retypePreview}
+              onClick={handleRetypeApply}
+            >
+              Apply Fix
+            </Button>
+          </div>
+
+          {retypeShown && (
+            <div className="rounded-sm border border-neutral-200 bg-neutral-50 p-3 text-sm text-neutral-700">
+              <p>
+                <span className="font-semibold">{retypeShown.updated}</span>{' '}
+                {retypePreview ? 'device log(s) will be changed' : 'device log(s) corrected'},{' '}
+                {retypeShown.unchanged} already correct
+                {retypeShown.skippedClosedPeriod > 0 && (
+                  <>, {retypeShown.skippedClosedPeriod} skipped (inside a closed payroll period — re-open it to correct these)</>
+                )}
+                .
+              </p>
             </div>
           )}
         </div>

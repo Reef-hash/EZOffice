@@ -30,6 +30,7 @@ import {
   computeExceptionsSchema,
   syncFromDeviceSchema,
   recomputeDeviceStatusesSchema,
+  retypeDeviceLogsSchema,
 } from '../../src/shared/types/inputs'
 import * as attendanceService from '../services/attendance'
 import * as exceptionService from '../services/attendanceExceptions'
@@ -373,6 +374,15 @@ export function registerAttendanceHandlers(db: Database.Database): void {
       return attendanceService.recomputeDeviceLogStatuses(db, input.dateFrom, input.dateTo)
     } catch (err) {
       throw new Error(`Failed to recompute attendance statuses: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('attendance:retypeDeviceLogs', async (_event, data?: unknown) => {
+    try {
+      const input = retypeDeviceLogsSchema.parse(data ?? {})
+      return attendanceService.retypeDeviceLogs(db, input)
+    } catch (err) {
+      throw new Error(`Failed to repair device log IN/OUT types: ${String(err)}`)
     }
   })
 

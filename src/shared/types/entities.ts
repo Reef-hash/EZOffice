@@ -761,7 +761,7 @@ export interface DeviceSyncResult {
   completedAt: string
 }
 
-/** Result of recomputeDeviceLogStatuses — the M2 late-status backfill correction. */
+/** Result of recomputeDeviceLogStatuses (M2 late-status fix) and retypeDeviceLogs (IN/OUT repair). */
 export interface RecomputeStatusResult {
   updated: number
   unchanged: number

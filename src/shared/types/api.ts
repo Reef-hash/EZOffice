@@ -101,6 +101,7 @@ import type {
   PurgeAttendanceLogsInput,
   SyncFromDeviceInput,
   RecomputeDeviceStatusesInput,
+  RetypeDeviceLogsInput,
   ComputeExceptionsInput,
   SendActivationOtpInput,
   VerifyActivationOtpInput,
@@ -182,6 +183,7 @@ export interface AttendanceApi {
   delete: (id: number) => Promise<void>
   syncFromDevice: (data?: SyncFromDeviceInput) => Promise<DeviceSyncResult>
   recomputeDeviceStatuses: (data?: RecomputeDeviceStatusesInput) => Promise<RecomputeStatusResult>
+  retypeDeviceLogs: (data?: RetypeDeviceLogsInput) => Promise<RecomputeStatusResult>
   countLogsForPurge: (data: PurgeAttendanceLogsInput) => Promise<{ count: number }>
   purgeLogs: (data: PurgeAttendanceLogsInput) => Promise<{ deleted: number }>
 
