@@ -668,15 +668,91 @@ function persistSyncLog(
 }
 
 /**
+ * Dedups device punches against what is already stored, then assigns IN/OUT
+ * by walking each employee's FULL day timeline in time order — existing logs
+ * (manual entries and earlier syncs keep their stored type) interleaved with
+ * the new device punches. Each new punch takes the opposite type of the punch
+ * immediately before it that day; the first punch of a day is IN.
+ *
+ * Why not "odd position in this batch = IN": a batch rarely holds the whole
+ * day. An admin's manual IN at 09:00 followed by a device punch at 13:00
+ * (going out for lunch) made the device punch position 1 → IN, and every
+ * later punch that day flipped with it. The same happened when a day was
+ * split across two syncs, since the watermark drops the already-synced
+ * morning punches from the second batch.
+ *
+ * Dedup (±60 s, type-independent) runs BEFORE typing so a punch already
+ * captured manually never occupies a slot in the alternation.
+ *
+ * Exported for unit tests (the device transport itself is not mockable cheaply).
+ */
+export function assignDevicePunchTypes(
+  db: Database.Database,
+  punches: Array<{ employeeId: number; timestamp: string }>,
+): { typed: Array<{ employeeId: number; timestamp: string; type: 'in' | 'out' }>; duplicates: number } {
+  const dedupStmt = db.prepare(`
+    SELECT COUNT(*) AS cnt FROM attendance_logs
+    WHERE employee_id = @employeeId
+      AND timestamp >= @tsMin AND timestamp <= @tsMax
+  `)
+  const dayLogsStmt = db.prepare(`
+    SELECT timestamp, type FROM attendance_logs
+    WHERE employee_id = ? AND timestamp >= ? AND timestamp <= ?
+  `)
+
+  let duplicates = 0
+  const byEmployeeDay = new Map<string, { employeeId: number; day: string; timestamps: string[] }>()
+  for (const p of punches) {
+    const pMs = new Date(p.timestamp).getTime()
+    const tsMin = parseDeviceTimestamp(new Date(pMs - 60000).toString())!
+    const tsMax = parseDeviceTimestamp(new Date(pMs + 60000).toString())!
+    const dup = dedupStmt.get({ employeeId: p.employeeId, tsMin, tsMax }) as { cnt: number }
+    if (dup.cnt > 0) { duplicates++; continue }
+
+    const day = p.timestamp.slice(0, 10) // YYYY-MM-DD
+    const key = `${p.employeeId}:${day}`
+    const entry = byEmployeeDay.get(key) ?? { employeeId: p.employeeId, day, timestamps: [] }
+    entry.timestamps.push(p.timestamp)
+    byEmployeeDay.set(key, entry)
+  }
+
+  const typed: Array<{ employeeId: number; timestamp: string; type: 'in' | 'out' }> = []
+  for (const { employeeId, day, timestamps } of byEmployeeDay.values()) {
+    const existing = dayLogsStmt.all(employeeId, `${day}T00:00:00`, `${day}T23:59:59`) as Array<{
+      timestamp: string
+      type: 'in' | 'out'
+    }>
+    const timeline: Array<{ timestamp: string; type: 'in' | 'out' | null }> = [
+      ...existing,
+      ...timestamps.map((timestamp) => ({ timestamp, type: null })),
+    ].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+
+    let prevType: 'in' | 'out' | null = null
+    for (const entry of timeline) {
+      if (entry.type === null) {
+        const type: 'in' | 'out' = prevType === 'in' ? 'out' : 'in'
+        typed.push({ employeeId, timestamp: entry.timestamp, type })
+        prevType = type
+      } else {
+        prevType = entry.type
+      }
+    }
+  }
+
+  // Global time order keeps the insert transaction deterministic.
+  typed.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+  return { typed, duplicates }
+}
+
+/**
  * Pulls attendance logs from a ZKTeco device and inserts new ones into the DB.
  *
  * Flow (per DEVICE_SYNC_AUDIT.md Flow 2):
  *  a. Pull all logs; drop any older than the watermark (H1 optimisation).
  *  b. Map device user_id → employee via device_user_id; collect unmapped users.
  *  c. Debounce: collapse same-employee punches < punch_debounce_minutes apart (keep first).
- *  d. Per-day type assignment: for each employee+day, sort by time;
- *     odd position in the day = IN, even = OUT.
- *  e. Dedup: skip if a punch exists for (employee, timestamp ±60 s) — type-independent.
+ *  d. Dedup: skip if a punch exists for (employee, timestamp ±60 s) — type-independent.
+ *  e. Per-day type assignment against the day's existing logs (assignDevicePunchTypes).
  *  f. Insert with source='device', device_id=deviceIp; snapshot shift + status.
  *  g. Update watermark; persist sync log.
  *
@@ -789,39 +865,9 @@ export async function syncFromDeviceEthernet(
       }
     }
 
-    // ── d. Per-day type assignment: group by employee+day, assign IN/OUT ─────
-    // Odd position within the day = IN, even = OUT. This is deterministic across
-    // syncs: the same punch always gets the same type regardless of what was in
-    // a previous sync batch or what was added manually in EZOffice.
-    type TypedPunch = { employeeId: number; timestamp: string; type: 'in' | 'out' }
-    const typed: TypedPunch[] = []
-    const byEmployeeDay = new Map<string, { employeeId: number; timestamps: string[] }>()
-
-    for (const p of debounced) {
-      const day = p.timestamp.slice(0, 10) // YYYY-MM-DD
-      const key = `${p.employeeId}:${day}`
-      const entry = byEmployeeDay.get(key) ?? { employeeId: p.employeeId, timestamps: [] }
-      entry.timestamps.push(p.timestamp)
-      byEmployeeDay.set(key, entry)
-    }
-    for (const { employeeId, timestamps } of byEmployeeDay.values()) {
-      timestamps.sort()
-      timestamps.forEach((ts, idx) => {
-        typed.push({ employeeId, timestamp: ts, type: idx % 2 === 0 ? 'in' : 'out' })
-      })
-    }
-    // Sort globally by timestamp for the insert transaction
-    typed.sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-
-    // ── e+f. Dedup (±60 s, type-independent) + insert ────────────────────────
-    // Dedup ignores the derived type — a physical punch at a moment in time is
-    // unique regardless of what we label it. The ±60s window absorbs manual-vs-
-    // device double capture where timestamps differ by seconds.
-    const dedupStmt = db.prepare(`
-      SELECT COUNT(*) AS cnt FROM attendance_logs
-      WHERE employee_id = @employeeId
-        AND timestamp >= @tsMin AND timestamp <= @tsMax
-    `)
+    // ── d+e. Dedup + per-day type assignment against EXISTING logs ───────────
+    // See assignDevicePunchTypes() — types are derived from the full day
+    // timeline (manual + previously synced + this batch), not this batch alone.
     const insertStmt = db.prepare(`
       INSERT INTO attendance_logs
         (employee_id, type, timestamp, source, device_id, shift_id, status, created_at, updated_at)
@@ -832,15 +878,9 @@ export async function syncFromDeviceEthernet(
     let newestInsertedTimestamp: string | null = null
 
     db.transaction(() => {
+      const { typed, duplicates } = assignDevicePunchTypes(db, debounced)
+      skipped += duplicates
       for (const p of typed) {
-        // ±60 s window
-        const pMs = new Date(p.timestamp).getTime()
-        const tsMin = parseDeviceTimestamp(new Date(pMs - 60000).toString())!
-        const tsMax = parseDeviceTimestamp(new Date(pMs + 60000).toString())!
-
-        const dup = dedupStmt.get({ employeeId: p.employeeId, tsMin, tsMax }) as { cnt: number }
-        if (dup.cnt > 0) { skipped++; continue }
-
         const shift = getEmployeeShift(db, p.employeeId)
 
         // Status is always computed from the punch's own timestamp vs. the employee's
