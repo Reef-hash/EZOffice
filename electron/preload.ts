@@ -156,6 +156,12 @@ const api: EzOfficeApi = {
       update: (id, data) => ipcRenderer.invoke('payroll:eisRates:update', id, data),
       delete: (id) => ipcRenderer.invoke('payroll:eisRates:delete', id),
     },
+    lindungRates: {
+      list: () => ipcRenderer.invoke('payroll:lindungRates:list'),
+      create: (data) => ipcRenderer.invoke('payroll:lindungRates:create', data),
+      update: (id, data) => ipcRenderer.invoke('payroll:lindungRates:update', id, data),
+      delete: (id) => ipcRenderer.invoke('payroll:lindungRates:delete', id),
+    },
     pcbBrackets: {
       list: () => ipcRenderer.invoke('payroll:pcbBrackets:list'),
       create: (data) => ipcRenderer.invoke('payroll:pcbBrackets:create', data),

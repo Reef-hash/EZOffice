@@ -52,6 +52,7 @@ interface PayslipData {
   socso_employee: number
   socso_employer: number
   eis_employee: number
+  lindung_employee: number
   eis_employer: number
   pcb: number
   advance_deduction: number
@@ -84,6 +85,7 @@ function getRunItemWithEmployeeDetails(
       i.epf_employee, i.epf_employer,
       i.socso_employee, i.socso_employer,
       i.eis_employee, i.eis_employer,
+      i.lindung_employee,
       i.pcb, i.advance_deduction, i.net_pay
     FROM payroll_run_items i
     LEFT JOIN employees e ON e.id = i.employee_id
@@ -147,7 +149,7 @@ export async function generatePayslipPdf(
   const monthLabel = MONTH_NAMES[item.month - 1]
   const periodLabel = `${monthLabel} ${item.year}`
   const totalDeductions =
-    item.epf_employee + item.socso_employee + item.eis_employee + item.pcb + item.advance_deduction
+    item.epf_employee + item.socso_employee + item.eis_employee + item.lindung_employee + item.pcb + item.advance_deduction
 
   ensureFontsRegistered()
 
@@ -312,6 +314,8 @@ export async function generatePayslipPdf(
             ],
             ['SOCSO', item.socso_employee.toFixed(2), item.socso_employer.toFixed(2)],
             ['EIS', item.eis_employee.toFixed(2), item.eis_employer.toFixed(2)],
+            // Employee-only scheme; hidden when 0 (opted out, or a run before 1 Jun 2026).
+            ...(item.lindung_employee > 0 ? [['LINDUNG 24 Jam', item.lindung_employee.toFixed(2), '-']] : []),
             ['PCB (Income Tax)', item.pcb.toFixed(2), '-'],
             ['Salary Advance', item.advance_deduction.toFixed(2), '-'],
             [

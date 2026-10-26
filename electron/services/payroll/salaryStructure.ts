@@ -78,13 +78,13 @@ export function createSalaryStructure(
   const result = db.prepare(`
     INSERT INTO salary_structures (
       employee_id, effective_from, rate_type, rate_amount,
-      standard_hours_per_day, subject_to_epf, subject_to_socso, subject_to_eis,
+      standard_hours_per_day, subject_to_epf, subject_to_socso, subject_to_eis, subject_to_lindung,
       pcb_category, pcb_children_count, attendance_required,
       fixed_allowance, allowance_description,
       created_at, updated_at
     ) VALUES (
       @employee_id, @effective_from, @rate_type, @rate_amount,
-      @standard_hours_per_day, @subject_to_epf, @subject_to_socso, @subject_to_eis,
+      @standard_hours_per_day, @subject_to_epf, @subject_to_socso, @subject_to_eis, @subject_to_lindung,
       @pcb_category, @pcb_children_count, @attendance_required,
       @fixed_allowance, @allowance_description,
       @created_at, @updated_at
@@ -98,6 +98,7 @@ export function createSalaryStructure(
     subject_to_epf: input.subject_to_epf,
     subject_to_socso: input.subject_to_socso,
     subject_to_eis: input.subject_to_eis,
+    subject_to_lindung: input.subject_to_lindung,
     pcb_category: input.pcb_category,
     pcb_children_count: input.pcb_children_count,
     attendance_required: input.attendance_required ?? 0,
@@ -130,6 +131,7 @@ export function updateSalaryStructure(
     subject_to_epf: input.subject_to_epf ?? existing.subject_to_epf,
     subject_to_socso: input.subject_to_socso ?? existing.subject_to_socso,
     subject_to_eis: input.subject_to_eis ?? existing.subject_to_eis,
+    subject_to_lindung: input.subject_to_lindung ?? existing.subject_to_lindung,
     pcb_category: input.pcb_category ?? existing.pcb_category,
     pcb_children_count: input.pcb_children_count ?? existing.pcb_children_count,
     attendance_required: input.attendance_required ?? existing.attendance_required,
@@ -147,6 +149,7 @@ export function updateSalaryStructure(
         subject_to_epf = @subject_to_epf,
         subject_to_socso = @subject_to_socso,
         subject_to_eis = @subject_to_eis,
+        subject_to_lindung = @subject_to_lindung,
         pcb_category = @pcb_category,
         pcb_children_count = @pcb_children_count,
         attendance_required = @attendance_required,

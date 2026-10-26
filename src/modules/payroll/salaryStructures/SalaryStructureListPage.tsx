@@ -41,6 +41,7 @@ const columns: Column<SalaryStructure>[] = [
         <StatusBadge tone={r.subject_to_epf ? 'success' : 'neutral'}>EPF</StatusBadge>
         <StatusBadge tone={r.subject_to_socso ? 'success' : 'neutral'}>SOCSO</StatusBadge>
         <StatusBadge tone={r.subject_to_eis ? 'success' : 'neutral'}>EIS</StatusBadge>
+        <StatusBadge tone={r.subject_to_socso && r.subject_to_lindung ? 'success' : 'neutral'}>LINDUNG</StatusBadge>
       </div>
     ),
     align: 'center',

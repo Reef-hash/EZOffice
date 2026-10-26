@@ -13,6 +13,7 @@ import type {
   EpfRate,
   SocsoRate,
   EisRate,
+  LindungRate,
   PcbBracket,
   SalaryAdvance,
   SalaryAdvanceTopUp,
@@ -81,6 +82,8 @@ import type {
   UpdateSocsoRateInput,
   CreateEisRateInput,
   UpdateEisRateInput,
+  CreateLindungRateInput,
+  UpdateLindungRateInput,
   CreatePcbBracketInput,
   UpdatePcbBracketInput,
   CreateSalaryAdvanceInput,
@@ -279,6 +282,13 @@ export interface EisRateApi {
   delete: (id: number) => Promise<void>
 }
 
+export interface LindungRateApi {
+  list: () => Promise<LindungRate[]>
+  create: (data: CreateLindungRateInput) => Promise<LindungRate>
+  update: (id: number, data: UpdateLindungRateInput) => Promise<LindungRate>
+  delete: (id: number) => Promise<void>
+}
+
 export interface PcbBracketApi {
   list: () => Promise<PcbBracket[]>
   create: (data: CreatePcbBracketInput) => Promise<PcbBracket>
@@ -340,6 +350,7 @@ export interface PayrollApi {
   epfRates: EpfRateApi
   socsoRates: SocsoRateApi
   eisRates: EisRateApi
+  lindungRates: LindungRateApi
   pcbBrackets: PcbBracketApi
   salaryAdvances: SalaryAdvanceApi
   runs: PayrollRunApi

@@ -140,6 +140,8 @@ export const createSalaryStructureSchema = z.object({
   subject_to_epf: z.number().int().min(0).max(1).default(1),
   subject_to_socso: z.number().int().min(0).max(1).default(1),
   subject_to_eis: z.number().int().min(0).max(1).default(1),
+  // LINDUNG 24 Jam opt-in — see migration 0029.
+  subject_to_lindung: z.number().int().min(0).max(1).default(1),
   pcb_category: z.enum(['single', 'married_no_spouse_income', 'married_with_spouse_income']).default('single'),
   pcb_children_count: z.number().int().min(0).default(0),
   // Only meaningful when rate_type = 'monthly' — see migration 0022.
@@ -208,6 +210,14 @@ export const createEisRateSchema = rateBracketSchema.extend({
 
 export const updateEisRateSchema = createEisRateSchema.partial()
 
+export const createLindungRateSchema = rateBracketSchema.extend({
+  employee_contribution: z.number().min(0),
+  // Employee-only scheme; accepted for shape parity with SOCSO/EIS, defaults to 0.
+  employer_contribution: z.number().min(0).default(0),
+})
+
+export const updateLindungRateSchema = createLindungRateSchema.partial()
+
 export const createPcbBracketSchema = z.object({
   effective_from: z.string().min(1, 'Effective date is required'),
   category: z.enum(['single', 'married_no_spouse_income', 'married_with_spouse_income']),
@@ -225,6 +235,8 @@ export type CreateSocsoRateInput = z.infer<typeof createSocsoRateSchema>
 export type UpdateSocsoRateInput = z.infer<typeof updateSocsoRateSchema>
 export type CreateEisRateInput = z.infer<typeof createEisRateSchema>
 export type UpdateEisRateInput = z.infer<typeof updateEisRateSchema>
+export type CreateLindungRateInput = z.infer<typeof createLindungRateSchema>
+export type UpdateLindungRateInput = z.infer<typeof updateLindungRateSchema>
 export type CreatePcbBracketInput = z.infer<typeof createPcbBracketSchema>
 export type UpdatePcbBracketInput = z.infer<typeof updatePcbBracketSchema>
 

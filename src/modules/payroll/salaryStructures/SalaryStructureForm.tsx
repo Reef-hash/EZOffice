@@ -34,6 +34,7 @@ export function SalaryStructureForm({
   const [subjectToEpf, setSubjectToEpf] = useState(true)
   const [subjectToSocso, setSubjectToSocso] = useState(true)
   const [subjectToEis, setSubjectToEis] = useState(true)
+  const [subjectToLindung, setSubjectToLindung] = useState(true)
   const [pcbCategory, setPcbCategory] = useState<'single' | 'married_no_spouse_income' | 'married_with_spouse_income'>('single')
   const [pcbChildrenCount, setPcbChildrenCount] = useState('0')
   const [attendanceRequired, setAttendanceRequired] = useState(false)
@@ -52,6 +53,7 @@ export function SalaryStructureForm({
       setSubjectToEpf(!!structure.subject_to_epf)
       setSubjectToSocso(!!structure.subject_to_socso)
       setSubjectToEis(!!structure.subject_to_eis)
+      setSubjectToLindung(!!structure.subject_to_lindung)
       setPcbCategory(structure.pcb_category)
       setPcbChildrenCount(String(structure.pcb_children_count))
       setAttendanceRequired(!!structure.attendance_required)
@@ -66,6 +68,7 @@ export function SalaryStructureForm({
       setSubjectToEpf(true)
       setSubjectToSocso(true)
       setSubjectToEis(true)
+      setSubjectToLindung(true)
       setPcbCategory('single')
       setPcbChildrenCount('0')
       setAttendanceRequired(false)
@@ -101,6 +104,7 @@ export function SalaryStructureForm({
       subject_to_epf: subjectToEpf ? 1 : 0,
       subject_to_socso: subjectToSocso ? 1 : 0,
       subject_to_eis: subjectToEis ? 1 : 0,
+      subject_to_lindung: subjectToLindung ? 1 : 0,
       pcb_category: pcbCategory,
       pcb_children_count: Number(pcbChildrenCount),
       attendance_required: rateType === 'monthly' && attendanceRequired ? 1 : 0,
@@ -248,6 +252,21 @@ export function SalaryStructureForm({
             <label className="flex items-center gap-2 text-sm text-neutral-700">
               <input type="checkbox" checked={subjectToEis} onChange={(e) => setSubjectToEis(e.target.checked)} />
               Subject to EIS
+            </label>
+            <label className="flex items-start gap-2 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={subjectToSocso && subjectToLindung}
+                disabled={!subjectToSocso}
+                onChange={(e) => setSubjectToLindung(e.target.checked)}
+              />
+              <span>
+                Subject to LINDUNG 24 Jam
+                <span className="block text-xs text-neutral-500">
+                  Employee-only, 0.75% from 1 Jun 2026. Untick only if a local employee has opted out with PERKESO (mandatory for foreign workers). Requires SOCSO.
+                </span>
+              </span>
             </label>
           </div>
         </div>

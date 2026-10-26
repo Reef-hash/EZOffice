@@ -89,7 +89,7 @@ function calcPcb(bracket: PcbBracket | null): number {
 export interface CalculationInput {
   summary: EmployeeMonthlySummary
   structure: Pick<SalaryStructure, 'rate_type' | 'rate_amount' | 'standard_hours_per_day' | 'subject_to_epf' | 'subject_to_socso' | 'subject_to_eis'>
-    & { attendance_required?: number; fixed_allowance?: number }
+    & { attendance_required?: number; fixed_allowance?: number; subject_to_lindung?: number }
   otRule: OtRule
   /**
    * Hourly rate derived from the monthly wage for a rate_type='monthly' AND
@@ -104,6 +104,8 @@ export interface CalculationInput {
   epfRate: { employee_contribution_pct: number; employer_contribution_pct: number } | null
   socsoRate: { employee_contribution: number; employer_contribution: number } | null
   eisRate: { employee_contribution: number; employer_contribution: number } | null
+  /** LINDUNG 24 Jam bracket — null before 2026-06-01 or when not looked up (migration 0029). */
+  lindungRate?: { employee_contribution: number } | null
   pcbBracket: PcbBracket | null
   advanceDeduction: number
   /**
@@ -335,6 +337,7 @@ function buildResult(
     socso_employer: 0,
     eis_employee: 0,
     eis_employer: 0,
+    lindung_employee: 0,
     pcb: 0,
   }
 
@@ -353,12 +356,19 @@ function buildResult(
     statutory.eis_employer = input.eisRate.employer_contribution
   }
 
+  // LINDUNG 24 Jam sits under Act 4, so it only applies to an employee who also
+  // contributes to SOCSO. Employee-only — there is no employer share.
+  if (structure.subject_to_socso && structure.subject_to_lindung && input.lindungRate) {
+    statutory.lindung_employee = input.lindungRate.employee_contribution
+  }
+
   // PCB: simplified Schedule lookup — the bracket was already resolved by the caller
   // against an estimated chargeable income (gross - EPF employee). See CLAUDE.md §7.
   statutory.pcb = calcPcb(input.pcbBracket)
 
   // Net pay
-  const totalDeductions = statutory.epf_employee + statutory.socso_employee + statutory.eis_employee + statutory.pcb + advanceDeduction
+  const totalDeductions = statutory.epf_employee + statutory.socso_employee + statutory.eis_employee
+    + statutory.lindung_employee + statutory.pcb + advanceDeduction
   const netPay = Math.round((grossPay - totalDeductions) * 100) / 100
 
   return {

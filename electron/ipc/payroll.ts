@@ -14,6 +14,8 @@ import {
   updateSocsoRateSchema,
   createEisRateSchema,
   updateEisRateSchema,
+  createLindungRateSchema,
+  updateLindungRateSchema,
   createPcbBracketSchema,
   updatePcbBracketSchema,
   createSalaryAdvanceSchema,
@@ -214,6 +216,38 @@ export function registerPayrollHandlers(db: Database.Database): void {
   ipcMain.handle('payroll:eisRates:delete', async (_event, id: number) => {
     try { return statutoryRatesService.deleteEisRate(db, id) } catch (err) {
       throw new Error(`Failed to delete EIS rate ${id}: ${String(err)}`)
+    }
+  })
+
+  // ── LINDUNG 24 Jam Rates ──────────────────────────────
+
+  ipcMain.handle('payroll:lindungRates:list', async () => {
+    try { return statutoryRatesService.listLindungRates(db) } catch (err) {
+      throw new Error(`Failed to list LINDUNG 24 Jam rates: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:lindungRates:create', async (_event, data: unknown) => {
+    try {
+      const input = createLindungRateSchema.parse(data)
+      return statutoryRatesService.createLindungRate(db, input)
+    } catch (err) {
+      throw new Error(`Failed to create LINDUNG 24 Jam rate: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:lindungRates:update', async (_event, id: number, data: unknown) => {
+    try {
+      const input = updateLindungRateSchema.parse(data)
+      return statutoryRatesService.updateLindungRate(db, id, input)
+    } catch (err) {
+      throw new Error(`Failed to update LINDUNG 24 Jam rate ${id}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:lindungRates:delete', async (_event, id: number) => {
+    try { return statutoryRatesService.deleteLindungRate(db, id) } catch (err) {
+      throw new Error(`Failed to delete LINDUNG 24 Jam rate ${id}: ${String(err)}`)
     }
   })
 

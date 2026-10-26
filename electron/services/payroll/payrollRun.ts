@@ -16,7 +16,7 @@ import { getAttendanceSummaryForDateRange } from '../attendanceProcessor'
 import { resolveCalendarDay, getEmployeeCalendarProfile, getCompanyCalendarProfile } from '../calendar'
 import { getCurrentSalaryStructure } from './salaryStructure'
 import { getPayrollSettings } from './settings'
-import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
+import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupLindungRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
 import { getActiveAdvancesForEmployee, applyAdvanceDeduction } from './salaryAdvances'
 import { getCommissionMapForRun } from './commissions'
 import { getAllowanceTotalsForRun } from './adhocAllowances'
@@ -427,6 +427,9 @@ export function calculatePayrollRun(
       const epfRate = structure.subject_to_epf ? lookupEpfRate(db, statutoryBaseForBrackets, asOfDate) : null
       const socsoRate = structure.subject_to_socso ? lookupSocsoRate(db, statutoryBaseForBrackets, asOfDate) : null
       const eisRate = structure.subject_to_eis ? lookupEisRate(db, statutoryBaseForBrackets, asOfDate) : null
+      const lindungRate = structure.subject_to_socso && structure.subject_to_lindung
+        ? lookupLindungRate(db, statutoryBaseForBrackets, asOfDate)
+        : null
 
       // PCB: use per-employee category and children count from salary_structures (migration 0005)
       const pcbBracket = lookupPcbBracket(db, monthlyWageForPcb, structure.pcb_category, structure.pcb_children_count, asOfDate)
@@ -452,6 +455,7 @@ export function calculatePayrollRun(
           subject_to_epf: structure.subject_to_epf,
           subject_to_socso: structure.subject_to_socso,
           subject_to_eis: structure.subject_to_eis,
+          subject_to_lindung: structure.subject_to_lindung,
           attendance_required: structure.attendance_required,
           fixed_allowance: structure.fixed_allowance,
         },
@@ -460,6 +464,7 @@ export function calculatePayrollRun(
         epfRate,
         socsoRate,
         eisRate,
+        lindungRate,
         pcbBracket,
         advanceDeduction,
         commission,
@@ -475,6 +480,7 @@ export function calculatePayrollRun(
           payroll_run_id, employee_id, salary_structure_id,
           snapshot_rate_type, snapshot_rate_amount, snapshot_standard_hours_per_day,
           snapshot_subject_to_epf, snapshot_subject_to_socso, snapshot_subject_to_eis,
+          snapshot_subject_to_lindung,
           total_regular_hours, total_ot_hours,
           gross_regular_pay, gross_ot_pay, commission,
           rest_day_pay, holiday_pay,
@@ -485,12 +491,14 @@ export function calculatePayrollRun(
           epf_employee, epf_employer,
           socso_employee, socso_employer,
           eis_employee, eis_employer,
+          lindung_employee,
           pcb, advance_deduction, net_pay,
           created_at, updated_at
         ) VALUES (
           @payroll_run_id, @employee_id, @salary_structure_id,
           @snapshot_rate_type, @snapshot_rate_amount, @snapshot_standard_hours_per_day,
           @snapshot_subject_to_epf, @snapshot_subject_to_socso, @snapshot_subject_to_eis,
+          @snapshot_subject_to_lindung,
           @total_regular_hours, @total_ot_hours,
           @gross_regular_pay, @gross_ot_pay, @commission,
           @rest_day_pay, @holiday_pay,
@@ -501,6 +509,7 @@ export function calculatePayrollRun(
           @epf_employee, @epf_employer,
           @socso_employee, @socso_employer,
           @eis_employee, @eis_employer,
+          @lindung_employee,
           @pcb, @advance_deduction, @net_pay,
           @created_at, @updated_at
         )
@@ -514,6 +523,7 @@ export function calculatePayrollRun(
         snapshot_subject_to_epf: structure.subject_to_epf,
         snapshot_subject_to_socso: structure.subject_to_socso,
         snapshot_subject_to_eis: structure.subject_to_eis,
+        snapshot_subject_to_lindung: structure.subject_to_lindung,
         total_regular_hours: payResult.total_regular_hours,
         total_ot_hours: payResult.total_ot_hours,
         gross_regular_pay: payResult.gross_regular_pay,
@@ -535,6 +545,7 @@ export function calculatePayrollRun(
         socso_employer: payResult.statutory.socso_employer,
         eis_employee: payResult.statutory.eis_employee,
         eis_employer: payResult.statutory.eis_employer,
+        lindung_employee: payResult.statutory.lindung_employee,
         pcb: payResult.statutory.pcb,
         advance_deduction: advanceDeduction,
         net_pay: payResult.net_pay,
@@ -588,7 +599,7 @@ export function finalizePayrollRun(db: Database.Database, runId: number): Payrol
       }
 
       const newNetPay = Math.round((item.gross_pay - (
-        item.epf_employee + item.socso_employee + item.eis_employee + item.pcb + actualDeduction
+        item.epf_employee + item.socso_employee + item.eis_employee + item.lindung_employee + item.pcb + actualDeduction
       )) * 100) / 100
 
       db.prepare(`

@@ -1,14 +1,15 @@
-// RateTablesPage — admin view/edit for EPF/SOCSO/EIS/PCB statutory rate tables.
-// Per CLAUDE.md §7 (2026-06-26): seeded with placeholder rows only — the project owner must
-// enter authoritative figures from the official KWSP/PERKESO/LHDN publications here before
-// running real payroll.
+// RateTablesPage — admin view/edit for EPF/SOCSO/EIS/LINDUNG/PCB statutory rate tables.
+// SOCSO, EIS and LINDUNG 24 Jam ship as built-in PERKESO tables (migration 0029); EPF and
+// PCB still need the official KWSP/LHDN figures entered here before running real payroll.
 
 import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { RateBracketSection } from './RateBracketSection'
 import type { RateBracketDraft } from './RateBracketSection'
 import { PcbBracketSection } from './PcbBracketSection'
-import type { EpfRate, SocsoRate, EisRate, PcbBracket } from '@/shared/types/entities'
-import type { CreateEpfRateInput, CreateSocsoRateInput, CreateEisRateInput, CreatePcbBracketInput } from '@/shared/types/inputs'
+import type { EpfRate, SocsoRate, EisRate, LindungRate, PcbBracket } from '@/shared/types/entities'
+import type {
+  CreateEpfRateInput, CreateSocsoRateInput, CreateEisRateInput, CreateLindungRateInput, CreatePcbBracketInput,
+} from '@/shared/types/inputs'
 
 export function RateTablesPage() {
   // ── EPF ──
@@ -57,6 +58,22 @@ export function RateTablesPage() {
     (id) => window.api.payroll.eisRates.delete(id),
     [['payroll', 'eisRates']],
     { onSuccessMessage: 'EIS rate deleted successfully' },
+  )
+
+  // ── LINDUNG 24 Jam ──
+  const { data: lindungRates = [], isLoading: lindungLoading } = useIpcQuery<LindungRate[]>(
+    ['payroll', 'lindungRates'],
+    () => window.api.payroll.lindungRates.list(),
+  )
+  const createLindung = useIpcMutation<LindungRate, CreateLindungRateInput>(
+    (data) => window.api.payroll.lindungRates.create(data),
+    [['payroll', 'lindungRates']],
+    { onSuccessMessage: 'LINDUNG 24 Jam rate created successfully' },
+  )
+  const deleteLindung = useIpcMutation<void, number>(
+    (id) => window.api.payroll.lindungRates.delete(id),
+    [['payroll', 'lindungRates']],
+    { onSuccessMessage: 'LINDUNG 24 Jam rate deleted successfully' },
   )
 
   // ── PCB ──
@@ -108,14 +125,27 @@ export function RateTablesPage() {
     })
   }
 
+  async function handleCreateLindung(draft: RateBracketDraft) {
+    await createLindung.mutateAsync({
+      effective_from: draft.effective_from,
+      employee_category: draft.employee_category,
+      wage_from: draft.wage_from,
+      wage_to: draft.wage_to,
+      employee_contribution: draft.contribution_employee,
+      employer_contribution: 0,
+    })
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-start gap-3 rounded-xl bg-warning-50 p-4 text-sm">
         <span className="text-base">⚠️</span>
         <p className="text-warning-700">
-          These tables ship with placeholder data only. Enter the authoritative figures from the
-          official KWSP (EPF Third Schedule), PERKESO (SOCSO/EIS Contribution Table), and LHDN
-          (PCB Schedule) publications before running real payroll.
+          SOCSO, EIS and LINDUNG 24 Jam come built in from the PERKESO contribution tables
+          (marked Built-in) — nothing to enter. EPF and PCB still need the authoritative figures
+          from the official KWSP (EPF Third Schedule) and LHDN (PCB Schedule) publications before
+          running real payroll. To use a different PERKESO figure, add your own row with a later
+          Effective From date; it takes priority over the built-in row.
         </p>
       </div>
 
@@ -150,6 +180,7 @@ export function RateTablesPage() {
           wage_to: r.wage_to,
           contribution_employee: r.employee_contribution,
           contribution_employer: r.employer_contribution,
+          source: r.source,
         }))}
         isLoading={socsoLoading}
         employeeFieldLabel="Employee (RM)"
@@ -170,6 +201,7 @@ export function RateTablesPage() {
           wage_to: r.wage_to,
           contribution_employee: r.employee_contribution,
           contribution_employer: r.employer_contribution,
+          source: r.source,
         }))}
         isLoading={eisLoading}
         employeeFieldLabel="Employee (RM)"
@@ -177,6 +209,26 @@ export function RateTablesPage() {
         onCreate={handleCreateEis}
         onDelete={(id) => deleteEis.mutateAsync(id)}
         isCreating={createEis.isPending}
+      />
+
+      <RateBracketSection
+        title="LINDUNG 24 Jam (Non-Employment Injury Scheme)"
+        description="Employee-only contribution from 1 June 2026 (Fasa 1: 0.75%). Applied only to employees with both SOCSO and LINDUNG ticked on their salary structure."
+        rows={lindungRates.map((r) => ({
+          id: r.id,
+          effective_from: r.effective_from,
+          employee_category: r.employee_category,
+          wage_from: r.wage_from,
+          wage_to: r.wage_to,
+          contribution_employee: r.employee_contribution,
+          contribution_employer: r.employer_contribution,
+          source: r.source,
+        }))}
+        isLoading={lindungLoading}
+        employeeFieldLabel="Employee (RM)"
+        onCreate={handleCreateLindung}
+        onDelete={(id) => deleteLindung.mutateAsync(id)}
+        isCreating={createLindung.isPending}
       />
 
       <PcbBracketSection

@@ -93,6 +93,7 @@ export async function exportPayrollToExcel(
       i.epf_employee,
       i.socso_employee,
       i.eis_employee,
+      i.lindung_employee,
       i.pcb,
       i.advance_deduction,
       i.net_pay
@@ -119,6 +120,7 @@ export async function exportPayrollToExcel(
     epf_employee: number
     socso_employee: number
     eis_employee: number
+    lindung_employee: number
     pcb: number
     advance_deduction: number
     net_pay: number
@@ -175,6 +177,7 @@ export async function exportPayrollToExcel(
     { header: 'EPF', key: 'epf_employee', width: 10 },
     { header: 'SOCSO', key: 'socso_employee', width: 10 },
     { header: 'EIS', key: 'eis_employee', width: 10 },
+    { header: 'LINDUNG 24J', key: 'lindung_employee', width: 12 },
     { header: 'PCB', key: 'pcb', width: 10 },
     { header: 'Advance', key: 'advance_deduction', width: 10 },
     { header: 'Net Pay', key: 'net_pay', width: 12 },

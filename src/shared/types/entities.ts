@@ -373,6 +373,9 @@ export interface SalaryStructure {
   subject_to_epf: number // 0 or 1 (SQLite)
   subject_to_socso: number
   subject_to_eis: number
+  // LINDUNG 24 Jam opt-in (migration 0029, default 1). Only applies when
+  // subject_to_socso is also 1 — the scheme sits under Act 4.
+  subject_to_lindung: number
   pcb_category: 'single' | 'married_no_spouse_income' | 'married_with_spouse_income'
   pcb_children_count: number
   // Only meaningful when rate_type = 'monthly'. 0 (default) = fixed salary regardless
@@ -432,6 +435,14 @@ export interface EpfRate {
   updated_at: string
 }
 
+// 'builtin' rows ship with the app (migration 0029) and are read-only;
+// 'manual' rows are admin-entered overrides.
+export const RATE_TABLE_SOURCE = {
+  BUILTIN: 'builtin',
+  MANUAL: 'manual',
+} as const
+export type RateTableSource = typeof RATE_TABLE_SOURCE[keyof typeof RATE_TABLE_SOURCE]
+
 export interface SocsoRate {
   id: number
   effective_from: string
@@ -440,6 +451,7 @@ export interface SocsoRate {
   wage_to: number | null
   employee_contribution: number
   employer_contribution: number
+  source: RateTableSource
   created_at: string
   updated_at: string
 }
@@ -452,6 +464,25 @@ export interface EisRate {
   wage_to: number | null
   employee_contribution: number
   employer_contribution: number
+  source: RateTableSource
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * LINDUNG 24 Jam (Skim Kemalangan Bukan Bencana Kerja) — employee-only contribution,
+ * same bracket shape as SOCSO/EIS (migration 0029). employer_contribution is always 0
+ * under the current scheme.
+ */
+export interface LindungRate {
+  id: number
+  effective_from: string
+  employee_category: string
+  wage_from: number
+  wage_to: number | null
+  employee_contribution: number
+  employer_contribution: number
+  source: RateTableSource
   created_at: string
   updated_at: string
 }
@@ -543,6 +574,7 @@ export interface PayrollRunItem {
   snapshot_subject_to_epf: number
   snapshot_subject_to_socso: number
   snapshot_subject_to_eis: number
+  snapshot_subject_to_lindung: number
   total_regular_hours: number
   total_ot_hours: number
   gross_regular_pay: number
@@ -582,6 +614,7 @@ export interface PayrollRunItem {
   socso_employer: number
   eis_employee: number
   eis_employer: number
+  lindung_employee: number // LINDUNG 24 Jam, employee-only (migration 0029)
   pcb: number
   advance_deduction: number
   net_pay: number
@@ -645,6 +678,7 @@ export interface StatutoryBreakdown {
   socso_employer: number
   eis_employee: number
   eis_employer: number
+  lindung_employee: number
   pcb: number
 }
 
