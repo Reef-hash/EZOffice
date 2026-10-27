@@ -18,6 +18,8 @@ import { getCurrentSalaryStructure } from './salaryStructure'
 import { getPayrollSettings } from './settings'
 import { lookupEpfRate, lookupSocsoRate, lookupEisRate, lookupLindungRate, lookupPcbBracket, checkRateTablesForRun } from './statutoryRates'
 import { getActiveAdvancesForEmployee, applyAdvanceDeduction } from './salaryAdvances'
+import { allocateAdvanceDeductions } from './advanceDeduction'
+import type { AdvanceDeductionAllocation } from './advanceDeduction'
 import { getCommissionMapForRun } from './commissions'
 import { getAllowanceTotalsForRun } from './adhocAllowances'
 import { calculatePay, type OtRule, type PremiumRates } from './calculationEngine'
@@ -36,23 +38,25 @@ function queryRunById(db: Database.Database, id: number): PayrollRun | null {
 }
 
 /**
- * Previews the salary advance deduction for an employee without mutating any balance.
+ * Previews the salary advance deduction for an employee without mutating any balance,
+ * capped at a share of `netPayBeforeAdvance` (see advanceDeduction.ts) — the part that
+ * does not fit is reported as `deferred` and stays on the advances' balances.
  * Used by calculate() for the draft preview, and by finalize() to apply the real deduction —
  * kept as one function so the split-per-advance logic isn't duplicated (Claude.md §3).
  */
 function previewAdvanceDeductions(
   db: Database.Database,
   employeeId: number,
-): { total: number; perAdvance: Array<{ id: number; amount: number }> } {
-  const perAdvance = getActiveAdvancesForEmployee(db, employeeId).map((advance) => ({
+  netPayBeforeAdvance: number,
+): AdvanceDeductionAllocation {
+  const scheduled = getActiveAdvancesForEmployee(db, employeeId).map((advance) => ({
     id: advance.id,
     amount:
       advance.deduction_mode === 'full_balance'
         ? advance.balance_outstanding
         : Math.min(advance.installment_amount!, advance.balance_outstanding),
   }))
-  const total = perAdvance.reduce((sum, a) => sum + a.amount, 0)
-  return { total, perAdvance }
+  return allocateAdvanceDeductions(scheduled, netPayBeforeAdvance)
 }
 
 function getPayrollPeriodOrThrow(db: Database.Database, payrollPeriodId: number): PayrollPeriod {
@@ -434,10 +438,6 @@ export function calculatePayrollRun(
       // PCB: use per-employee category and children count from salary_structures (migration 0005)
       const pcbBracket = lookupPcbBracket(db, monthlyWageForPcb, structure.pcb_category, structure.pcb_children_count, asOfDate)
 
-      // Preview the advance deduction for this employee — NOT applied yet.
-      // Balances are only mutated when the run is finalized (see finalizePayrollRun).
-      const { total: advanceDeduction } = previewAdvanceDeductions(db, employeeId)
-
       // Only computed for monthly + attendance_required (migration 0022) — cheap to
       // skip the calendar lookup for every other rate type/flag combination.
       const monthlyHourlyRate =
@@ -466,13 +466,21 @@ export function calculatePayrollRun(
         eisRate,
         lindungRate,
         pcbBracket,
-        advanceDeduction,
+        // The advance deduction depends on the net pay this call produces, so it is
+        // applied below, after the calculation, rather than passed in.
+        advanceDeduction: 0,
         commission,
         adhocAllowanceTotal,
         statutoryBase,
         workingDaysInMonth: workingDays,
         monthlyHourlyRate,
       })
+
+      // Preview the advance deduction for this employee — NOT applied yet. With no advance
+      // deducted, payResult.net_pay is the net pay the advance cap is measured against.
+      // Balances are only mutated when the run is finalized (see finalizePayrollRun).
+      const advance = previewAdvanceDeductions(db, employeeId, payResult.net_pay)
+      const netPayAfterAdvance = Math.round((payResult.net_pay - advance.total) * 100) / 100
 
       // ── Insert snapshotted payroll_run_item ──
       db.prepare(`
@@ -492,7 +500,7 @@ export function calculatePayrollRun(
           socso_employee, socso_employer,
           eis_employee, eis_employer,
           lindung_employee,
-          pcb, advance_deduction, net_pay,
+          pcb, advance_deduction, advance_deferred, net_pay,
           created_at, updated_at
         ) VALUES (
           @payroll_run_id, @employee_id, @salary_structure_id,
@@ -510,7 +518,7 @@ export function calculatePayrollRun(
           @socso_employee, @socso_employer,
           @eis_employee, @eis_employer,
           @lindung_employee,
-          @pcb, @advance_deduction, @net_pay,
+          @pcb, @advance_deduction, @advance_deferred, @net_pay,
           @created_at, @updated_at
         )
       `).run({
@@ -547,8 +555,9 @@ export function calculatePayrollRun(
         eis_employer: payResult.statutory.eis_employer,
         lindung_employee: payResult.statutory.lindung_employee,
         pcb: payResult.statutory.pcb,
-        advance_deduction: advanceDeduction,
-        net_pay: payResult.net_pay,
+        advance_deduction: advance.total,
+        advance_deferred: advance.deferred,
+        net_pay: netPayAfterAdvance,
         created_at: now,
         updated_at: now,
       })
@@ -591,23 +600,28 @@ export function finalizePayrollRun(db: Database.Database, runId: number): Payrol
 
   const finalizeAll = db.transaction(() => {
     for (const item of items) {
-      const { perAdvance } = previewAdvanceDeductions(db, item.employee_id)
+      // Same cap as calculation, measured against the same net-pay-before-advance, so
+      // finalize never deducts more than the draft showed the admin.
+      const netPayBeforeAdvance = Math.round((item.gross_pay - (
+        item.epf_employee + item.socso_employee + item.eis_employee + item.lindung_employee + item.pcb
+      )) * 100) / 100
+      const { perAdvance, deferred } = previewAdvanceDeductions(db, item.employee_id, netPayBeforeAdvance)
 
       let actualDeduction = 0
       for (const advance of perAdvance) {
         actualDeduction += applyAdvanceDeduction(db, advance.id, advance.amount)
       }
 
-      const newNetPay = Math.round((item.gross_pay - (
-        item.epf_employee + item.socso_employee + item.eis_employee + item.lindung_employee + item.pcb + actualDeduction
-      )) * 100) / 100
+      const newNetPay = Math.round((netPayBeforeAdvance - actualDeduction) * 100) / 100
 
       db.prepare(`
         UPDATE payroll_run_items
-        SET advance_deduction = @advance_deduction, net_pay = @net_pay, updated_at = @updated_at
+        SET advance_deduction = @advance_deduction, advance_deferred = @advance_deferred,
+            net_pay = @net_pay, updated_at = @updated_at
         WHERE id = @id
       `).run({
         advance_deduction: actualDeduction,
+        advance_deferred: deferred,
         net_pay: newNetPay,
         updated_at: now,
         id: item.id,

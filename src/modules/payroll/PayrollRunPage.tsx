@@ -86,7 +86,23 @@ const itemColumns: Column<PayrollRunItem>[] = [
     align: 'right',
   },
   { key: 'net_pay', header: 'Net Pay', accessor: (r) => formatCurrency(r.net_pay), sortable: true, sortValue: (r) => r.net_pay, align: 'right' },
-  { key: 'advance', header: 'Adv Ded', accessor: (r) => r.advance_deduction > 0 ? formatCurrency(r.advance_deduction) : '—', sortable: true, sortValue: (r) => r.advance_deduction, align: 'right' },
+  {
+    key: 'advance',
+    header: 'Adv Ded',
+    // A carried-forward amount means the advance was only partly deducted this run
+    // because of the pay cap — shown here so the admin sees who was cut short.
+    accessor: (r) => (
+      <div>
+        <div>{r.advance_deduction > 0 ? formatCurrency(r.advance_deduction) : '—'}</div>
+        {r.advance_deferred > 0 && (
+          <div className="text-xs text-warning-700">+{formatCurrency(r.advance_deferred)} carried forward</div>
+        )}
+      </div>
+    ),
+    sortable: true,
+    sortValue: (r) => r.advance_deduction,
+    align: 'right',
+  },
 ]
 
 export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
