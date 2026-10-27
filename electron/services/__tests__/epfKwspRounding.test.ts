@@ -91,12 +91,10 @@ describe('calculatePay — EPF matches the real KWSP contribution table', () => 
     expect(result.epf_wage_base).toBe(1700)
   })
 
-  it('a small shortfall (49 sen) still bands into the same RM1,700 bracket, so EPF is unchanged', () => {
-    // A monthly + attendance_required employee with a small shortfall: wage base
-    // becomes 1699.51, not 1700 — but KWSP's RM20 banding rounds that UP to the same
-    // 1700 bracket, so the contribution is identical. The payslip must show the real
-    // 1699.51 wage base (not 1700) even though the contribution doesn't move, so the
-    // admin isn't confused seeing RM187 next to a wage that looks like it changed.
+  it('EPF is on the contractual basic, not the basic net of the attendance shortfall', () => {
+    // Decided 2026-10-27: a monthly + attendance_required employee's EPF follows the
+    // contracted wage. A 49-sen shortfall used to show a 1699.51 base on the payslip;
+    // the base is now the full 1700 whatever the shortfall.
     const result = calculatePay({
       summary: makeSummary({ total_shortfall_hours: 0.05 }), // ~49 sen at a ~RM9.80/hr derived rate
       structure: { ...monthlyStruct, rate_amount: 1700, attendance_required: 1 },
@@ -110,7 +108,30 @@ describe('calculatePay — EPF matches the real KWSP contribution table', () => 
     })
 
     expect(result.attendance_shortfall_amount).toBeCloseTo(0.49, 2)
-    expect(result.epf_wage_base).toBeCloseTo(1699.51, 2)
-    expect(result.statutory.epf_employee).toBe(187) // unchanged — same RM20 band as 1700
+    expect(result.gross_regular_pay).toBeCloseTo(1699.51, 2) // pay is still reduced
+    expect(result.epf_wage_base).toBe(1700)
+    expect(result.statutory.epf_employee).toBe(187)
+  })
+
+  it('a large shortfall does not lower EPF either', () => {
+    // 40 hours short at RM9.80/h = RM392 off the pay. On the old net-of-shortfall base
+    // EPF would have been banded from RM1,308, i.e. RM144/RM170 instead of RM187/RM221.
+    const result = calculatePay({
+      summary: makeSummary({ total_shortfall_hours: 40 }),
+      structure: { ...monthlyStruct, rate_amount: 1700, attendance_required: 1 },
+      otRule,
+      epfRate: { employee_contribution_pct: 11, employer_contribution_pct: 13 },
+      socsoRate: null,
+      eisRate: null,
+      pcbBracket: null,
+      advanceDeduction: 0,
+      monthlyHourlyRate: 9.8,
+    })
+
+    expect(result.attendance_shortfall_amount).toBe(392)
+    expect(result.gross_regular_pay).toBe(1308)
+    expect(result.epf_wage_base).toBe(1700)
+    expect(result.statutory.epf_employee).toBe(187)
+    expect(result.statutory.epf_employer).toBe(221)
   })
 })
