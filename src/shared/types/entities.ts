@@ -617,6 +617,9 @@ export interface PayrollRunItem {
   lindung_employee: number // LINDUNG 24 Jam, employee-only (migration 0029)
   pcb: number
   advance_deduction: number
+  // Scheduled advance deduction that did not fit the pay cap and stays on the advance's
+  // balance for a later run (migration 0030).
+  advance_deferred: number
   net_pay: number
   created_at: string
   updated_at: string

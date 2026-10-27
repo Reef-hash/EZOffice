@@ -56,6 +56,7 @@ interface PayslipData {
   eis_employer: number
   pcb: number
   advance_deduction: number
+  advance_deferred: number
   net_pay: number
 }
 
@@ -86,7 +87,7 @@ function getRunItemWithEmployeeDetails(
       i.socso_employee, i.socso_employer,
       i.eis_employee, i.eis_employer,
       i.lindung_employee,
-      i.pcb, i.advance_deduction, i.net_pay
+      i.pcb, i.advance_deduction, i.advance_deferred, i.net_pay
     FROM payroll_run_items i
     LEFT JOIN employees e ON e.id = i.employee_id
     LEFT JOIN departments d ON d.id = e.department_id
@@ -318,6 +319,10 @@ export async function generatePayslipPdf(
             ...(item.lindung_employee > 0 ? [['LINDUNG 24 Jam', item.lindung_employee.toFixed(2), '-']] : []),
             ['PCB (Income Tax)', item.pcb.toFixed(2), '-'],
             ['Salary Advance', item.advance_deduction.toFixed(2), '-'],
+            // Tells the employee the rest of the advance is not forgiven, only postponed.
+            ...(item.advance_deferred > 0
+              ? [[{ text: `Advance balance carried to next month: RM ${item.advance_deferred.toFixed(2)}`, italics: true, colSpan: 3 }, {}, {}]]
+              : []),
             [
               { text: 'Total Deductions', style: 'bold', colSpan: 2 },
               {},
