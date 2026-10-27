@@ -310,8 +310,14 @@ function buildResult(
   // An explicit statutoryBase override (commission-only employees, e.g. RM1,700
   // instead of their RM2,538 commission — see docs/COMMISSION_PAYROLL_PLAN.md) takes
   // priority over this OT-excluded default for every other rate type.
+  //
+  // Monthly + attendance_required: the attendance shortfall is ADDED BACK, so EPF is
+  // on the contractual basic, not on the basic net of the shortfall (decided
+  // 2026-10-27 — contributions follow the contracted monthly wage, and a few
+  // missed hours must not move the employee into a lower KWSP band).
   const epfWageBaseDefault = Math.round(
-    (grossRegularPay + commission + premiumPay.restDayOrdinary + premiumPay.holidayOrdinary) * 100,
+    (grossRegularPay + (attendanceExtras?.shortfallAmount ?? 0) + commission
+      + premiumPay.restDayOrdinary + premiumPay.holidayOrdinary) * 100,
   ) / 100
   // For commission-only employees (input.statutoryBase set), the base is capped at
   // the commission actually earned this run — a low-sales month can't fund a "Basic"
