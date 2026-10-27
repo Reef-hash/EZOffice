@@ -10,6 +10,7 @@ import type {
   UpdateSalaryAdvanceInput,
   TopUpSalaryAdvanceInput,
   AdjustSalaryAdvanceInput,
+  ReopenSalaryAdvanceInput,
 } from '../../../src/shared/types/inputs'
 
 // ── Shared ───────────────────────────────────────────────
@@ -296,6 +297,59 @@ export function adjustSalaryAdvance(
       amount_before: existing.amount,
       amount_after: newAmount,
       reason: input.reason,
+      created_at: now,
+    })
+  })()
+
+  return queryById(db, id)!
+}
+
+/**
+ * Puts a SETTLED advance back to active with a stated outstanding balance.
+ *
+ * Why: before payroll capped an advance at the net pay available, a deduction larger
+ * than the pay zeroed the balance and flipped the advance to settled even though the
+ * employee still owed the difference (see CLAUDE.md decision log, 2026-10-27). A
+ * settled advance is locked, so adjustSalaryAdvance cannot repair it. The balance is
+ * stated by the admin rather than derived, for the same reason as adjustSalaryAdvance,
+ * and the change is recorded in salary_advance_adjustments with a mandatory reason.
+ */
+export function reopenSalaryAdvance(
+  db: Database.Database,
+  id: number,
+  input: ReopenSalaryAdvanceInput,
+): SalaryAdvance {
+  const existing = queryById(db, id)
+  if (!existing) throw new Error(`Salary advance with id ${id} not found`)
+  if (existing.status !== 'settled') {
+    throw new Error(`Only a settled advance can be reopened (this one is ${existing.status})`)
+  }
+  if (input.balance_outstanding > existing.amount) {
+    throw new Error(
+      `Balance outstanding (RM ${input.balance_outstanding.toFixed(2)}) cannot exceed the total issued ` +
+      `(RM ${existing.amount.toFixed(2)})`,
+    )
+  }
+
+  const now = new Date().toISOString()
+  db.transaction(() => {
+    db.prepare(`
+      UPDATE salary_advances
+      SET balance_outstanding = @balance_outstanding, status = 'active', updated_at = @updated_at
+      WHERE id = @id
+    `).run({ balance_outstanding: input.balance_outstanding, updated_at: now, id })
+    db.prepare(`
+      INSERT INTO salary_advance_adjustments (
+        salary_advance_id, balance_before, balance_after, amount_before, amount_after, reason, created_at
+      ) VALUES (
+        @salary_advance_id, @balance_before, @balance_after, @amount, @amount, @reason, @created_at
+      )
+    `).run({
+      salary_advance_id: id,
+      balance_before: existing.balance_outstanding,
+      balance_after: input.balance_outstanding,
+      amount: existing.amount,
+      reason: `Reopened — ${input.reason}`,
       created_at: now,
     })
   })()

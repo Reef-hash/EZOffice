@@ -290,6 +290,15 @@ export const adjustSalaryAdvanceSchema = z.object({
 
 export type AdjustSalaryAdvanceInput = z.infer<typeof adjustSalaryAdvanceSchema>
 
+// Reopening a settled advance: the admin states the balance the employee still owes
+// (never derived), which must be positive — a zero balance would just be settled again.
+export const reopenSalaryAdvanceSchema = z.object({
+  balance_outstanding: z.number().positive('Balance must be more than 0'),
+  reason: z.string().trim().min(1, 'A reason is required').max(500),
+})
+
+export type ReopenSalaryAdvanceInput = z.infer<typeof reopenSalaryAdvanceSchema>
+
 // --- Payroll: Run ---
 
 export const createPayrollRunSchema = z.object({
