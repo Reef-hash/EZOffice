@@ -1960,7 +1960,7 @@ export async function exportMonthlyAttendanceExcel(
   sheet.getRow(1).fill = {
     type: 'pattern',
     pattern: 'solid',
-    fgColor: { argb: 'FFE8E6FF' }, // indigo-50
+    fgColor: { argb: 'FFE6ECF7' }, // navy primary-50
   }
 
   // Get all active employees

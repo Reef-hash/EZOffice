@@ -57,7 +57,7 @@ export async function exportEmployeesToExcel(db: Database.Database): Promise<{ f
 
   // Style header row
   worksheet.getRow(1).font = { bold: true }
-  worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6D5DF6' } }
+  worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14213D' } }
   worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
 
   // Add data rows
@@ -185,7 +185,7 @@ export async function exportPayrollToExcel(
 
   const headerRow = worksheet.getRow(3)
   headerRow.font = { bold: true }
-  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6D5DF6' } }
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14213D' } }
   headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
 
   // Add data rows
@@ -253,7 +253,7 @@ export async function exportAttendanceToExcel(
 
   // Style header row
   worksheet.getRow(1).font = { bold: true }
-  worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6D5DF6' } }
+  worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14213D' } }
   worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
 
   // Add data rows

@@ -12,23 +12,33 @@
 @theme {
   --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 
-  /* Primary — Indigo */
-  --color-primary-50: #f4f2fe;
-  --color-primary-100: #e9e5fd;
-  --color-primary-200: #d3cbfb;
-  --color-primary-300: #b7a9f8;
-  --color-primary-400: #9683f5;
-  --color-primary-500: #8170f4;
-  --color-primary-600: #6d5df6;
-  --color-primary-700: #5b47e0;
-  --color-primary-800: #4935bd;
-  --color-primary-900: #392a8f;
+  /* Primary — Navy (brand, from designeqp/EZOffice Logo.pdf; 600 = brand navy #14213d) */
+  --color-primary-50: #eef2f9;
+  --color-primary-100: #dbe3f1;
+  --color-primary-200: #b9c7e1;
+  --color-primary-300: #8fa4cb;
+  --color-primary-400: #5f7bab;
+  --color-primary-500: #3a5586;
+  --color-primary-600: #14213d;
+  --color-primary-700: #0e1830;
+  --color-primary-800: #0a1224;
+  --color-primary-900: #060b17;
 
-  /* Ink — near-black, used for the nav bar and high-emphasis ("dark") buttons only */
-  --color-ink-700: #3f3f46;
-  --color-ink-800: #27272a;
-  --color-ink-900: #18181b;
-  --color-ink-950: #09090b;
+  /* Accent — Amber (brand secondary; the "present" cell in the logo). Highlights only, never body text */
+  --color-accent-50: #fff8eb;
+  --color-accent-100: #feefd0;
+  --color-accent-200: #fcdca0;
+  --color-accent-300: #f9c46b;
+  --color-accent-400: #f5b04c;
+  --color-accent-500: #f2a33a;
+  --color-accent-600: #d98a1f;
+  --color-accent-700: #b06d14;
+
+  /* Ink — navy-black, used for high-emphasis ("dark") buttons only */
+  --color-ink-700: #2c3e63;
+  --color-ink-800: #1b2a47;
+  --color-ink-900: #0f1a30;
+  --color-ink-950: #080f1d;
 
   /* Neutral — Slate */
   --color-neutral-50: #f8fafc;
@@ -63,15 +73,15 @@
   --color-error-700: #b91c1c;
   --color-error-800: #991b1b;
 
-  /* Semantic — Info/secondary (lavender/indigo — intentionally matches brand primary, see DESIGN_SYSTEM.md) */
-  --color-info-50: #f4f2fe;
-  --color-info-100: #e9e5fd;
-  --color-info-600: #6d5df6;
-  --color-info-700: #5b47e0;
-  --color-info-800: #4935bd;
+  /* Semantic — Info/secondary (navy — intentionally matches brand primary, see DESIGN_SYSTEM.md) */
+  --color-info-50: #eef2f9;
+  --color-info-100: #dbe3f1;
+  --color-info-600: #14213d;
+  --color-info-700: #0e1830;
+  --color-info-800: #0a1224;
 
   /* Structural roles (map onto the scales above; change here, not at call sites) */
-  --color-background: #f1f2f4;
+  --color-background: #f3f5f9;
   --color-surface: #ffffff;
   --color-border: var(--color-neutral-200);
 
@@ -80,8 +90,8 @@
   --radius-lg: 16px;
   --radius-xl: 20px;
 
-  --shadow-sm: 0 1px 3px 0 rgb(24 24 27 / 0.06), 0 1px 2px -1px rgb(24 24 27 / 0.04);
-  --shadow-md: 0 8px 24px -4px rgb(24 24 27 / 0.10), 0 4px 8px -4px rgb(24 24 27 / 0.06);
+  --shadow-sm: 0 1px 3px 0 rgb(20 33 61 / 0.06), 0 1px 2px -1px rgb(20 33 61 / 0.04);
+  --shadow-md: 0 8px 24px -4px rgb(20 33 61 / 0.10), 0 4px 8px -4px rgb(20 33 61 / 0.06);
 }
 
 body {
@@ -91,9 +101,20 @@ body {
 }
 
 .dark {
-  --color-background: #0f0f12;
-  --color-surface: #18181b;
-  --color-border: #27272a;
+  /* Navy primary has no contrast on dark surfaces — lift it to a lighter steel blue */
+  --color-primary-50: #16233f;
+  --color-primary-100: #1c2d52;
+  --color-primary-600: #5b7bb8;
+  --color-primary-700: #6f8ec9;
+  --color-primary-800: #86a3d6;
+  --color-info-50: #16233f;
+  --color-info-100: #1c2d52;
+  --color-info-600: #5b7bb8;
+  --color-info-700: #8fabdc;
+  --color-info-800: #a9c0e6;
+  --color-background: #0b1220;
+  --color-surface: #111a2e;
+  --color-border: #1f2b45;
   --color-neutral-50: #1c1c1f;
   --color-neutral-100: #27272a;
   --color-neutral-200: #27272a;

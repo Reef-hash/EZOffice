@@ -33,6 +33,7 @@ extraResources:
     to: db/migrations
 
 win:
+  icon: build/assets/icon.ico
   target:
     - nsis
     - portable

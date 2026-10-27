@@ -42,37 +42,48 @@ Concretely, that means a deliberate reversal of a few of the original system's r
 
 ## 1. Color Palette
 
-Direction: **Indigo (primary/brand) / Ink (high-emphasis) / Slate (neutral)**, confirmed
-2026-06-25 — replaces the original Teal/Slate direction.
+Direction: **Navy (primary/brand) / Amber (accent) / Slate (neutral)**, confirmed 2026-10-26 from
+`designeqp/EZOffice Logo.pdf` (logo concept C, Attendance Grid) — supersedes the Indigo/Ink
+direction of 2026-06-25. Structure, radius, shadow and component shapes are unchanged; only the
+brand colours moved.
 
-### Primary — Indigo
+### Primary — Navy
 
-Vivid indigo-purple. Used for active nav state, links, focus rings, and (per the locked decision
-below) the `primary` Button variant. Do not use it for purely decorative elements.
-
-| Token | Hex | Usage |
-|---|---|---|
-| `primary-50` | `#f4f2fe` | Subtle active-row / selected-tab background |
-| `primary-100` | `#e9e5fd` | Hover background for primary-tinted surfaces; doubles as `info` badge bg |
-| `primary-600` | `#6d5df6` | **Base primary** — default button bg, active nav pill, links, focus ring |
-| `primary-700` | `#5b47e0` | Hover state for primary buttons |
-| `primary-800` | `#4935bd` | Active/pressed state for primary buttons; doubles as `info` badge text |
-
-**Decision (confirmed with project owner, 2026-06-25):** the Button `primary` variant uses
-**indigo**, not ink. Ink is reserved for a separate, sparingly-used `dark` variant — see §5 Button.
-
-### Ink — near-black
-
-New scale, added for this direction. Used for the sidebar nav background and the `dark` Button
-variant (high-emphasis, sparingly-used actions like "Manage Team" / "Add Task") — never for body
-text (use `neutral-900` for that).
+Brand navy `#14213d`. Used for the `primary` Button variant, active nav state, links, focus rings and
+the logo mark/wordmark. In dark mode the primary ramp is remapped in `.dark` to a lighter steel blue
+(`primary-600` = `#5b7bb8`) because navy has no contrast on dark surfaces.
 
 | Token | Hex | Usage |
 |---|---|---|
-| `ink-700` | `#3f3f46` | Rarely used standalone |
-| `ink-800` | `#27272a` | Hover state (lightens — there's nowhere darker to go) for ink surfaces |
-| `ink-900` | `#18181b` | **Base** — sidebar nav background, `dark` button bg |
-| `ink-950` | `#09090b` | Active/pressed state for `dark` buttons |
+| `primary-50` | `#eef2f9` | Subtle active-row / selected-tab background |
+| `primary-100` | `#dbe3f1` | Hover background for primary-tinted surfaces; doubles as `info` badge bg |
+| `primary-600` | `#14213d` | **Base primary** — default button bg, active nav, links, focus ring |
+| `primary-700` | `#0e1830` | Hover state for primary buttons |
+| `primary-800` | `#0a1224` | Active/pressed state; doubles as `info` badge text |
+
+### Accent — Amber
+
+`accent-500` = `#f2a33a` (the "present" cell of the logo). Scale `accent-50`…`accent-700` in `src/index.css`.
+Highlights only (small badges, indicators) — never body text, and not a replacement for the
+`warning` semantic (which stays orange `#ea580c`).
+
+### Ink — navy-black
+
+Used for the `dark` Button variant only (the sidebar is now light/white). Never for body text.
+
+| Token | Hex |
+|---|---|
+| `ink-700` | `#2c3e63` |
+| `ink-800` | `#1b2a47` |
+| `ink-900` | `#0f1a30` |
+| `ink-950` | `#080f1d` |
+
+### Logo
+
+`src/shared/components/Logo/` — `Logo` (mark + wordmark) and `LogoMark`. Mark and wordmark use
+`currentColor` (navy; white in dark mode), so there is one asset, not a separate reverse variant.
+`public/favicon.svg` and `build/assets/icon.{ico,png}` are the app-tile version (navy rounded
+square, white grid, amber cell).
 
 ### Neutral — Slate
 
@@ -96,7 +107,7 @@ Structural roles (semantic aliases — use these for layout-level chrome):
 
 | Token | Maps to | Usage |
 |---|---|---|
-| `background` | `#f1f2f4` (light cool gray, own literal value — not aliased to `neutral-100`) | App shell / page background |
+| `background` | `#f3f5f9` (light cool gray, own literal value — not aliased to `neutral-100`) | App shell / page background |
 | `surface` | `#ffffff` | Card, table, modal, input backgrounds |
 | `border` | `neutral-200` | Default border color |
 
@@ -113,9 +124,9 @@ emphasis).
 | Success (mint green) | `#f0fdf4` | `#dcfce7` | `#16a34a` | `#15803d` | `#166534` |
 | Warning (peach/orange) | `#fff7ed` | `#ffedd5` | `#ea580c` | `#c2410c` | `#9a3412` |
 | Error (coral/red) | `#fef2f2` | `#fee2e2` | `#dc2626` | `#b91c1c` | `#991b1b` |
-| Info / secondary (lavender/indigo) | `#f4f2fe` | `#e9e5fd` | `#6d5df6` | `#5b47e0` | `#4935bd` |
+| Info / secondary (navy) | `#eef2f9` | `#dbe3f1` | `#14213d` | `#0e1830` | `#0a1224` |
 
-`info` intentionally shares its literal hex values with the `primary` indigo scale — in this
+`info` intentionally shares its literal hex values with the `primary` navy scale — in this
 direction, "secondary/info" pastel badges *are* brand-colored (e.g. a "Medium Priority" badge or an
 "AVG Working Hours" stat icon). The two scales are kept as separate tokens (not `var()`-aliased) so
 they can diverge later without a structural change — see the rationale in the Design intent note
@@ -186,13 +197,11 @@ Spacing uses Tailwind's default 4px-based scale as-is — no custom scale. The d
 
 ### Layout
 
-- **App shell:** fixed left sidebar (240px) + main content area — **kept** in this direction
+- **App shell:** fixed left sidebar (260px, 72px collapsed) + main content area — **kept** in this direction
   (confirmed with project owner 2026-06-25) even though the reference screenshot uses a top nav bar.
   Reason: EZOffice's nav surface (Master Data's 4 entities + Attendance/Payroll/ERP, each with their
   own sub-pages) is larger than the reference app's ~6 icon-only links, and a labeled sidebar scales
-  better as more modules land. The sidebar is **restyled** to match the new direction — `ink-900`
-  background, fully-rounded nav items, active item a solid `primary-600` pill (see AppShell) —
-  rather than replaced structurally. Do not switch to a top nav without re-confirming.
+  better as more modules land. As of 2026-10-26 the sidebar is **light** (`surface` background, 1px right border), nav grouped into People / Business / System, active item a `primary-600`/10 tinted rounded-lg with a primary border, a user card and full-width Log out at the bottom (see AppShell). Do not switch to a top nav without re-confirming.
 - **Page padding:** 24px (`p-6`) on all sides of the main content area.
 - **Forms:** single-column, max width ~640px even on wide screens — multi-column forms are harder
   to scan and error-prone for data entry. Exception: explicitly side-by-side fields that are
@@ -237,7 +246,7 @@ All variants are fully rounded (`rounded-full` — pill shape), per the new dire
 
 | Variant | Use for |
 |---|---|
-| `primary` | The one primary action on a screen/dialog (Save, Create Invoice, Run Payroll) — **indigo** (`primary-600`), not ink. See the locked decision in §1. |
+| `primary` | The one primary action on a screen/dialog (Save, Create Invoice, Run Payroll) — **navy** (`primary-600`), not ink. See the locked decision in §1. |
 | `secondary` | Default/neutral actions (Cancel, Back, secondary filters) — white + neutral border |
 | `dark` | **New variant.** Sparingly-used, high-emphasis global actions that sit outside the normal one-primary-per-screen rule — modeled on the reference's "Manage Team" / "Add Task" buttons. `ink-900` bg. Not a substitute for `primary`; don't reach for it just to make a button stand out more. |
 | `danger` | Destructive actions (Delete, Void Invoice, Cancel PO) |
@@ -339,7 +348,7 @@ body, footer with actions right-aligned, primary action rightmost).
 - **Which gray for this text?** `neutral-900` body/headings, `neutral-600` secondary/labels,
   `neutral-400` placeholder/disabled. Never pure black, never below `neutral-400` for text that must
   be read.
-- **Indigo or ink for this button?** Indigo (`primary`) for the screen's one primary action.
+- **Navy or ink for this button?** Navy (`primary`) for the screen's one primary action.
   Ink (`dark`) only for sparingly-used, standout global actions outside that one-primary rule
   (e.g. "Manage Team"). When in doubt, use `primary`.
 - **Does this need a shadow?** If it's a Card or Table, yes (`shadow-sm`) — that's the default now,

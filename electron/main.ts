@@ -57,6 +57,8 @@ function createWindow(): void {
     minWidth: 960,
     minHeight: 600,
     title: 'EZOffice',
+    // packaged builds take the icon embedded in the .exe; only dev needs it set explicitly
+    icon: app.isPackaged ? undefined : path.join(__dirname, '../build/assets/icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
