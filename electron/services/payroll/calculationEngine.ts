@@ -123,6 +123,12 @@ export interface CalculationInput {
    * fixed_allowance below.
    */
   adhocAllowanceTotal?: number
+  /**
+   * Sum of this run's other-deduction entries (migration 0031, e.g. catch-up SOCSO/EIS
+   * the company paid but never deducted). Taken from net pay in full; it changes no
+   * statutory base because it is a deduction, not a wage.
+   */
+  otherDeductionTotal?: number
   /** Rest-day / public-holiday premium multipliers. Defaults to the EA 1955 minimums. */
   premiumRates?: PremiumRates
   /** Number of working days in the month (for daily rate → monthly conversion) */
@@ -373,8 +379,9 @@ function buildResult(
   statutory.pcb = calcPcb(input.pcbBracket)
 
   // Net pay
+  const otherDeductionTotal = Math.round((input.otherDeductionTotal ?? 0) * 100) / 100
   const totalDeductions = statutory.epf_employee + statutory.socso_employee + statutory.eis_employee
-    + statutory.lindung_employee + statutory.pcb + advanceDeduction
+    + statutory.lindung_employee + statutory.pcb + otherDeductionTotal + advanceDeduction
   const netPay = Math.round((grossPay - totalDeductions) * 100) / 100
 
   return {
@@ -393,6 +400,7 @@ function buildResult(
     epf_wage_base: structure.subject_to_epf ? epfBase : 0,
     allowance,
     adhoc_allowance_total: adhocAllowanceTotal,
+    other_deduction_total: otherDeductionTotal,
     gross_pay: Math.round(grossPay * 100) / 100,
     statutory,
     advance_deduction: advanceDeduction,

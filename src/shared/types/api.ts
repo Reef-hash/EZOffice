@@ -50,6 +50,7 @@ import type {
   PayrollPeriod,
   PayrollRunCommission,
   PayrollRunAllowance,
+  PayrollRunDeduction,
   RecomputeStatusResult,
 } from './entities'
 import type {
@@ -94,6 +95,7 @@ import type {
   CreatePayrollRunInput,
   UpsertPayrollRunCommissionInput,
   UpsertPayrollRunAllowanceInput,
+  CreatePayrollRunDeductionInput,
   CreateShiftInput,
   UpdateShiftInput,
   CreateLeaveRequestInput,
@@ -322,6 +324,12 @@ export interface PayrollRunAllowanceApi {
   delete: (runId: number, allowanceId: number) => Promise<void>
 }
 
+export interface PayrollRunDeductionApi {
+  list: (runId: number) => Promise<PayrollRunDeduction[]>
+  create: (runId: number, data: CreatePayrollRunDeductionInput) => Promise<PayrollRunDeduction>
+  delete: (runId: number, deductionId: number) => Promise<void>
+}
+
 export interface PayrollRunApi {
   list: () => Promise<PayrollRun[]>
   getById: (id: number) => Promise<PayrollRun | null>
@@ -335,6 +343,7 @@ export interface PayrollRunApi {
   printPayslip: (runId: number, employeeId: number) => Promise<{ filePath: string; filename: string }>
   commissions: PayrollRunCommissionApi
   allowances: PayrollRunAllowanceApi
+  deductions: PayrollRunDeductionApi
 }
 
 export interface PayrollPeriodApi {

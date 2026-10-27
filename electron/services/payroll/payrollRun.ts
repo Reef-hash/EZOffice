@@ -22,6 +22,7 @@ import { allocateAdvanceDeductions } from './advanceDeduction'
 import type { AdvanceDeductionAllocation } from './advanceDeduction'
 import { getCommissionMapForRun } from './commissions'
 import { getAllowanceTotalsForRun } from './adhocAllowances'
+import { getDeductionTotalsForRun } from './otherDeductions'
 import { calculatePay, type OtRule, type PremiumRates } from './calculationEngine'
 
 // ── Helpers ──────────────────────────────────────────────
@@ -328,6 +329,10 @@ export function calculatePayrollRun(
   // recurring fixed_allowance) but included in the PCB wage estimate.
   const allowanceTotalsMap = getAllowanceTotalsForRun(db, runId)
 
+  // Other-deduction entries (see otherDeductions.ts) — summed per employee and taken from
+  // net pay in full, before the advance cap is measured.
+  const deductionTotalsMap = getDeductionTotalsForRun(db, runId)
+
   // Assigned shift's standard hours per employee — needed only for the
   // monthly + attendance_required derived hourly rate below, but cheap to batch for
   // everyone up front rather than querying per-employee inside the loop.
@@ -381,6 +386,7 @@ export function calculatePayrollRun(
       const commissionEntry = commissionMap.get(employeeId)
       const commission = commissionEntry?.amount ?? 0
       const adhocAllowanceTotal = allowanceTotalsMap.get(employeeId) ?? 0
+      const otherDeductionTotal = deductionTotalsMap.get(employeeId) ?? 0
 
       // Scheduled working days for THIS employee — resolved through the Company
       // Calendar (honours a six-day week and per-employee overrides), not a hardcoded
@@ -471,6 +477,7 @@ export function calculatePayrollRun(
         advanceDeduction: 0,
         commission,
         adhocAllowanceTotal,
+        otherDeductionTotal,
         statutoryBase,
         workingDaysInMonth: workingDays,
         monthlyHourlyRate,
@@ -494,7 +501,7 @@ export function calculatePayrollRun(
           rest_day_pay, holiday_pay,
           basic_salary_snapshot, attendance_shortfall_hours, attendance_shortfall_amount,
           epf_wage_base,
-          allowance, allowance_description, adhoc_allowance_total,
+          allowance, allowance_description, adhoc_allowance_total, other_deduction_total,
           gross_pay,
           epf_employee, epf_employer,
           socso_employee, socso_employer,
@@ -512,7 +519,7 @@ export function calculatePayrollRun(
           @rest_day_pay, @holiday_pay,
           @basic_salary_snapshot, @attendance_shortfall_hours, @attendance_shortfall_amount,
           @epf_wage_base,
-          @allowance, @allowance_description, @adhoc_allowance_total,
+          @allowance, @allowance_description, @adhoc_allowance_total, @other_deduction_total,
           @gross_pay,
           @epf_employee, @epf_employer,
           @socso_employee, @socso_employer,
@@ -546,6 +553,7 @@ export function calculatePayrollRun(
         allowance: payResult.allowance,
         allowance_description: structure.allowance_description,
         adhoc_allowance_total: payResult.adhoc_allowance_total,
+        other_deduction_total: payResult.other_deduction_total,
         gross_pay: payResult.gross_pay,
         epf_employee: payResult.statutory.epf_employee,
         epf_employer: payResult.statutory.epf_employer,
@@ -604,6 +612,7 @@ export function finalizePayrollRun(db: Database.Database, runId: number): Payrol
       // finalize never deducts more than the draft showed the admin.
       const netPayBeforeAdvance = Math.round((item.gross_pay - (
         item.epf_employee + item.socso_employee + item.eis_employee + item.lindung_employee + item.pcb
+        + item.other_deduction_total
       )) * 100) / 100
       const { perAdvance, deferred } = previewAdvanceDeductions(db, item.employee_id, netPayBeforeAdvance)
 

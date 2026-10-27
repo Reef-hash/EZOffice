@@ -351,6 +351,17 @@ export const upsertPayrollRunAllowanceSchema = z.object({
 
 export type UpsertPayrollRunAllowanceInput = z.infer<typeof upsertPayrollRunAllowanceSchema>
 
+// --- Payroll: Run Other Deductions (catch-up / one-off, multiple per employee per run) ---
+
+export const createPayrollRunDeductionSchema = z.object({
+  employee_id: z.number().int().positive('Employee is required'),
+  description: z.string().trim().min(1, 'Description is required').max(200),
+  amount: z.number().positive('Amount must be more than 0'),
+  note: z.string().trim().min(1).nullable().optional(),
+})
+
+export type CreatePayrollRunDeductionInput = z.infer<typeof createPayrollRunDeductionSchema>
+
 // --- Phase C: Shifts ---
 
 export const createShiftSchema = z.object({

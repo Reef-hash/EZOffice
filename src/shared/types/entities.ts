@@ -607,6 +607,8 @@ export interface PayrollRunItem {
   // Pagar" = 35 trips x RM5) — the itemized breakdown lives in
   // payroll_run_allowances, not duplicated here. Also excluded from EPF/SOCSO/EIS.
   adhoc_allowance_total: number
+  // Sum of this run's other-deduction entries for the employee (migration 0031).
+  other_deduction_total: number
   gross_pay: number
   epf_employee: number
   epf_employer: number
@@ -672,6 +674,23 @@ export interface PayrollRunAllowance {
   updated_at: string
 }
 
+/**
+ * One-off or catch-up deduction entered by the admin for one employee on one payroll
+ * run, with its own label (e.g. "Caruman tertunggak SOCSO/EIS Jan–Sep"). An employee
+ * can have several. Mutable only while the run is draft (see assertRunIsDraft).
+ */
+export interface PayrollRunDeduction {
+  id: number
+  payroll_run_id: number
+  employee_id: number
+  employee_name?: string // populated via JOIN
+  description: string
+  amount: number
+  note: string | null
+  created_at: string
+  updated_at: string
+}
+
 // --- Payroll Calculation Types (not DB rows — used in the calculation engine) ---
 
 export interface StatutoryBreakdown {
@@ -729,6 +748,8 @@ export interface PayCheckResult {
   // Sum of this run's ad-hoc, per-entry allowances (migration 0026) — same
   // EPF/SOCSO/EIS exclusion as the recurring allowance above.
   adhoc_allowance_total: number
+  // Sum of this run's other-deduction entries for the employee (migration 0031).
+  other_deduction_total: number
 
   // Statutory
   statutory: StatutoryBreakdown

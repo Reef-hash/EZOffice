@@ -201,6 +201,11 @@ const api: EzOfficeApi = {
         create: (runId, data) => ipcRenderer.invoke('payroll:runs:allowances:create', runId, data),
         delete: (runId, allowanceId) => ipcRenderer.invoke('payroll:runs:allowances:delete', runId, allowanceId),
       },
+      deductions: {
+        list: (runId) => ipcRenderer.invoke('payroll:runs:deductions:list', runId),
+        create: (runId, data) => ipcRenderer.invoke('payroll:runs:deductions:create', runId, data),
+        delete: (runId, deductionId) => ipcRenderer.invoke('payroll:runs:deductions:delete', runId, deductionId),
+      },
     },
     periods: {
       list: () => ipcRenderer.invoke('payroll:periods:list'),

@@ -26,6 +26,7 @@ import {
   createPayrollRunSchema,
   upsertPayrollRunCommissionSchema,
   upsertPayrollRunAllowanceSchema,
+  createPayrollRunDeductionSchema,
   createPayrollPeriodSchema,
   updatePayrollPeriodStatusSchema,
 } from '../../src/shared/types/inputs'
@@ -38,6 +39,7 @@ import * as salaryAdvancesService from '../services/payroll/salaryAdvances'
 import * as payrollRunService from '../services/payroll/payrollRun'
 import * as commissionsService from '../services/payroll/commissions'
 import * as adhocAllowancesService from '../services/payroll/adhocAllowances'
+import * as otherDeductionsService from '../services/payroll/otherDeductions'
 import { generatePayslipPdf } from '../services/payroll/payslipPdf'
 import * as payrollPeriodService from '../services/payroll/payrollPeriod'
 
@@ -467,6 +469,29 @@ export function registerPayrollHandlers(db: Database.Database): void {
   ipcMain.handle('payroll:runs:allowances:delete', async (_event, runId: number, allowanceId: number) => {
     try { return adhocAllowancesService.deleteAllowance(db, runId, allowanceId) } catch (err) {
       throw new Error(`Failed to delete allowance ${allowanceId} for payroll run ${runId}: ${String(err)}`)
+    }
+  })
+
+  // ── Payroll Run Other Deductions (catch-up / one-off, multiple per employee, per run) ──
+
+  ipcMain.handle('payroll:runs:deductions:list', async (_event, runId: number) => {
+    try { return otherDeductionsService.listDeductionsForRun(db, runId) } catch (err) {
+      throw new Error(`Failed to list deductions for payroll run ${runId}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:runs:deductions:create', async (_event, runId: number, data: unknown) => {
+    try {
+      const input = createPayrollRunDeductionSchema.parse(data)
+      return otherDeductionsService.createDeduction(db, runId, input)
+    } catch (err) {
+      throw new Error(`Failed to save deduction for payroll run ${runId}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:runs:deductions:delete', async (_event, runId: number, deductionId: number) => {
+    try { return otherDeductionsService.deleteDeduction(db, runId, deductionId) } catch (err) {
+      throw new Error(`Failed to delete deduction ${deductionId} for payroll run ${runId}: ${String(err)}`)
     }
   })
 

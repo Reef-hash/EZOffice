@@ -95,6 +95,7 @@ export async function exportPayrollToExcel(
       i.eis_employee,
       i.lindung_employee,
       i.pcb,
+      i.other_deduction_total,
       i.advance_deduction,
       i.net_pay
     FROM payroll_run_items i
@@ -122,6 +123,7 @@ export async function exportPayrollToExcel(
     eis_employee: number
     lindung_employee: number
     pcb: number
+    other_deduction_total: number
     advance_deduction: number
     net_pay: number
   }>
@@ -179,6 +181,7 @@ export async function exportPayrollToExcel(
     { header: 'EIS', key: 'eis_employee', width: 10 },
     { header: 'LINDUNG 24J', key: 'lindung_employee', width: 12 },
     { header: 'PCB', key: 'pcb', width: 10 },
+    { header: 'Other Ded', key: 'other_deduction_total', width: 12 },
     { header: 'Advance', key: 'advance_deduction', width: 10 },
     { header: 'Net Pay', key: 'net_pay', width: 12 },
   ]

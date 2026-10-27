@@ -55,6 +55,7 @@ interface PayslipData {
   lindung_employee: number
   eis_employer: number
   pcb: number
+  other_deduction_total: number
   advance_deduction: number
   advance_deferred: number
   net_pay: number
@@ -87,7 +88,7 @@ function getRunItemWithEmployeeDetails(
       i.socso_employee, i.socso_employer,
       i.eis_employee, i.eis_employer,
       i.lindung_employee,
-      i.pcb, i.advance_deduction, i.advance_deferred, i.net_pay
+      i.pcb, i.other_deduction_total, i.advance_deduction, i.advance_deferred, i.net_pay
     FROM payroll_run_items i
     LEFT JOIN employees e ON e.id = i.employee_id
     LEFT JOIN departments d ON d.id = e.department_id
@@ -116,6 +117,23 @@ function getAdhocAllowancesForPayslip(
   `).all(runId, employeeId) as Array<{ description: string; amount: number }>
 }
 
+/**
+ * Itemized other-deduction entries (migration 0031) for this employee on this run,
+ * read from payroll_run_deductions for the same reason as the allowances above.
+ */
+function getOtherDeductionsForPayslip(
+  db: Database.Database,
+  runId: number,
+  employeeId: number,
+): Array<{ description: string; amount: number }> {
+  return db.prepare(`
+    SELECT description, amount
+    FROM payroll_run_deductions
+    WHERE payroll_run_id = ? AND employee_id = ?
+    ORDER BY id ASC
+  `).all(runId, employeeId) as Array<{ description: string; amount: number }>
+}
+
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -137,6 +155,7 @@ export async function generatePayslipPdf(
     throw new Error(`No payslip found for employee ${employeeId} in run ${runId}`)
   }
   const adhocAllowances = getAdhocAllowancesForPayslip(db, runId, employeeId)
+  const otherDeductions = getOtherDeductionsForPayslip(db, runId, employeeId)
 
   // Fetch company settings (Phase D1)
   const settings = db.prepare('SELECT * FROM company_settings WHERE id = 1').get() as {
@@ -150,7 +169,7 @@ export async function generatePayslipPdf(
   const monthLabel = MONTH_NAMES[item.month - 1]
   const periodLabel = `${monthLabel} ${item.year}`
   const totalDeductions =
-    item.epf_employee + item.socso_employee + item.eis_employee + item.lindung_employee + item.pcb + item.advance_deduction
+    item.epf_employee + item.socso_employee + item.eis_employee + item.lindung_employee + item.pcb + item.other_deduction_total + item.advance_deduction
 
   ensureFontsRegistered()
 
@@ -321,6 +340,7 @@ export async function generatePayslipPdf(
             // Employee-only scheme; hidden when 0 (opted out, or a run before 1 Jun 2026).
             ...(item.lindung_employee > 0 ? [['LINDUNG 24 Jam', item.lindung_employee.toFixed(2), '-']] : []),
             ['PCB (Income Tax)', item.pcb.toFixed(2), '-'],
+            ...otherDeductions.map((d) => [d.description, d.amount.toFixed(2), '-']),
             ['Salary Advance', item.advance_deduction.toFixed(2), '-'],
             // Tells the employee the rest of the advance is not forgiven, only postponed.
             ...(item.advance_deferred > 0

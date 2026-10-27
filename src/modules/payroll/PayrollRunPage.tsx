@@ -16,6 +16,7 @@ import type { PayrollRun, PayrollRunItem, UnfinalizeResult } from '@/shared/type
 import { PAYROLL_RUN_STATUS_LABEL, PAYROLL_RUN_STATUS_TONE, PAYROLL_RUN_PAY_GROUP_LABEL } from './constants'
 import { CommissionPanel } from './CommissionPanel'
 import { AdhocAllowancePanel } from './AdhocAllowancePanel'
+import { OtherDeductionPanel } from './OtherDeductionPanel'
 
 interface PayrollRunPageProps {
   runId: number
@@ -85,7 +86,25 @@ const itemColumns: Column<PayrollRunItem>[] = [
     sortValue: (r) => r.epf_wage_base,
     align: 'right',
   },
-  { key: 'net_pay', header: 'Net Pay', accessor: (r) => formatCurrency(r.net_pay), sortable: true, sortValue: (r) => r.net_pay, align: 'right' },
+  {
+    key: 'other_deduction',
+    header: 'Other Ded',
+    accessor: (r) => r.other_deduction_total > 0 ? formatCurrency(r.other_deduction_total) : '—',
+    sortable: true,
+    sortValue: (r) => r.other_deduction_total,
+    align: 'right',
+  },
+  {
+    key: 'net_pay',
+    header: 'Net Pay',
+    // Negative net pay means the deductions exceed the pay: shown in red so it is not missed.
+    accessor: (r) => (
+      <span className={r.net_pay < 0 ? 'font-semibold text-error-700' : undefined}>{formatCurrency(r.net_pay)}</span>
+    ),
+    sortable: true,
+    sortValue: (r) => r.net_pay,
+    align: 'right',
+  },
   {
     key: 'advance',
     header: 'Adv Ded',
@@ -293,6 +312,7 @@ export function PayrollRunPage({ runId, onBack }: PayrollRunPageProps) {
       <CommissionPanel runId={runId} disabled={!isDraft} />
 
       <AdhocAllowancePanel runId={runId} disabled={!isDraft} />
+      <OtherDeductionPanel runId={runId} disabled={!isDraft} />
 
       {/* Actions bar */}
       <div className="flex items-center gap-3">
