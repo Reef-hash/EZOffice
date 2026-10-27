@@ -10,6 +10,7 @@ import { useIpcQuery, useIpcMutation } from '@/shared/hooks/useIpcQuery'
 import { SalaryAdvanceForm } from './SalaryAdvanceForm'
 import { SalaryAdvanceTopUpDialog } from './SalaryAdvanceTopUpDialog'
 import { SalaryAdvanceAdjustDialog } from './SalaryAdvanceAdjustDialog'
+import { SalaryAdvanceReopenDialog } from './SalaryAdvanceReopenDialog'
 import type { Column } from '@/shared/components/Table'
 import type { Employee, SalaryAdvance } from '@/shared/types/entities'
 import type { CreateSalaryAdvanceInput, UpdateSalaryAdvanceInput } from '@/shared/types/inputs'
@@ -89,6 +90,7 @@ export function SalaryAdvanceListPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [topUpAdvance, setTopUpAdvance] = useState<SalaryAdvance | null>(null)
   const [adjustAdvance, setAdjustAdvance] = useState<SalaryAdvance | null>(null)
+  const [reopenAdvance, setReopenAdvance] = useState<SalaryAdvance | null>(null)
 
   const createMutation = useIpcMutation<SalaryAdvance, CreateSalaryAdvanceInput>(
     (data) => window.api.payroll.salaryAdvances.create(data),
@@ -213,10 +215,12 @@ export function SalaryAdvanceListPage() {
         employeeOptions={employeeOptions}
         onTopUp={() => switchFromEditTo(setTopUpAdvance)}
         onAdjust={() => switchFromEditTo(setAdjustAdvance)}
+        onReopen={() => switchFromEditTo(setReopenAdvance)}
       />
 
       <SalaryAdvanceTopUpDialog advance={topUpAdvance} onClose={() => setTopUpAdvance(null)} />
       <SalaryAdvanceAdjustDialog advance={adjustAdvance} onClose={() => setAdjustAdvance(null)} />
+      <SalaryAdvanceReopenDialog advance={reopenAdvance} onClose={() => setReopenAdvance(null)} />
 
       <ConfirmDialog
         isOpen={showDeleteConfirm}

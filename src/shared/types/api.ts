@@ -90,6 +90,7 @@ import type {
   UpdateSalaryAdvanceInput,
   TopUpSalaryAdvanceInput,
   AdjustSalaryAdvanceInput,
+  ReopenSalaryAdvanceInput,
   CreatePayrollRunInput,
   UpsertPayrollRunCommissionInput,
   UpsertPayrollRunAllowanceInput,
@@ -305,6 +306,7 @@ export interface SalaryAdvanceApi {
   topUp: (id: number, data: TopUpSalaryAdvanceInput) => Promise<SalaryAdvance>
   listTopUps: (id: number) => Promise<SalaryAdvanceTopUp[]>
   adjust: (id: number, data: AdjustSalaryAdvanceInput) => Promise<SalaryAdvance>
+  reopen: (id: number, data: ReopenSalaryAdvanceInput) => Promise<SalaryAdvance>
   listAdjustments: (id: number) => Promise<SalaryAdvanceAdjustment[]>
 }
 

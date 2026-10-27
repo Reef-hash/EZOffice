@@ -22,6 +22,7 @@ import {
   updateSalaryAdvanceSchema,
   topUpSalaryAdvanceSchema,
   adjustSalaryAdvanceSchema,
+  reopenSalaryAdvanceSchema,
   createPayrollRunSchema,
   upsertPayrollRunCommissionSchema,
   upsertPayrollRunAllowanceSchema,
@@ -342,6 +343,15 @@ export function registerPayrollHandlers(db: Database.Database): void {
       return salaryAdvancesService.adjustSalaryAdvance(db, id, input)
     } catch (err) {
       throw new Error(`Failed to adjust salary advance ${id}: ${String(err)}`)
+    }
+  })
+
+  ipcMain.handle('payroll:salaryAdvances:reopen', async (_event, id: number, data: unknown) => {
+    try {
+      const input = reopenSalaryAdvanceSchema.parse(data)
+      return salaryAdvancesService.reopenSalaryAdvance(db, id, input)
+    } catch (err) {
+      throw new Error(`Failed to reopen salary advance ${id}: ${String(err)}`)
     }
   })
 

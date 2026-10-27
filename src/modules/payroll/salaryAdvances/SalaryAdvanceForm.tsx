@@ -24,10 +24,11 @@ interface SalaryAdvanceFormProps {
   employeeOptions: SelectOption[]
   onTopUp?: () => void
   onAdjust?: () => void
+  onReopen?: () => void
 }
 
 export function SalaryAdvanceForm({
-  isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleting, advance, employeeOptions, onTopUp, onAdjust,
+  isOpen, onClose, onSubmit, onDelete, isSubmitting, isDeleting, advance, employeeOptions, onTopUp, onAdjust, onReopen,
 }: SalaryAdvanceFormProps) {
   const isEdit = !!advance
   const isLocked = isEdit && advance.status !== 'active'
@@ -125,6 +126,14 @@ export function SalaryAdvanceForm({
               <span className="text-neutral-500">Balance outstanding (to be deducted):</span>
               <span className="font-semibold text-neutral-900">RM {advance.balance_outstanding.toFixed(2)}</span>
             </div>
+            {advance.status === 'settled' && onReopen && (
+              <div className="flex flex-col gap-1">
+                <Button type="button" size="sm" variant="secondary" onClick={onReopen}>Reopen Advance…</Button>
+                <p className="text-xs text-neutral-500">
+                  Use this if the employee still owes money on an advance that was marked settled.
+                </p>
+              </div>
+            )}
             {!isLocked && (
               <div className="flex gap-2">
                 {onTopUp && (
