@@ -201,7 +201,7 @@ export async function exportOtReportExcel(
   const headerRow = sheet.getRow(3)
   headerRow.values = sheet.columns.map((c: { header: string }) => c.header)
   headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } }
-  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6D5DF6' } }
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF14213D' } }
 
   const timeOnly = (iso: string | null) => (iso ? iso.slice(11, 16) : '')
 

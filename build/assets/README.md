@@ -11,7 +11,7 @@ This directory contains the app icons used in the Windows installer and applicat
 **Current Status:**
 electron-builder will generate a default icon if these files don't exist. For production, replace with actual EZOffice branding:
 - Company logo (preferred 512x512)
-- Color scheme: Indigo/Ink (per design system)
+- Color scheme: Navy/Amber (per design system)
 
 ## How to Generate
 
@@ -27,3 +27,7 @@ electron-builder will generate a default icon if these files don't exist. For pr
 - Create custom EZOffice app icon
 - Add installer background (optional, for branding)
 - Update installer wizard text (in package.json `build.nsis` config)
+
+## Status (2026-10-26)
+
+`icon.ico` / `icon.png` are generated from `public/favicon.svg` (logo concept C). Regenerate both from that SVG if the logo changes.

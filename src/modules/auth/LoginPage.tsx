@@ -4,6 +4,7 @@
 import { useState, useEffect } from 'react'
 import type { ChangeEvent, FormEvent } from 'react'
 import { Button } from '@/shared/components/Button'
+import { Logo } from '@/shared/components/Logo'
 import { Input } from '@/shared/components/Input'
 import { useIpcMutation } from '@/shared/hooks/useIpcQuery'
 
@@ -98,7 +99,9 @@ export function LoginPage({ onLoginSuccess, isFirstLaunch }: LoginPageProps) {
       <div className="w-full max-w-sm rounded-xl border border-neutral-200 bg-surface p-8 shadow-sm">
         {/* Logo / Header */}
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-neutral-900">EZOffice</h1>
+          <h1 className="flex justify-center">
+            <Logo markClassName="size-10" wordmarkClassName="text-3xl" />
+          </h1>
           <p className="mt-2 text-sm text-neutral-600">
             {isFirstLaunch ? 'Create Admin Account' : 'Admin Login'}
           </p>

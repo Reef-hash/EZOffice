@@ -337,7 +337,7 @@ export async function generatePayslipPdf(
 
   const styles: Record<string, Style> = {
     header: { fontSize: 20, bold: true, color: '#18181b' },
-    subheader: { fontSize: 14, color: '#6d5df6', margin: [0, 2, 0, 2] },
+    subheader: { fontSize: 14, color: '#14213d', margin: [0, 2, 0, 2] },
     period: { fontSize: 12, bold: true, color: '#0f172a', margin: [0, 0, 0, 2] },
     generated: { fontSize: 9, color: '#9ca3af' },
     sectionHeader: { fontSize: 11, bold: true, color: '#374151', margin: [0, 10, 0, 4], decoration: 'underline' },

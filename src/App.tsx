@@ -19,6 +19,7 @@ import { AuditLogPage } from './modules/audit/AuditLogPage'
 import { SettingsPage } from './shared/components/SettingsPage'
 import { ErrorBoundary } from './shared/components/ErrorBoundary'
 import { Spinner } from './shared/components/Spinner/Spinner'
+import { Logo } from './shared/components/Logo'
 import { UpdateDialog } from './shared/components/UpdateDialog'
 
 const queryClient = new QueryClient({
@@ -199,11 +200,8 @@ export function App() {
       <ErrorBoundary>
         <div className={isDarkMode ? 'dark' : ''}>
           <div className="flex h-screen flex-col items-center justify-center bg-background gap-4">
-            <div className="flex size-14 items-center justify-center rounded-full bg-primary-600 text-lg font-bold text-white shadow-sm animate-pulse">
-              EZ
-            </div>
+            <Logo markClassName="size-14 animate-pulse" wordmarkClassName="text-4xl" />
             <div className="text-center">
-              <h1 className="text-xl font-bold text-neutral-900 dark:text-neutral-50">EZOffice</h1>
               <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400 flex items-center justify-center gap-2">
                 <Spinner className="size-4 text-primary-600" />
                 Loading...
