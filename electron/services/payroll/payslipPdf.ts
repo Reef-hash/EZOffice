@@ -303,7 +303,10 @@ export async function generatePayslipPdf(
             [
               { text: 'Description', style: 'tableHeader' },
               { text: 'Employee', style: 'tableHeader' },
-              { text: 'Employer', style: 'tableHeader' },
+              // Employer shares are shown for reference only. Labelling the column says so,
+              // because a payslip reading as if the employer share came out of the pay
+              // was reported by a client.
+              { text: 'Employer (not deducted)', style: 'tableHeader' },
             ],
             // Wage base shown in the label, not a separate row — the admin can key
             // this exact figure into KWSP's own portal/table when submitting, rather
@@ -323,10 +326,12 @@ export async function generatePayslipPdf(
             ...(item.advance_deferred > 0
               ? [[{ text: `Advance balance carried to next month: RM ${item.advance_deferred.toFixed(2)}`, italics: true, colSpan: 3 }, {}, {}]]
               : []),
+            // The total sits under Employee: it is the sum of the employee column plus PCB
+            // and advance, and never includes the employer column.
             [
-              { text: 'Total Deductions', style: 'bold', colSpan: 2 },
-              {},
+              { text: 'Total Deductions', style: 'bold' },
               { text: totalDeductions.toFixed(2), style: 'bold' },
+              '',
             ],
           ],
         },
